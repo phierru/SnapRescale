@@ -67,7 +67,14 @@ struct ControlsPanel: View {
             Section("Format") {
                 Picker("Format", selection: $session.format) {
                     ForEach(OutputFormat.allCases, id: \.self) { f in
-                        Text(f == .keepOriginal ? "Keep original (\(keptExtension))" : f.label).tag(f)
+                        if f == .keepOriginal {
+                            let ok = session.source.map { f.isAvailable(for: $0.type) } ?? true
+                            Text(ok ? "Keep original (\(sourceExtension))" : "Keep original (\(sourceExtension) not writable)")
+                                .tag(f)
+                                .selectionDisabled(!ok)
+                        } else {
+                            Text(f.label).tag(f)
+                        }
                     }
                 }
                 if let src = session.source, session.format.isLossy(for: src.type) {
@@ -139,7 +146,11 @@ struct ControlsPanel: View {
 
     private var keptExtension: String {
         guard let src = session.source else { return "" }
-        return (session.format.resolvedType(for: src.type).preferredFilenameExtension ?? "").uppercased()
+        return (session.format.resolvedType(for: src.type)?.preferredFilenameExtension ?? "").uppercased()
+    }
+
+    private var sourceExtension: String {
+        (session.source?.type.preferredFilenameExtension ?? "").uppercased()
     }
 
     private func stepButton(_ icon: String, _ direction: Int) -> some View {
@@ -204,6 +215,12 @@ struct ControlsPanel: View {
 
     private func notes(solution s: Solution, source src: SourceImage) -> [Note] {
         var out: [Note] = []
+        if let problem = session.sizeProblem {
+            out.append(Note(text: problem + " Using the nearest legal value.", warning: true))
+        }
+        if let f = session.formatNote {
+            out.append(Note(text: f, warning: true))
+        }
         for a in s.adjustments {
             switch a {
             case let .pinnedValueSnapped(axis, requested, actual):
@@ -220,8 +237,8 @@ struct ControlsPanel: View {
             case .pad:
                 let p = Geometry.paddedFraction(source: src.size, target: s.size)
                 out.append(Note(text: String(format: "%.0f%% of the canvas is padding.", p * 100), warning: false))
-                if session.padColor.map(\.isTranslucent) ?? true, !session.format.supportsAlpha(for: src.type) {
-                    out.append(Note(text: "\(keptExtension) has no alpha channel; transparent padding will be composited on white.", warning: true))
+                if let spec = session.spec, session.padColor.map(\.isTranslucent) ?? true, !spec.padNeedsAlpha(sourceType: src.type) {
+                    out.append(Note(text: "\(keptExtension) has no alpha channel; translucent padding is composited on white, as previewed.", warning: true))
                 }
             case .stretch:
                 break

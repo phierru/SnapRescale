@@ -43,10 +43,14 @@ struct EmptyStateView: View {
                 .font(.title2.weight(.semibold))
             Text("Resize to any ratio, snapped to multiples of 8 and 16.")
                 .foregroundStyle(.secondary)
-            Button("Choose Image…") { session.chooseImage() }
-                .keyboardShortcut("o")
-                .buttonStyle(.borderedProminent)
-                .padding(.top, 6)
+            if session.isLoading {
+                ProgressView().controlSize(.regular).padding(.top, 6)
+            } else {
+                Button("Choose Image…") { session.chooseImage() }
+                    .keyboardShortcut("o")
+                    .buttonStyle(.borderedProminent)
+                    .padding(.top, 6)
+            }
             Text("Or right-click an image in Finder → Open With → SnapRescale")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
@@ -99,6 +103,7 @@ struct SourceHeader: View {
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
                 Spacer()
+                if session.isLoading { ProgressView().controlSize(.small) }
                 Button("Open…") { session.chooseImage() }
             }
         }

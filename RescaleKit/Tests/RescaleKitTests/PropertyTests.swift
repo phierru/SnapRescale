@@ -39,7 +39,14 @@ struct PropertyTests {
         }
     }
 
+    /// Requests the solver would have to clamp (e.g. a 500:1 source at height
+    /// 8192) are out of scope here; `ValidationTests` covers that they don't trap.
     static let samples = samples(count: 20_000, seed: 0x5E5CA1E)
+        .filter { (try? $0.request.validate(for: $0.source)) != nil }
+
+    @Test func mostSamplesAreValid() {
+        #expect(Self.samples.count > 18_000)
+    }
 
     @Test func resultIsOnTheLattice() {
         for s in Self.samples {

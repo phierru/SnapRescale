@@ -15,6 +15,15 @@ public struct RenderSpec: Hashable, Sendable {
     /// 0…1, used by lossy encoders only.
     public var quality: Double
 
+    /// Whether the padding in this spec needs an alpha channel and the format
+    /// can carry one. When false, translucent padding is composited over white.
+    /// The preview and the renderer both consult this, so they agree (PRD §7).
+    public func padNeedsAlpha(sourceType: UTType) -> Bool {
+        guard fit == .pad else { return false }
+        let translucent = padColor.map(\.isTranslucent) ?? true
+        return translucent && format.supportsAlpha(for: sourceType)
+    }
+
     public init(target: PixelSize, fit: FitPolicy = .crop, anchor: CropAnchor = .center,
                 padColor: PadColor? = nil, format: OutputFormat = .keepOriginal, quality: Double = 0.95) {
         self.target = target
@@ -46,18 +55,19 @@ public enum Renderer {
     public enum RenderError: Error, LocalizedError {
         case contextFailed
         case encodeFailed(UTType)
+        case cannotKeepFormat(UTType)
         public var errorDescription: String? {
             switch self {
             case .contextFailed: return "Could not create a drawing context."
             case .encodeFailed(let t): return "Could not encode as \(t.preferredFilenameExtension ?? t.identifier)."
+            case .cannotKeepFormat(let t): return "\(t.preferredFilenameExtension?.uppercased() ?? t.identifier) cannot be written; choose JPEG, PNG, HEIC or TIFF."
             }
         }
     }
 
     public static func render(_ source: SourceImage, spec: RenderSpec) throws -> CGImage {
         let t = spec.target
-        let translucentPad = spec.padColor.map(\.isTranslucent) ?? true
-        let wantsAlpha = spec.fit == .pad && translucentPad && spec.format.supportsAlpha(for: source.type)
+        let wantsAlpha = spec.padNeedsAlpha(sourceType: source.type)
         guard let space = CGColorSpace(name: CGColorSpace.sRGB),
               let ctx = CGContext(data: nil, width: t.width, height: t.height,
                                   bitsPerComponent: 8, bytesPerRow: 0, space: space,
@@ -96,7 +106,9 @@ public enum Renderer {
     }
 
     public static func encode(_ image: CGImage, spec: RenderSpec, sourceType: UTType) throws -> Data {
-        let type = spec.format.resolvedType(for: sourceType)
+        guard let type = spec.format.resolvedType(for: sourceType) else {
+            throw RenderError.cannotKeepFormat(sourceType)
+        }
         let data = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(data, type.identifier as CFString, 1, nil)
         else { throw RenderError.encodeFailed(type) }
@@ -119,7 +131,7 @@ public enum Renderer {
 public enum OutputNaming {
     public static func url(for source: SourceImage, spec: RenderSpec, in directory: URL? = nil) -> URL {
         let dir = directory ?? source.url.deletingLastPathComponent()
-        let ext = spec.format.resolvedType(for: source.type).preferredFilenameExtension ?? "jpg"
+        let ext = spec.format.resolvedType(for: source.type)?.preferredFilenameExtension ?? "jpg"
         let base = source.url.deletingPathExtension().lastPathComponent + "_\(spec.target.width)x\(spec.target.height)"
         var candidate = dir.appendingPathComponent(base).appendingPathExtension(ext)
         var n = 2

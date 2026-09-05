@@ -1,7 +1,7 @@
 # SnapRescale — Product Requirements Document
 
-**Status:** Draft v0.9 · 2026-09-05 · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
-**Name:** SnapRescale — *Resize to any ratio, snapped to multiples of 8 and 16* · bundle ID to be minted at M3
+**Status:** Draft v0.10 · 2026-09-05 · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
+**Name:** SnapRescale — *Resize to any ratio, snapped to multiples of 8 and 16* · bundle ID `com.phierru.SnapRescale`
 **Platform:** macOS 26+ (Apple Silicon), Swift 6 / SwiftUI
 
 ---
@@ -109,6 +109,18 @@ number. Edit any one; the other three re-read immediately:
 Values you typed render normally; values the solver produced render dimmed. That
 is the whole of the state model.
 
+**Selecting a view makes it the controlling input.** The current solved value is
+carried across at full precision (only the field's text is rounded), and the
+solver re-solves for that view. Pinning width holds one axis; megapixels frees
+both. So at multiple 16 the derived axis can legally move by one lattice step
+on a view switch, and the notes under Output say so. At multiple 1 nothing
+moves.
+
+**Original is exact up to the multiple.** With a multiple of 8 or 16 the
+snapped size can differ from the source ratio by a few pixels; the renderer
+then crops that sliver and the crop percentage reports it (typically under
+0.5 %).
+
 **Long edge and short edge are dropped.** They existed to disambiguate mixed
 portrait/landscape batches, and with an explicit ratio — and, in v1, a single
 image — the ambiguity is gone. The case that resurrects them is a
@@ -151,7 +163,7 @@ the slider exists (M2) the same ladder is a row of buttons under the field. They
 bypasses them entirely. A second, unlabelled detent grid sits at every multiple,
 so a free drag still lands on a legal value.
 
-All four detent values are divisible by **8 and 16**, so a detent is never
+All five detent values are divisible by **8 and 16**, so a detent is never
 displaced by snapping (§6) at any multiple. Any custom entry failing that test is
 flagged in preferences, because it quietly loses the guarantee. Combined with
 steppers that move by the multiple, the pinned axis is essentially always already
@@ -161,7 +173,7 @@ rest.
 Details:
 
 - **Range** 128–8192 by default, extending upward if a source image exceeds it.
-- **⌘1–⌘4** jump to the four detents; ← / → step; ⇧← / ⇧→ step by ten.
+- **⌘1–⌘5** jump to the five detents; ← / → step; ⇧← / ⇧→ step by ten.
 - **The ladder is editable** in preferences. The default is the ML/diffusion
   ladder; web work wants something nearer 640 · 1280 · 1920 · 2560.
 - **Detents past the source size dim** when *Never upscale* is on, so clicking
@@ -178,8 +190,9 @@ Details:
 
 The multiple — **1, 8 or 16** — is a quantiser applied *after* the continuous
 solve, not another constraint competing for a DOF. Given the ideal real-valued
-(W\*, H\*), the solver searches nearby lattice points and picks the one with the
-least aspect-ratio deviation, breaking ties by closeness in pixel count.
+(W\*, H\*), the solver searches nearby lattice points and minimises a weighted sum of
+squared log errors, aspect ratio weighted 1.0 and pixel count 0.05 — so aspect
+dominates, but a large pixel deviation can outweigh a tiny aspect one.
 
 ---
 
@@ -247,8 +260,9 @@ of the time — geometry must be added or removed.
 - **Crop (cover)** — *default.* Scale to fill the target, discard the overflow.
 - **Pad (contain)** — scale to fit inside, fill the remainder with a chosen
   colour: transparent, white, black, or custom via colour well and eyedropper.
-  Transparent falls back to white for formats without an alpha channel, and the
-  UI says so rather than silently flattening to black.
+  Transparent (opacity 0 in the colour well) falls back to compositing over
+  white for formats without an alpha channel; the preview shows the same white,
+  not a checkerboard, and the UI says so rather than silently flattening to black.
 - ~~**Stretch** — distorts. Present because it is occasionally meant.~~ *Dropped
   from the app 2026-09-05; the CLI keeps it.*
 
@@ -266,8 +280,9 @@ exact rather than indicative, which is most of the argument for starting there.
 - **Anchor**: **direct dragging of the crop rectangle** (or of the inset image,
   in pad mode); double-click re-centres. *The 3×3 grid was built and then dropped
   2026-09-05 — dragging covers it.*
-- **Composition grid** inside the frame, display only, remembered in
-  preferences: **Frame only · Centre lines · Rule of thirds** *(default)* **·
+- **Composition grid** inside the frame, display only, disabled in pad mode,
+  remembered across launches (the default grid becomes a setting in the M5
+  preferences window): **Frame only · Centre lines · Rule of thirds** *(default)* **·
   Golden ratio · Rule of fifths**, picked from an icon button group under the
   image pane, not in the control panel. Reviewed and left out for now, in case
   they are wanted later: diagonals (45° from each corner), golden triangles (one
@@ -302,8 +317,8 @@ Applications, Launchpad and the Dock. Launched with no document, it opens an
 empty window that is a **drop target**: drag one image onto it (or onto the Dock
 icon) and it becomes the session. The same window offers ⌘O and a *Choose
 Image…* button for people who do not drag. Dropping a second image while one is
-open **replaces** it after the same dirty-check a document would get — v1 never
-holds two.
+open **replaces it immediately** — this is a disposable one-shot session, not a
+document, so there is no dirty check (decided 2026-09-05). v1 never holds two.
 
 Drop accepts the image UTIs in §9. A folder, a multi-selection or a non-image
 is refused with a plain message rather than taking the first file silently.
@@ -314,25 +329,28 @@ One file in, one window, whichever way it arrives.
 
 The preview is not a 240 px inspector thumbnail any more — at n=1 it is the
 window's main content, large, with the crop rectangle drawn over it and the
-controls beneath. Source dimensions and file size are shown plainly at the top,
-because every decision below is relative to them.
+controls in a sidebar on the right (built and kept; "beneath" in earlier drafts).
+Source dimensions and file size are shown plainly at the top, because every
+decision below is relative to them.
 
 Because there is exactly one image, two things become possible that a batch
 cannot offer:
 
-- **A real output size, not an estimate.** The app can encode to memory in the
-  background on each change and show the actual byte count — "1024×683 JPEG,
-  148 KB" — rather than guessing from a quality curve. This is what makes the
-  *target file size* control (§5) trustworthy instead of aspirational.
+- **A real output size, not an estimate.** The app encodes to memory in the
+  background on each change and shows the actual byte count — "1024×683 JPEG,
+  148 KB" — rather than guessing from a quality curve. One render runs at a
+  time and the latest request wins, so a drag never queues stale full-size
+  encodes. This is what will make the *target file size* control (§11, M4)
+  trustworthy instead of aspirational.
 - **Detents past the source size dim** with a real number attached, since the
   source is known and singular.
 
 ### Saving
 
 Default `⌘S`: write next to the original as `{name}_{w}x{h}.{ext}`, and reveal it
-in Finder. `⇧⌘S` opens a standard save panel. The original is never touched in
-v1 — replace-in-place is a batch-era feature and carries a confirmation burden
-that a one-shot window should not.
+in Finder. `⇧⌘S` opens a standard save panel, pre-filled with the next free
+counter name; choosing an existing name — the original included — goes through
+the system's own replace confirmation. `⌘S` never overwrites anything.
 
 ### What batch mode changes later
 
@@ -355,8 +373,8 @@ OpenEXR, SVG, and the full RAW set (CR2/CR3, NEF, ARW, RAF, ORF, RW2, DNG, …).
 **Write via ImageIO:** JPEG, PNG, TIFF, HEIC, AVIF, GIF, JPEG 2000, BMP, PDF.
 
 **Write, needs help:** **WebP** and **JPEG XL** are read-only in ImageIO. WebP is
-the format the web actually asks for, so v1 ships WebP encoding via bundled
-`libwebp`. This is the single biggest implementation constraint in the project:
+the format the web actually asks for, so WebP encoding via bundled `libwebp`
+is the first item of M4, immediately after the v1 cut (M0–M3). This is the single biggest implementation constraint in the project:
 it adds a native dependency and complicates sandboxing and notarisation if
 SnapRescale is ever distributed. JPEG XL is deferred to v2.
 
@@ -364,7 +382,10 @@ Per-format encoder options: JPEG quality + chroma subsampling + progressive,
 PNG bit depth + interlace, HEIC/AVIF quality + lossless toggle, WebP quality +
 lossless + effort.
 
-**Format: Keep original** must be available, so a resize is only a resize.
+**Format: Keep original** must be available, so a resize is only a resize. When
+the source cannot be written (GIF, WebP, RAW, …) the item is disabled with the
+reason, and the app switches to PNG if the source has alpha, JPEG otherwise, and
+says so — it never converts silently.
 
 ## 10. Metadata and colour
 
@@ -384,7 +405,12 @@ most common defect in tools of this class.
 
 **v1** writes one file, next to the original, named `{name}_{w}x{h}.{ext}`.
 `⇧⌘S` opens a save panel for anywhere else. Collisions append a counter; nothing
-is ever silently overwritten, and the original is never modified.
+is ever silently overwritten. Replacing a file, the original included, happens
+only through the save panel's explicit confirmation.
+
+**Target file size** *(M4)*: an optional byte ceiling per output — "≤ 1 MB" —
+met by searching the encoder quality downward, at fixed geometry, using the
+same background encoder that produces the live byte count.
 
 **Deferred to batch (v2):** destination folder choice, a `./resized/` subfolder,
 replace-in-place with Trash-the-original, recursion preserving directory
@@ -419,10 +445,11 @@ editable, diffable, and shareable.
 2. **Finder Quick Action, headless** *(v2)* — right-click → SnapRescale →
    *‹preset name›*, applied to a selection without opening a window. Notifies on
    completion. Batch belongs here rather than in the app.
-3. **CLI** — one aspect flag and one size flag, mirroring the panel:
-   `rescale --aspect 16:9 --width 1920 --format jpeg --quality 80 *.png`, or
-   `rescale --mp 1.5 *.png` (aspect defaults to original), plus `--preset web`.
-   Exit codes and machine-readable `--json` output.
+3. **CLI** — one aspect flag and one size flag, mirroring the panel. Proposed
+   v2 syntax: `rescale --aspect 16:9 --width 1920 --format jpeg --quality 80 *.png`,
+   or `rescale --mp 1.5 *.png` (aspect defaults to original), plus `--preset web`,
+   exit codes and machine-readable `--json` output. The M1 throwaway CLI is not
+   this: it takes one file, quality 0–1, and writes only with `--write`.
 4. **Shortcuts action** — so it composes with the rest of the automation on this
    machine.
 
@@ -436,7 +463,7 @@ requires revisiting the model.
 | **M0** ✅ | **The solver**, ported from `prototype/solver.py`: aspect + one size parameter, source inheritance, pin-respecting snapping. Pure value code, no image I/O. Property tests: the solved size always honours the axis the user set, and re-solving is idempotent. *Done 2026-09-05: `RescaleKit/`, 20 tests incl. 5,940-case parity fixture.* | 1 day |
 | **M1** | `RescaleKit`: decode → resize → crop/pad → encode, for one image. Fit policies, resampling, metadata and orientation rules. Fixture corpus (portrait, landscape, square, alpha, CMYK, EXIF-rotated, RAW). A throwaway CLI here is the cheapest way to test it. | 2 days |
 | **M2** | **The size control** (§5): field + steppers + logarithmic detented slider. Custom SwiftUI, built and unit-tested standalone before it has an app to live in. | 1 day |
-| **M3** | **The app**: Open With registration, empty-window drop target + ⌘O, single-image window, large crop preview with anchor grid and draggable rectangle, aspect picker, real output byte count, Save. | 2–3 days |
+| **M3** | **The app**: Open With registration, empty-window drop target + ⌘O, single-image window, large crop preview with draggable rectangle, aspect picker, real output byte count, Save. | 2–3 days |
 | **M4** | Formats: WebP via libwebp, per-format encoder options, target-file-size search. | 1–2 days |
 | **M5** | Presets, icon, help, preferences, DMG, notarisation. | 1–2 days |
 
@@ -460,14 +487,16 @@ shipped CLI, and the Shortcuts action (§13).
    SnapResizer (web/iPad) and Snap Converter (Mac App Store).
 3. **Distribution.** Personal tool, or signed and shipped? Determines whether the
    libwebp dependency and App Sandbox constraints matter.
-4. **Animated GIF / HEICS.** Resize all frames, or refuse and say so? Refusing
-   loudly is acceptable in v1; silently flattening to frame 1 is not.
+4. **Animated GIF / HEICS.** **Decided 2026-09-05: first frame, for now.** The
+   loader takes frame 0; frame selection (and video frames) is future work.
+   Since GIF cannot be written, the format switches to PNG/JPEG with a note.
 5. **RAW output.** Read RAW, write JPEG/HEIC — presumably never write RAW. Confirm.
 6. **Target-file-size cost.** 6–8 encode passes per image — imperceptible for
    one image, and the same background encoder already producing the live byte
    count (§8). Revisit when batch arrives.
 7. **Does the ladder need 1536?** **Decided 2026-09-05: yes**, as the fifth
    detent — SDXL-era workflows land there often, and it is divisible by 8 and 16.
+   Shortcuts are ⌘1–⌘5.
 8. **Should aspect presets auto-flip to match source orientation?** Choosing 16:9
    for a folder of portrait photographs crops them to ribbons. The list carries
    both orientations explicitly (2:3 *and* 3:2), so the user can already say what

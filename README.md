@@ -42,14 +42,14 @@ The tests replay a fixture generated from the Python prototype
 (`python3 prototype/export_fixture.py > RescaleKit/Tests/RescaleKitTests/Fixtures/solver-parity.json`)
 so the port cannot drift from the behaviour tables in the PRD. Requires Xcode 26 / Swift 6.2+.
 
-A throwaway CLI (PRD §14 M1) exercises the solver against real files. It reads
-the source dimensions through ImageIO and prints the solve; it does not write
-pixels yet:
+A throwaway CLI (PRD §14 M1) exercises the pipeline against real files. Without
+`--write` it only reports the solve; with it, it writes next to the original:
 
 ```sh
 cd RescaleKit && swift build
 .build/debug/rescale --aspect 16:9 --width 1920 --multiple 16 photo.heic
 .build/debug/rescale --mp 1.5 --source 6000x4000
+.build/debug/rescale --aspect 1:1 --width 1024 --format png --write photo.heic
 ```
 
 ## Prototype
@@ -60,7 +60,7 @@ print the behaviour tables reproduced in §5 and §6 of the PRD.
 
 ## Status
 
-Draft PRD v0.7 (v1 = single image). **M0 done**: solver ported to Swift with
+Draft PRD v0.10 (v1 = single image). **M0 done**: solver ported to Swift with
 property tests and prototype parity. **First vertical slice of M1 + M3
 running**: decode → resize → crop/pad → encode via ImageIO, a `rescale` CLI
 that writes files, and a SwiftUI window with drop target, live crop preview,

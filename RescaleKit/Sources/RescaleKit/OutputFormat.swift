@@ -22,15 +22,24 @@ public enum OutputFormat: Hashable, Sendable, Codable, CaseIterable {
     /// Types ImageIO can encode on this platform that v1 exposes.
     static let writable: [UTType] = [.jpeg, .png, .heic, .tiff]
 
-    public func resolvedType(for source: UTType) -> UTType {
+    /// The encoder type, or `nil` when `keepOriginal` cannot keep this source
+    /// (GIF, WebP, RAW, …). Never silently substitutes a format.
+    public func resolvedType(for source: UTType) -> UTType? {
         switch self {
-        case .keepOriginal:
-            return Self.writable.first { source.conforms(to: $0) } ?? .jpeg
+        case .keepOriginal: return Self.writable.first { source.conforms(to: $0) }
         case .jpeg: return .jpeg
         case .png: return .png
         case .heic: return .heic
         case .tiff: return .tiff
         }
+    }
+
+    public func isAvailable(for source: UTType) -> Bool { resolvedType(for: source) != nil }
+
+    /// What to switch to when the source cannot be kept: PNG if the source
+    /// carries alpha, JPEG otherwise.
+    public static func fallback(for source: UTType, hasAlpha: Bool) -> OutputFormat {
+        hasAlpha ? .png : .jpeg
     }
 
     /// Whether the resolved encoder takes a quality setting.
@@ -40,7 +49,7 @@ public enum OutputFormat: Hashable, Sendable, Codable, CaseIterable {
     }
 
     public func supportsAlpha(for source: UTType) -> Bool {
-        let t = resolvedType(for: source)
+        guard let t = resolvedType(for: source) else { return false }
         return t == .png || t == .heic || t == .tiff
     }
 }

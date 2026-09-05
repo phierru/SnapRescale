@@ -12,6 +12,13 @@ public struct SourceImage: @unchecked Sendable {
     public let fileSize: Int
     public let type: UTType
 
+    public var hasAlpha: Bool {
+        switch image.alphaInfo {
+        case .none, .noneSkipFirst, .noneSkipLast: return false
+        default: return true
+        }
+    }
+
     public enum LoadError: Error, LocalizedError {
         case notAnImage(URL)
         case undecodable(URL)

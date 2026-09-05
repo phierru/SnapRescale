@@ -34,11 +34,17 @@ public enum Solver {
     /// How many lattice steps either side of the ideal a free axis is searched.
     static let searchSpan = 3
 
+    /// Never traps. Non-finite or non-positive inputs are clamped to the nearest
+    /// legal value and oversized targets to `Limits`; call
+    /// `ResizeRequest.validate(for:)` first when you want a message instead.
     public static func solve(_ request: ResizeRequest, source: PixelSize) -> Solution {
-        precondition(source.width > 0 && source.height > 0, "source must have positive dimensions")
+        let source = PixelSize(max(source.width, 1), max(source.height, 1))
+        var request = request
+        request.size = request.size.clamped
+        if case let .fixed(w, h) = request.aspect, w <= 0 || h <= 0 { request.aspect = .original }
 
         let pinned = request.size.pinnedAxis
-        let typed = solveContinuous(request, source: source)
+        let typed = clampContinuous(solveContinuous(request, source: source))
         let ideal = holdPinnedAxis(typed, multiple: request.multiple.rawValue, pinned: pinned)
         let size = snap(ideal, multiple: request.multiple.rawValue, pinned: pinned)
 
@@ -72,6 +78,20 @@ public enum Solver {
         }
     }
 
+    /// Keeps the ideal inside `Limits` so the lattice search and the renderer never overflow.
+    private static func clampContinuous(_ c: ContinuousSize) -> ContinuousSize {
+        let maxEdge = Double(Limits.maxDimension)
+        var w = c.width.isFinite ? min(max(c.width, 1), maxEdge) : 1
+        var h = c.height.isFinite ? min(max(c.height, 1), maxEdge) : 1
+        // Leave room for the lattice search to round up by one step per axis.
+        let px = Double(Limits.maxPixels) * 0.995
+        if w * h > px {
+            let k = (px / (w * h)).squareRoot()
+            w *= k; h *= k
+        }
+        return ContinuousSize(width: w, height: h)
+    }
+
     private static func fromPixelCount(_ px: Double, aspect ar: Double) -> ContinuousSize {
         ContinuousSize(width: (px * ar).squareRoot(), height: (px / ar).squareRoot())
     }
@@ -100,8 +120,8 @@ public enum Solver {
 
     static func snap(_ ideal: ContinuousSize, multiple: Int, pinned: Axis?) -> PixelSize {
         if multiple <= 1 {
-            return PixelSize(width: max(1, roundHalfEven(ideal.width)),
-                             height: max(1, roundHalfEven(ideal.height)))
+            return PixelSize(width: min(Limits.maxDimension, max(1, roundHalfEven(ideal.width))),
+                             height: min(Limits.maxDimension, max(1, roundHalfEven(ideal.height))))
         }
 
         let targetAR = ideal.aspectRatio
@@ -131,7 +151,7 @@ public enum Solver {
     /// The nearest lattice value, never below one step. Half-way cases round to
     /// even (1032 at 16 → 64.5 steps → 64 → 1024), matching the prototype and PRD §6.
     static func nearestLattice(_ v: Double, _ multiple: Int) -> Int {
-        max(multiple, roundHalfEven(v / Double(multiple)) * multiple)
+        min(Limits.maxDimension, max(multiple, roundHalfEven(v / Double(multiple)) * multiple))
     }
 
     /// Lattice values from `searchSpan` steps below the ideal to `searchSpan + 1` above.
@@ -139,7 +159,7 @@ public enum Solver {
         let base = Int((v / Double(multiple)).rounded(.down))
         return (-searchSpan...(searchSpan + 1))
             .map { (base + $0) * multiple }
-            .filter { $0 >= multiple }
+            .filter { $0 >= multiple && $0 <= Limits.maxDimension }
     }
 
     static func roundHalfEven(_ v: Double) -> Int {

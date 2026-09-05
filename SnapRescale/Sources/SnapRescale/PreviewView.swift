@@ -42,7 +42,8 @@ struct PreviewView: View {
             .labelsHidden()
             .pickerStyle(.segmented)
             .fixedSize()
-            .help("Composition grid (display only)")
+            .disabled(session.fit == .pad)
+            .help(session.fit == .pad ? "Composition grid applies to the crop frame" : "Composition grid (display only)")
         }
     }
 
@@ -90,8 +91,11 @@ struct PreviewView: View {
 
         return ZStack(alignment: .topLeading) {
             ZStack {
+                // Same policy as Renderer: alpha only when the format carries it,
+                // otherwise composited over white — exactly what the file will hold.
                 let c = session.padColor ?? .transparent
-                if c.isTranslucent { Checkerboard() }
+                let keepsAlpha = session.spec?.padNeedsAlpha(sourceType: session.source?.type ?? .png) ?? false
+                if keepsAlpha { Checkerboard() } else { Color.white }
                 Color(red: c.red, green: c.green, blue: c.blue, opacity: c.alpha)
             }
             .frame(width: canvas.width, height: canvas.height)

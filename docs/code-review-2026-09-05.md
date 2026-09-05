@@ -160,3 +160,25 @@ The v1 window-opening Services entry in §8 and the v2 headless preset Quick Act
 Swift compilation and ImageIO fixture operations required execution outside the workspace sandbox; the approved retries passed. The review did not launch the UI, overwrite a source, benchmark large-image workloads, test notarisation/installation, or run a full RAW/CMYK/wide-gamut/EXIF-orientation corpus. Static findings are identified as such. Existing repository tests cover solver behavior, not the image/session defects above.
 
 **Revised action order:** fix numeric validation (3), misleading format retention (5), and padding preview fidelity (6); retain full precision during unit switching (4). Clarify the selector contract before changing its multiple-16 behavior. Findings 1 and 7 require documentation alignment, not added restrictions or prompts. Finding 2 belongs in future frame-selection work. Finding 8 remains unchanged pending workload measurement. No product fixes were made during this review update.
+
+---
+
+## Resolution log (coding assistant, 2026-09-05)
+
+Fixed against the revised action order; verified by the kit suite (25 tests) and by launching the app.
+
+| Finding | Status | Where |
+|---|---|---|
+| 1 Numbered saves, explicit replacement | Accepted; PRD §§8, 11 reworded | `docs/PRD.md` |
+| 2 First-frame import | Deferred; PRD §15.4 records the decision | `docs/PRD.md` |
+| 3 Invalid numeric input traps | **Fixed.** `Limits`, `SizeParameter.validate/clamped`, `ResizeRequest.validate(for:)` checking the unclamped ideal; solver never traps; CLI and app report | `RescaleKit/Sources/RescaleKit/Validation.swift`, `Solver.swift`, `rescale/main.swift`, `Session.swift` |
+| 4 Unit switch precision | **Fixed.** Full-precision carry-over; selection contract stated in PRD §5 and in code comments | `Session.switchSizeKind`, `docs/PRD.md` |
+| 5 Keep original converts | **Fixed.** `resolvedType` is optional; menu item disabled with reason; fallback to PNG/JPEG with a warning; CLI refuses | `OutputFormat.swift`, `Renderer.swift`, `ControlsPanel.swift`, `Session.load` |
+| 6 Pad preview vs output | **Fixed.** `RenderSpec.padNeedsAlpha(sourceType:)` shared by renderer and preview | `Renderer.swift`, `PreviewView.swift` |
+| 7 No dirty check | Accepted; PRD §8 reworded | `docs/PRD.md` |
+| 8 Superseded encodes | **Fixed.** Latest-wins worker, one render in flight; decode moved off the main actor | `Session.scheduleEncode`, `Session.load` |
+| Original + multiple sliver crop | **Fixed.** `reframes` now derives from solved geometry, so the crop % shows | `Session.reframes` |
+| Unused `ladderExceedsSource` | Removed | `Session.swift` |
+| README / PRD inconsistencies 1–8 | **Fixed** (README v0.10, CLI `--write` documented; PRD: bundle ID, five detents ⌘1–⌘5, M3 without anchor grid, target-file-size defined in §11, solver objective prose, CLI example labelled proposed, WebP moved to M4) | `README.md`, `docs/PRD.md` |
+
+Not addressed in this batch: Services/Quick Action registration (§8), "Never upscale" setting, encoder options, metadata/colour (§10) — all still open milestone work.

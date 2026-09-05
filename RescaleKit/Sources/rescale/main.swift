@@ -88,6 +88,7 @@ while !args.isEmpty {
     case "-h", "--help": usage()
     default:
         if a.hasPrefix("-") { fail("unknown option \(a)") }
+        if imagePath != nil { fail("one image at a time; got a second path \(a)") }
         imagePath = a
     }
 }
@@ -101,6 +102,7 @@ if source == nil, let loaded { source = loaded.size }
 guard let source else { fail("give an image path or --source WxH") }
 
 let request = ResizeRequest(aspect: aspect, size: size, multiple: multiple)
+do { try request.validate(for: source) } catch { fail(error.localizedDescription) }
 let s = request.solve(for: source)
 
 print("source   \(source)  (\(String(format: "%.2f", source.megapixels)) MP, \(aspect.label))")
@@ -124,6 +126,9 @@ if s.isUpscale(from: source, fit: fit) {
 }
 if write {
     guard let loaded else { fail("--write needs an image path") }
+    if !format.isAvailable(for: loaded.type) {
+        fail("cannot keep \(loaded.type.preferredFilenameExtension?.uppercased() ?? "this format"); pass --format jpeg|png|heic|tiff")
+    }
     let spec = RenderSpec(target: s.size, fit: fit, format: format, quality: quality)
     do {
         let data = try Renderer.produce(loaded, spec: spec)

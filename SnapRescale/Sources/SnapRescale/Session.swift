@@ -38,7 +38,6 @@ final class Session {
     private(set) var isEncoding = false
     private(set) var lastSaved: URL?
     var errorMessage: String?
-    private var encodeTask: Task<Void, Never>?
 
     enum SizeKind: String, CaseIterable, Identifiable {
         case width = "Width", height = "Height", megapixels = "Megapixels", scale = "Scale"
@@ -47,22 +46,13 @@ final class Session {
 
     /// The quick-pick row under the field. Pixel values are the common AI input
     /// sizes (all divisible by 8 and 16, PRD §5); the other views get their own ladders.
+    /// Values past the source are not dimmed (a segmented control cannot); the
+    /// upscale note under Output covers it.
     var ladder: [Double] {
         switch sizeKind {
         case .width, .height: return [512, 768, 1024, 1536, 2048]
         case .megapixels: return [0.25, 0.5, 1, 2, 4]
         case .scale: return [25, 50, 75, 100]
-        }
-    }
-
-    /// A ladder value is out of reach when it would upscale the source (PRD §5: detents past the source dim).
-    func ladderExceedsSource(_ v: Double) -> Bool {
-        guard let source else { return false }
-        switch sizeKind {
-        case .width: return v > Double(source.size.width)
-        case .height: return v > Double(source.size.height)
-        case .megapixels: return v > source.size.megapixels
-        case .scale: return v > 100
         }
     }
 
@@ -76,13 +66,29 @@ final class Session {
 
     // MARK: Derived
 
+    /// Whatever the field holds, clamped to a legal value (finding 3): a
+    /// non-finite or non-positive entry never reaches the solver.
     var sizeParameter: SizeParameter {
+        let v = sizeValue.isFinite ? sizeValue : 1
+        let px = Int(exactly: v.rounded().clamped(to: 1...Double(Limits.maxDimension))) ?? 1
         switch sizeKind {
-        case .width: return .width(max(1, Int(sizeValue.rounded())))
-        case .height: return .height(max(1, Int(sizeValue.rounded())))
-        case .megapixels: return .megapixels(max(0.01, sizeValue))
-        case .scale: return .scale(max(0.01, sizeValue / 100))
+        case .width: return .width(px)
+        case .height: return .height(px)
+        case .megapixels: return .megapixels(v).clamped
+        case .scale: return .scale(v / 100).clamped
         }
+    }
+
+    /// Non-nil when the field holds something the solver had to clamp.
+    var sizeProblem: String? {
+        let raw: SizeParameter
+        switch sizeKind {
+        case .width: raw = .width(sizeValue.isFinite ? Int(clamping: Int64(sizeValue.rounded().clamped(to: -1e15...1e15))) : 0)
+        case .height: raw = .height(sizeValue.isFinite ? Int(clamping: Int64(sizeValue.rounded().clamped(to: -1e15...1e15))) : 0)
+        case .megapixels: raw = .megapixels(sizeValue)
+        case .scale: raw = .scale(sizeValue / 100)
+        }
+        do { try raw.validate(); return nil } catch { return error.localizedDescription }
     }
 
     var request: ResizeRequest {
@@ -99,9 +105,12 @@ final class Session {
                           padColor: padColor, format: format, quality: quality)
     }
 
+    /// True when the solved size has a different ratio from the source, so the
+    /// renderer will crop or pad. Under Original this can still happen by a few
+    /// pixels when the multiple rounds an axis (PRD §5).
     var reframes: Bool {
-        guard let source else { return false }
-        return aspect.reframes(source.size)
+        guard let source, let solution else { return false }
+        return abs(solution.size.aspectRatio - source.size.aspectRatio) > 1e-6
     }
 
     // MARK: Launch arguments
@@ -117,7 +126,7 @@ final class Session {
                 if v.lowercased() == "original" { aspect = .original }
                 else {
                     let p = v.split(separator: ":").compactMap { Int($0) }
-                    if p.count == 2 { aspect = .fixed(width: p[0], height: p[1]) }
+                    if p.count == 2, p[0] > 0, p[1] > 0 { aspect = .fixed(width: p[0], height: p[1]) }
                 }
             case "--width", "--height", "--mp", "--scale":
                 guard let v = it.next(), let d = Double(v) else { break }
@@ -146,25 +155,46 @@ final class Session {
         load(url)
     }
 
+    private(set) var isLoading = false
+
+    /// Decodes off the main actor so a large file does not freeze the window.
     func load(_ url: URL) {
-        do {
-            let loaded = try SourceImage.load(url)
-            source = loaded
-            previewImage = Self.makePreview(loaded.image, maxPixels: 2048)
-            anchor = .center
-            if let v = launchSizeValue {
-                sizeValue = v
-                launchSizeValue = nil
-            } else {
-                sizeKind = .width
-                sizeValue = Double(min(loaded.size.width, 2048))
+        isLoading = true
+        Task {
+            do {
+                let (loaded, preview) = try await Task.detached(priority: .userInitiated) {
+                    let loaded = try SourceImage.load(url)
+                    return (loaded, Self.makePreview(loaded.image, maxPixels: 2048))
+                }.value
+                source = loaded
+                previewImage = preview
+                anchor = .center
+                if let v = launchSizeValue {
+                    sizeValue = v
+                    launchSizeValue = nil
+                } else {
+                    sizeKind = .width
+                    sizeValue = Double(min(loaded.size.width, 2048))
+                }
+                lastSaved = nil
+                // "Keep original" cannot keep GIF, WebP, RAW…: switch to an honest
+                // format rather than silently writing JPEG (finding 5).
+                if !format.isAvailable(for: loaded.type) {
+                    format = OutputFormat.fallback(for: loaded.type, hasAlpha: loaded.hasAlpha)
+                    formatNote = "\(loaded.type.preferredFilenameExtension?.uppercased() ?? "This format") cannot be written; saving as \(format.label)."
+                } else {
+                    formatNote = nil
+                }
+                scheduleEncode()
+            } catch {
+                errorMessage = error.localizedDescription
             }
-            lastSaved = nil
-            scheduleEncode()
-        } catch {
-            errorMessage = error.localizedDescription
+            isLoading = false
         }
     }
+
+    /// Set when the source format could not be kept.
+    private(set) var formatNote: String?
 
     func chooseImage() {
         let panel = NSOpenPanel()
@@ -174,7 +204,7 @@ final class Session {
         if panel.runModal() == .OK, let url = panel.url { load(url) }
     }
 
-    private static func makePreview(_ image: CGImage, maxPixels: Int) -> CGImage {
+    nonisolated private static func makePreview(_ image: CGImage, maxPixels: Int) -> CGImage {
         let longest = max(image.width, image.height)
         guard longest > maxPixels,
               let space = CGColorSpace(name: CGColorSpace.sRGB) else { return image }
@@ -190,16 +220,19 @@ final class Session {
 
     // MARK: Size editing — four views of one number (PRD §5)
 
-    /// Switching the view carries the *current solved value* into the new view,
-    /// so the number on screen never jumps.
+    /// Selecting a view makes it the controlling input, carrying the current
+    /// solved value across at full precision; only the field's text is rounded.
+    /// The solver then re-solves for that view: pinning width holds one axis,
+    /// megapixels frees both, so at multiple 16 the derived axis can legally
+    /// move by one step (PRD §5, §6). The notes under Output say when it does.
     func switchSizeKind(to kind: SizeKind) {
         guard kind != sizeKind else { return }
         if let solution, let source {
             switch kind {
             case .width: sizeValue = Double(solution.width)
             case .height: sizeValue = Double(solution.height)
-            case .megapixels: sizeValue = (solution.megapixels * 100).rounded() / 100
-            case .scale: sizeValue = (solution.scale(relativeTo: source.size) * 1000).rounded() / 10
+            case .megapixels: sizeValue = solution.megapixels
+            case .scale: sizeValue = solution.scale(relativeTo: source.size) * 100
             }
         }
         sizeKind = kind
@@ -222,18 +255,31 @@ final class Session {
 
     // MARK: Output
 
+    /// Latest-request-wins: at most one render runs; anything requested while
+    /// it runs collapses into a single pending spec (finding 8). ImageIO work
+    /// cannot be interrupted, so cancelling tasks alone would not bound memory.
+    private var pendingSpec: RenderSpec?
+    private var encodeRunning = false
+
     func scheduleEncode() {
-        encodeTask?.cancel()
-        guard let source, let spec else { outputBytes = nil; return }
+        guard let source, let spec else { outputBytes = nil; pendingSpec = nil; return }
+        pendingSpec = spec
         isEncoding = true
-        encodeTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(120))
-            if Task.isCancelled { return }
-            let bytes = await Task.detached(priority: .userInitiated) {
-                (try? Renderer.produce(source, spec: spec))?.count
-            }.value
-            if Task.isCancelled { return }
-            self?.outputBytes = bytes
+        guard !encodeRunning else { return }
+        encodeRunning = true
+        Task { [weak self] in
+            // Coalesce a burst of edits before starting a full-size render.
+            try? await Task.sleep(for: .milliseconds(80))
+            while let self, let spec = self.pendingSpec {
+                self.pendingSpec = nil
+                let bytes = await Task.detached(priority: .userInitiated) {
+                    (try? Renderer.produce(source, spec: spec))?.count
+                }.value
+                if self.pendingSpec == nil {
+                    self.outputBytes = bytes
+                }
+            }
+            self?.encodeRunning = false
             self?.isEncoding = false
         }
     }
@@ -249,7 +295,7 @@ final class Session {
         let panel = NSSavePanel()
         panel.directoryURL = suggested.deletingLastPathComponent()
         panel.nameFieldStringValue = suggested.lastPathComponent
-        panel.allowedContentTypes = [spec.format.resolvedType(for: source.type)]
+        panel.allowedContentTypes = spec.format.resolvedType(for: source.type).map { [$0] } ?? []
         if panel.runModal() == .OK, let url = panel.url {
             write(to: url, source: source, spec: spec)
         }
@@ -265,4 +311,8 @@ final class Session {
             errorMessage = error.localizedDescription
         }
     }
+}
+
+private extension Double {
+    func clamped(to r: ClosedRange<Double>) -> Double { min(max(self, r.lowerBound), r.upperBound) }
 }
