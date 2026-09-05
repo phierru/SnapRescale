@@ -11,6 +11,7 @@ public struct SourceImage: @unchecked Sendable {
     public let size: PixelSize
     public let fileSize: Int
     public let type: UTType
+    public let metadata: ImageMetadata
 
     public var hasAlpha: Bool {
         switch image.alphaInfo {
@@ -54,8 +55,10 @@ public struct SourceImage: @unchecked Sendable {
         else { throw LoadError.undecodable(url) }
 
         let fileSize = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let bytes = try? Data(contentsOf: url, options: .mappedIfSafe)
+        let metadata = ImageMetadata.inspect(source: source, data: bytes, type: type)
         return SourceImage(url: url, image: image,
                            size: PixelSize(image.width, image.height),
-                           fileSize: fileSize, type: type)
+                           fileSize: fileSize, type: type, metadata: metadata)
     }
 }

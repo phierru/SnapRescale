@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CONFIG=${1:-release}
 cd "$ROOT/SnapRescale"
-swift build -c "$CONFIG"
+swift build -c "$CONFIG" --disable-build-manifest-caching
 APP="$ROOT/build/SnapRescale.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"

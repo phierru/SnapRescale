@@ -1,6 +1,6 @@
 # SnapRescale — Product Requirements Document
 
-**Status:** Draft v0.10 · 2026-09-05 · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
+**Status:** Draft v0.11 · 2026-09-05 · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
 **Name:** SnapRescale — *Resize to any ratio, snapped to multiples of 8 and 16* · bundle ID `com.phierru.SnapRescale`
 **Platform:** macOS 26+ (Apple Silicon), Swift 6 / SwiftUI
 
@@ -395,6 +395,17 @@ things that people want separately:
 - **EXIF / IPTC / XMP** — keep all · keep camera & date, drop the rest · drop all
 - **GPS location** — keep · drop *(separate: this is the one people strip for privacy)*
 - **ICC profile** — preserve · convert to sRGB · strip
+
+**What the source carries is shown up front.** The header row above the
+preview — name, dimensions, file size, format — ends with one badge per
+metadata block found: **ICC** (profile name on hover), **EXIF**, **GPS** (in a
+warning colour), **IPTC**, **XMP**, **Alpha**, **16-bit**, **HDR**, **Depth**,
+**Rotated**, **Animated ·N**, and one per AI-generation source detected:
+**ComfyUI**, **A1111**, **InvokeAI**, **NovelAI**, **Fooocus**, **SwarmUI**,
+**Midjourney**, **C2PA**. The full catalogue, where each lives and how it is
+detected, is in [`reference/image-metadata.md`](reference/image-metadata.md).
+The badges are the hooks the switches below attach to; a **keep AI workflow**
+switch (carry the PNG text chunks into the output) joins them in M4.
 
 **Orientation is always normalised**, whatever the metadata setting: the EXIF
 orientation flag is baked into the pixels and reset to 1. Stripping metadata

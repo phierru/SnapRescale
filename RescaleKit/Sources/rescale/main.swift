@@ -106,6 +106,9 @@ do { try request.validate(for: source) } catch { fail(error.localizedDescription
 let s = request.solve(for: source)
 
 print("source   \(source)  (\(String(format: "%.2f", source.megapixels)) MP, \(aspect.label))")
+if let loaded, !loaded.metadata.badges.isEmpty {
+    print("carries  " + loaded.metadata.badges.map { $0.label == "ICC" ? "ICC(\(loaded.metadata.iccProfileName ?? ""))" : $0.label }.joined(separator: " "))
+}
 print("ideal    \(String(format: "%.1f×%.1f", s.ideal.width, s.ideal.height))")
 print("result   \(s.size)  \(String(format: "%.2f", s.megapixels)) MP  scale \(String(format: "%.1f", s.scale(relativeTo: source) * 100))%")
 print("error    aspect \(String(format: "%.3f", s.aspectError * 100))%  pixels \(String(format: "%.2f", s.pixelError * 100))%")

@@ -98,14 +98,51 @@ struct SourceHeader: View {
         if let src = session.source {
             HStack(spacing: 12) {
                 Image(systemName: "photo")
-                Text(src.url.lastPathComponent).font(.headline).lineLimit(1)
+                Text(src.url.lastPathComponent).font(.headline).lineLimit(1).truncationMode(.middle).layoutPriority(-1)
                 Text(summary(src))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
+                MetadataBadges(badges: src.metadata.badges)
                 Spacer()
                 if session.isLoading { ProgressView().controlSize(.small) }
                 Button("Open…") { session.chooseImage() }
             }
+        }
+    }
+}
+
+/// One capsule per metadata block the source carries (PRD §10). Hover for detail.
+struct MetadataBadges: View {
+    let badges: [ImageMetadata.Badge]
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(badges) { b in
+                Text(b.label)
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(1)
+                    .fixedSize()
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(background(for: b.tone), in: Capsule())
+                    .foregroundStyle(foreground(for: b.tone))
+                    .help(b.detail)
+            }
+        }
+    }
+
+    private func background(for tone: ImageMetadata.Badge.Tone) -> Color {
+        switch tone {
+        case .neutral: return Color.secondary.opacity(0.18)
+        case .warning: return Color.orange.opacity(0.22)
+        case .provenance: return Color.accentColor.opacity(0.22)
+        }
+    }
+
+    private func foreground(for tone: ImageMetadata.Badge.Tone) -> Color {
+        switch tone {
+        case .neutral: return .secondary
+        case .warning: return .orange
+        case .provenance: return .accentColor
         }
     }
 }
