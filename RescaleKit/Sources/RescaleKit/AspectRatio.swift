@@ -50,4 +50,25 @@ public enum AspectRatio: Hashable, Sendable, Codable {
         case let .fixed(w, h): return "\(w):\(h)"
         }
     }
+
+    /// ComfyUI's orientation-bearing names for the presets: "Square", "Portrait Photo", …
+    public var commonName: String? {
+        switch self {
+        case .original: return nil
+        case .fixed(1, 1): return "Square"
+        case .fixed(2, 3): return "Portrait Photo"
+        case .fixed(3, 2): return "Photo"
+        case .fixed(3, 4): return "Portrait Standard"
+        case .fixed(4, 3): return "Standard"
+        case .fixed(9, 16): return "Portrait Widescreen"
+        case .fixed(16, 9): return "Widescreen"
+        case .fixed(21, 9): return "Ultrawide"
+        case .fixed: return nil
+        }
+    }
+
+    /// "16:9 (Widescreen)", or just the label when there is no common name.
+    public var displayName: String {
+        commonName.map { "\(label) (\($0))" } ?? label
+    }
 }

@@ -2,7 +2,8 @@
 // there is an app. Solves geometry only for now; no pixels are written yet.
 //
 //   rescale [--aspect 16:9|original] (--width N | --height N | --mp X | --scale X)
-//           [--multiple 1|8|16] (<image> | --source WxH)
+//           [--multiple 1|8|16] [--fit crop|pad|stretch] [--format keep|jpeg|png|heic|tiff]
+//           [--quality 0.95] [--write] (<image> | --source WxH)
 
 import Foundation
 import ImageIO
@@ -16,7 +17,8 @@ func fail(_ message: String) -> Never {
 func usage() -> Never {
     print("""
     usage: rescale [--aspect 16:9|original] (--width N | --height N | --mp X | --scale X)
-                   [--multiple 1|8|16] (<image> | --source WxH)
+                   [--multiple 1|8|16] [--fit crop|pad|stretch] [--format keep|jpeg|png|heic|tiff]
+                   [--quality 0.95] [--write] (<image> | --source WxH)
     """)
     exit(1)
 }
@@ -51,6 +53,10 @@ var size: SizeParameter?
 var multiple: Multiple = .one
 var source: PixelSize?
 var imagePath: String?
+var fit: FitPolicy = .crop
+var format: OutputFormat = .keepOriginal
+var quality = 0.95
+var write = false
 
 var args = Array(CommandLine.arguments.dropFirst())
 @MainActor func take() -> String { guard !args.isEmpty else { usage() }; return args.removeFirst() }
@@ -67,6 +73,18 @@ while !args.isEmpty {
         guard let v = Int(take()), let m = Multiple(rawValue: v) else { fail("multiple must be 1, 8 or 16") }
         multiple = m
     case "--source": source = parseSize(take())
+    case "--fit": guard let f = FitPolicy(rawValue: take()) else { fail("fit must be crop, pad or stretch") }; fit = f
+    case "--format":
+        switch take().lowercased() {
+        case "keep": format = .keepOriginal
+        case "jpeg", "jpg": format = .jpeg
+        case "png": format = .png
+        case "heic": format = .heic
+        case "tiff", "tif": format = .tiff
+        default: fail("format must be keep, jpeg, png, heic or tiff")
+        }
+    case "--quality": guard let q = Double(take()), (0...1).contains(q) else { fail("quality must be 0…1") }; quality = q
+    case "--write": write = true
     case "-h", "--help": usage()
     default:
         if a.hasPrefix("-") { fail("unknown option \(a)") }
@@ -75,7 +93,11 @@ while !args.isEmpty {
 }
 
 guard let size else { usage() }
-if source == nil, let imagePath { source = sourceSize(ofImageAt: imagePath) }
+var loaded: SourceImage?
+if let imagePath {
+    do { loaded = try SourceImage.load(URL(fileURLWithPath: imagePath)) } catch { fail(error.localizedDescription) }
+}
+if source == nil, let loaded { source = loaded.size }
 guard let source else { fail("give an image path or --source WxH") }
 
 let request = ResizeRequest(aspect: aspect, size: size, multiple: multiple)
@@ -94,7 +116,19 @@ for adj in s.adjustments {
     }
 }
 if aspect.reframes(source) {
-    print("fit      \(s.isUpscale(from: source, fit: .crop) ? "crop would upscale" : "crop")")
-} else if s.isUpscale(from: source) {
+    let discarded = Geometry.discardedFraction(source: source, target: s.size, anchor: .center)
+    print("fit      \(fit.rawValue)\(fit == .crop ? String(format: ", crops %.0f%% of the image", discarded * 100) : "")")
+}
+if s.isUpscale(from: source, fit: fit) {
     print("warning  larger than the source (upscale)")
+}
+if write {
+    guard let loaded else { fail("--write needs an image path") }
+    let spec = RenderSpec(target: s.size, fit: fit, format: format, quality: quality)
+    do {
+        let data = try Renderer.produce(loaded, spec: spec)
+        let url = OutputNaming.url(for: loaded, spec: spec)
+        try data.write(to: url)
+        print("wrote    \(url.path)  (\(data.count) bytes)")
+    } catch { fail(error.localizedDescription) }
 }

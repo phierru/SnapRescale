@@ -1,6 +1,6 @@
 # SnapRescale — Product Requirements Document
 
-**Status:** Draft v0.7 · 2026-09-05 · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
+**Status:** Draft v0.8 · 2026-09-05 · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
 **Name:** SnapRescale — *Resize to any ratio, snapped to multiples of 8 and 16* · bundle ID to be minted at M3
 **Platform:** macOS 26+ (Apple Silicon), Swift 6 / SwiftUI
 
@@ -76,7 +76,8 @@ you happen to be thinking, and keeps the rest consistent.
 ### Aspect ratio is always set
 
 Aspect is not a free field competing for a slot. It is a picker, always
-populated, exactly ComfyUI's `ResolutionSelector` list plus one entry:
+populated, exactly ComfyUI's `ResolutionSelector` list plus one entry, shown
+with ComfyUI's names ("16:9 (Widescreen)", "2:3 (Portrait Photo)", …):
 
 **Original** *(default)* · 1:1 · 2:3 · 3:2 · 3:4 · 4:3 · 9:16 · 16:9 · 21:9
 
@@ -144,7 +145,8 @@ nobody picks. On a log₂ track they sit at 33%, 43%, 50% and 67%:
   0%   16.7%  33.3% 43.1% 50.0% 59.7% 66.7%       83.3%           100%
 ```
 
-**Detents at 512 · 768 · 1024 · 2048**, drawn as labelled ticks. They are
+**Detents at 512 · 768 · 1024 · 1536 · 2048**, drawn as labelled ticks. Until
+the slider exists (M2) the same ladder is a row of buttons under the field. They are
 *magnetic, not modal*: the thumb is attracted within a few points and ⌥-drag
 bypasses them entirely. A second, unlabelled detent grid sits at every multiple,
 so a free drag still lands on a legal value.
@@ -247,7 +249,8 @@ of the time — geometry must be added or removed.
   colour: transparent, white, black, or custom via colour well and eyedropper.
   Transparent falls back to white for formats without an alpha channel, and the
   UI says so rather than silently flattening to black.
-- **Stretch** — distorts. Present because it is occasionally meant.
+- ~~**Stretch** — distorts. Present because it is occasionally meant.~~ *Dropped
+  from the app 2026-09-05; the CLI keeps it.*
 
 ### The preview
 
@@ -260,8 +263,9 @@ one number and getting a reframe they did not fully picture, and the rectangle i
 the only honest way to show it before anything is written. At n=1 (§8) it can be
 exact rather than indicative, which is most of the argument for starting there.
 
-- **Anchor**: a 3×3 grid (default centre), plus **direct dragging of the crop
-  rectangle** for off-grid framing.
+- **Anchor**: **direct dragging of the crop rectangle** (or of the inset image,
+  in pad mode); double-click re-centres. *The 3×3 grid was built and then dropped
+  2026-09-05 — dragging covers it.*
 - Live update on every solver change.
 - Reports the discarded fraction — "crops 18% of the image" — so an aggressive
   reframe announces itself.
@@ -452,9 +456,8 @@ shipped CLI, and the Shortcuts action (§13).
 6. **Target-file-size cost.** 6–8 encode passes per image — imperceptible for
    one image, and the same background encoder already producing the live byte
    count (§8). Revisit when batch arrives.
-7. **Does the ladder need 1536?** 512/768/1024/2048 skips it, and SDXL-era
-   workflows land there often. Left out because you named four; it is divisible
-   by 8 and 16, so it is lattice-safe if you want it as a fifth detent.
+7. **Does the ladder need 1536?** **Decided 2026-09-05: yes**, as the fifth
+   detent — SDXL-era workflows land there often, and it is divisible by 8 and 16.
 8. **Should aspect presets auto-flip to match source orientation?** Choosing 16:9
    for a folder of portrait photographs crops them to ribbons. The list carries
    both orientations explicitly (2:3 *and* 3:2), so the user can already say what

@@ -18,6 +18,17 @@ megapixels. Everything else solves itself.
 - [PRD](docs/PRD.md) — requirements, scope, milestones
 - [ComfyUI node review](docs/reference/comfyui-node-review.md) — source material
 
+## The app
+
+`SnapRescale/` is the SwiftUI app, a thin shell over RescaleKit. Build it into a
+runnable bundle (ad-hoc signed, no Xcode project needed) and open an image:
+
+```sh
+./Scripts/build-app.sh                       # → build/SnapRescale.app
+open build/SnapRescale.app photo.heic        # or launch it and drop an image on the window
+open build/SnapRescale.app --args --aspect 16:9 --width 1920 --multiple 16 photo.heic
+```
+
 ## RescaleKit
 
 `RescaleKit/` is the Swift package the app, CLI and Quick Action will all drive.
@@ -49,6 +60,10 @@ print the behaviour tables reproduced in §5 and §6 of the PRD.
 
 ## Status
 
-Draft PRD v0.5 (v1 = single image). **M0 done**: solver ported to Swift with
-property tests and prototype parity. Next: M1, `RescaleKit` image pipeline
-(decode → resize → crop/pad → encode) with a throwaway CLI.
+Draft PRD v0.7 (v1 = single image). **M0 done**: solver ported to Swift with
+property tests and prototype parity. **First vertical slice of M1 + M3
+running**: decode → resize → crop/pad → encode via ImageIO, a `rescale` CLI
+that writes files, and a SwiftUI window with drop target, live crop preview,
+aspect/size/multiple controls, real output byte count and Save. Still to do:
+the log-detented size slider (M2), metadata and colour rules (§10), WebP (M4),
+presets and packaging (M5).
