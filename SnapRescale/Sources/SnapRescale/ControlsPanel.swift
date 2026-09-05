@@ -28,12 +28,14 @@ struct ControlsPanel: View {
 
                 HStack(spacing: 6) {
                     stepButton("minus", -1)
+                    Spacer()
                     TextField("", value: $session.sizeValue, format: .number.precision(.fractionLength(0...2)).grouping(.never))
                         .textFieldStyle(.roundedBorder)
                         .multilineTextAlignment(.trailing)
                         .monospacedDigit()
-                        .frame(maxWidth: .infinity)
+                        .frame(width: 110)
                     Text(unit).foregroundStyle(.secondary).frame(width: 28, alignment: .leading)
+                    Spacer()
                     stepButton("plus", 1)
                 }
 
@@ -86,15 +88,18 @@ struct ControlsPanel: View {
                     }
                     LabeledContent("File") {
                         HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .opacity(session.isEncoding ? 1 : 0)
                             if let bytes = session.outputBytes {
                                 Text(Int64(bytes), format: .byteCount(style: .file)).monospacedDigit()
                                     .opacity(session.isEncoding ? 0.5 : 1)
                             } else {
                                 Text("—")
                             }
-                            if session.isEncoding { ProgressView().controlSize(.mini) }
                             Text(keptExtension).foregroundStyle(.secondary)
                         }
+                        .frame(height: 20)
                     }
                     ForEach(notes(solution: solution, source: src), id: \.self) { note in
                         Label(note.text, systemImage: note.warning ? "exclamationmark.triangle" : "info.circle")
@@ -192,6 +197,7 @@ struct ControlsPanel: View {
         }
         .labelsHidden()
         .pickerStyle(.segmented)
+        .frame(maxWidth: .infinity)
     }
 
     struct Note: Hashable { let text: String; let warning: Bool }

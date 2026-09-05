@@ -1,6 +1,6 @@
 # SnapRescale — Product Requirements Document
 
-**Status:** Draft v0.8 · 2026-09-05 · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
+**Status:** Draft v0.9 · 2026-09-05 · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
 **Name:** SnapRescale — *Resize to any ratio, snapped to multiples of 8 and 16* · bundle ID to be minted at M3
 **Platform:** macOS 26+ (Apple Silicon), Swift 6 / SwiftUI
 
@@ -266,6 +266,16 @@ exact rather than indicative, which is most of the argument for starting there.
 - **Anchor**: **direct dragging of the crop rectangle** (or of the inset image,
   in pad mode); double-click re-centres. *The 3×3 grid was built and then dropped
   2026-09-05 — dragging covers it.*
+- **Composition grid** inside the frame, display only, remembered in
+  preferences: **Frame only · Centre lines · Rule of thirds** *(default)* **·
+  Golden ratio · Rule of fifths**, picked from an icon button group under the
+  image pane, not in the control panel. Reviewed and left out for now, in case
+  they are wanted later: diagonals (45° from each corner), golden triangles (one
+  diagonal plus perpendiculars, two orientations), golden spiral (eight
+  orientations), uniform N×N grid for straightening, centre crosshair, dynamic
+  symmetry armature, aspect-ratio ghost frames, video safe areas. Lightroom's
+  O / ⇧O cycle-and-flip convention is the model if the orientation-dependent
+  ones are ever added.
 - Live update on every solver change.
 - Reports the discarded fraction — "crops 18% of the image" — so an aggressive
   reframe announces itself.

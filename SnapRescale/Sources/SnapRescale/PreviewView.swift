@@ -25,7 +25,25 @@ struct PreviewView: View {
             }
         }
         .background(Color(nsColor: .underPageBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(alignment: .bottomLeading) { caption.padding(10) }
+        .safeAreaInset(edge: .bottom, spacing: 8) { footer }
+    }
+
+    /// Under the image: what the frame keeps, and the composition-grid picker.
+    private var footer: some View {
+        @Bindable var session = session
+        return HStack {
+            caption
+            Spacer()
+            Picker("Grid", selection: $session.grid) {
+                ForEach(CompositionGrid.allCases) { g in
+                    g.icon.tag(g).help(g.label)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .fixedSize()
+            .help("Composition grid (display only)")
+        }
     }
 
     // MARK: Layers
@@ -54,7 +72,7 @@ struct PreviewView: View {
                 .offset(x: shown.minX, y: shown.minY)
                 .shadow(radius: 2)
                 .allowsHitTesting(false)
-            thirds(in: shown)
+            gridLines(in: shown)
         }
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { session.anchor = .center }
@@ -105,16 +123,16 @@ struct PreviewView: View {
             .offset(x: rect.minX, y: rect.minY)
     }
 
-    private func thirds(in r: CGRect) -> some View {
+    private func gridLines(in r: CGRect) -> some View {
         Path { p in
-            for i in 1...2 {
-                let x = r.minX + r.width * Double(i) / 3
-                let y = r.minY + r.height * Double(i) / 3
+            for f in session.grid.fractions {
+                let x = r.minX + r.width * f
+                let y = r.minY + r.height * f
                 p.move(to: CGPoint(x: x, y: r.minY)); p.addLine(to: CGPoint(x: x, y: r.maxY))
                 p.move(to: CGPoint(x: r.minX, y: y)); p.addLine(to: CGPoint(x: r.maxX, y: y))
             }
         }
-        .stroke(.white.opacity(0.35), lineWidth: 0.5)
+        .stroke(.white.opacity(0.4), lineWidth: 0.5)
         .allowsHitTesting(false)
     }
 
@@ -159,9 +177,8 @@ struct PreviewView: View {
                 }
             }
         }
-        .font(.caption)
-        .padding(.horizontal, 8).padding(.vertical, 4)
-        .background(.thinMaterial, in: Capsule())
+        .font(.callout)
+        .foregroundStyle(.secondary)
     }
 }
 

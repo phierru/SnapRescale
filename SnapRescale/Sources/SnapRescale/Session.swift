@@ -28,6 +28,11 @@ final class Session {
     var format: OutputFormat = .keepOriginal
     var quality: Double = 0.95
 
+    // Display only
+    var grid: CompositionGrid = CompositionGrid.loadPreference() {
+        didSet { grid.savePreference() }
+    }
+
     // Output
     private(set) var outputBytes: Int?
     private(set) var isEncoding = false
