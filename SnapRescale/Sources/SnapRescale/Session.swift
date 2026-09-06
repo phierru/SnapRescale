@@ -323,7 +323,7 @@ final class Session {
 
     func saveNextToOriginal() {
         guard let source, let spec else { return }
-        write(to: OutputNaming.url(for: source, spec: spec), source: source, spec: spec)
+        write(to: OutputNaming.url(for: source, spec: spec), source: source, spec: spec, viaFolderAccess: true)
     }
 
     func saveAs() {
@@ -338,10 +338,20 @@ final class Session {
         }
     }
 
-    private func write(to url: URL, source: SourceImage, spec: RenderSpec) {
+    /// `viaFolderAccess` is the silent path: it may ask for the folder once under
+    /// the sandbox. The save panel path already carries its own grant.
+    private func write(to url: URL, source: SourceImage, spec: RenderSpec, viaFolderAccess: Bool = false) {
         do {
             let data = try Renderer.produce(source, spec: spec)
-            try data.write(to: url)
+            if viaFolderAccess {
+                switch FolderAccess.write(data, to: url) {
+                case .written: break
+                case .cancelled: return
+                case .failed(let error): throw error
+                }
+            } else {
+                try data.write(to: url)
+            }
             lastSaved = url
             if revealAfterSave { NSWorkspace.shared.activateFileViewerSelecting([url]) }
             if quitsAfterSave {

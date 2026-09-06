@@ -39,6 +39,7 @@ struct SnapRescaleApp: App {
 /// M5 preferences. Only the saving policy for now; grid, ladder, defaults follow.
 struct SettingsView: View {
     @Environment(Session.self) private var session
+    @State private var grantedFolders = FolderAccess.grantedFolderCount
 
     var body: some View {
         @Bindable var session = session
@@ -47,10 +48,19 @@ struct SettingsView: View {
                 Toggle("Show the saved image in Finder", isOn: $session.revealAfterSave)
                 Toggle("Save next to the original without asking", isOn: $session.saveWithoutAsking)
                 Text(session.saveWithoutAsking
-                     ? "⌘S writes {name}_{w}x{h} beside the original. ⇧⌘S opens the save panel."
+                     ? "⌘S writes {name}_{w}x{h} beside the original. ⇧⌘S opens the save panel. The first save into a folder asks for permission once."
                      : "⌘S opens the save panel in the original's folder, pre-filled with {name}_{w}x{h}, so the name can be tweaked.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                if session.saveWithoutAsking {
+                    LabeledContent("Folders allowed") {
+                        HStack {
+                            Text("\(grantedFolders)")
+                            Button("Forget All") { FolderAccess.forgetAll(); grantedFolders = 0 }
+                                .disabled(grantedFolders == 0)
+                        }
+                    }
+                }
             }
         }
         .formStyle(.grouped)

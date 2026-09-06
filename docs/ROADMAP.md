@@ -70,8 +70,9 @@ Ordered so that each step leaves something usable.
    opens the save panel, pre-filled with the counter name, so the name can be
    tweaked. A preference, *Save next to the original without asking*, restores
    the silent path via a once-per-folder security-scoped bookmark.
-   *(entitlements in place and the sandboxed build verified with Open With;
-   still to do: the bookmark behind the preference, and `--save` is dev-only)*
+   *(done 2026-09-06: entitlements, sandboxed build verified with Open With,
+   `FolderAccess` bookmark behind the preference with a "Forget All" in
+   Settings. `--save` scripting stays dev-build only.)*
 4. **Presets** — JSON in Application Support, five shipped defaults, a picker.
 5. **Preferences** — default grid, ladder values, default multiple and quality,
    *Save next to the original without asking*, *Show the saved image in Finder*.
