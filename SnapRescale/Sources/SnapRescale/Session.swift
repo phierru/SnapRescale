@@ -182,6 +182,12 @@ final class Session {
                 if let v = it.next() { launchPreset = v }
             case "--settings":
                 openSettingsOnLaunch = true
+            case "--window":
+                // "1440x900": frame size in points, for App Store screenshots (2× → 2880×1800).
+                if let v = it.next() {
+                    let p = v.lowercased().split(separator: "x").compactMap { Double($0) }
+                    if p.count == 2 { launchWindowSize = CGSize(width: p[0], height: p[1]) }
+                }
             case "--about":
                 openWindowOnLaunch = "about"
             case "--help-window":
@@ -199,6 +205,7 @@ final class Session {
     var openSettingsOnLaunch = false
     /// `--about` / `--help-window`: id of a window to open once the root view appears.
     var openWindowOnLaunch: String?
+    var launchWindowSize: CGSize?
 
     // MARK: Session lifetime (PRD §8)
 

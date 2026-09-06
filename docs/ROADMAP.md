@@ -88,3 +88,9 @@ Ordered so that each step leaves something usable.
    ⌘? and the Help menu; the help text is mirrored in `docs/HELP.md`.)*
 7. **Distribution** — Developer ID build + DMG + notarisation for the GitHub
    release; App Store Connect listing, privacy "no data collected", screenshots.
+   *(prepared 2026-09-06: `Scripts/release.sh` builds a hardened, signed DMG
+   and notarises when `NOTARY_PROFILE` is set — falls back to ad-hoc without a
+   certificate; `Scripts/appstore.sh` archives, exports and validates/uploads;
+   `docs/APP-STORE.md` holds the listing copy, keywords, review notes and the
+   checklist; `docs/PRIVACY.md` is the policy. **Blocked on the paid Developer
+   Program on the personal Apple ID.**)*

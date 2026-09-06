@@ -32,6 +32,19 @@ struct ContentView: View {
         .onChange(of: session.spec) { session.scheduleEncode() }
         // Launch arguments are parsed in applicationDidFinishLaunching, which can
         // run after this view appears, so watch the flag rather than read it once.
+        .onChange(of: session.launchWindowSize, initial: true) { _, size in
+            guard let size else { return }
+            session.launchWindowSize = nil
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(400))
+                if let w = NSApp.windows.first(where: { $0.title == "SnapRescale" }) {
+                    var f = w.frame
+                    f.size = size
+                    w.setFrame(f, display: true)
+                    w.center()
+                }
+            }
+        }
         .onChange(of: session.openWindowOnLaunch, initial: true) { _, id in
             guard let id else { return }
             session.openWindowOnLaunch = nil

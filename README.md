@@ -44,6 +44,17 @@ The Xcode project is generated from `project.yml` by [xcodegen](https://github.c
 sandbox, files must arrive by Open With, drop, ⌘O or Services — a path in
 `--args` is not readable there, which is why the dev build exists.
 
+## Releasing
+
+```sh
+./Scripts/release.sh                          # hardened, signed DMG in build/release (ad-hoc without a Developer ID cert)
+NOTARY_PROFILE=snaprescale ./Scripts/release.sh   # + notarise and staple
+./Scripts/appstore.sh                         # App Store archive, export, validate (UPLOAD=1 to submit)
+```
+
+Listing copy, review notes and the submission checklist: [APP-STORE.md](docs/APP-STORE.md).
+Privacy policy: [PRIVACY.md](docs/PRIVACY.md).
+
 ## RescaleKit
 
 `RescaleKit/` is the Swift package the app, CLI and Quick Action will all drive.
