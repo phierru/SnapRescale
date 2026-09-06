@@ -120,14 +120,15 @@ struct ControlsPanel: View {
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 4) {
                 HStack {
-                    Button(session.quitsAfterSave ? "Save As & Quit…" : "Save As…") { session.saveAs() }
+                    if session.saveWithoutAsking {
+                        Button(session.quitsAfterSave ? "Save As & Quit…" : "Save As…") { session.saveAs() }
+                    }
                     Spacer()
-                    Button(session.quitsAfterSave ? "Save & Quit" : "Save") { session.save() }
+                    Button(saveTitle) { session.save() }
                         .buttonStyle(.borderedProminent)
-                        .help(session.quitsAfterSave ? "Opened from Finder: saves next to the original and quits" : "Saves next to the original")
-                }
-                if let saved = session.lastSaved {
-                    Text("Saved \(saved.lastPathComponent)").font(.caption).foregroundStyle(.secondary)
+                        .help(session.saveWithoutAsking
+                              ? "Writes next to the original without asking (Settings)"
+                              : "Opens the save panel, pre-filled with the suggested name")
                 }
             }
             .padding(12)
@@ -136,6 +137,15 @@ struct ControlsPanel: View {
     }
 
     // MARK: Pieces
+
+    private var saveTitle: String {
+        switch (session.saveWithoutAsking, session.quitsAfterSave) {
+        case (true, true): return "Save & Quit"
+        case (true, false): return "Save"
+        case (false, true): return "Save & Quit…"
+        case (false, false): return "Save…"
+        }
+    }
 
     private var unit: String {
         switch session.sizeKind {

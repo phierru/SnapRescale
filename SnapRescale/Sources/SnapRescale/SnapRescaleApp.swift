@@ -17,14 +17,45 @@ struct SnapRescaleApp: App {
                     .keyboardShortcut("o")
             }
             CommandGroup(replacing: .saveItem) {
-                Button(Session.shared.quitsAfterSave ? "Save & Quit" : "Save") { Session.shared.save() }
+                let s = Session.shared
+                Button(s.saveWithoutAsking ? (s.quitsAfterSave ? "Save & Quit" : "Save")
+                                           : (s.quitsAfterSave ? "Save & Quit…" : "Save…")) { s.save() }
                     .keyboardShortcut("s")
-                    .disabled(Session.shared.source == nil)
-                Button(Session.shared.quitsAfterSave ? "Save As & Quit…" : "Save As…") { Session.shared.saveAs() }
-                    .keyboardShortcut("s", modifiers: [.command, .shift])
-                    .disabled(Session.shared.source == nil)
+                    .disabled(s.source == nil)
+                if s.saveWithoutAsking {
+                    Button(s.quitsAfterSave ? "Save As & Quit…" : "Save As…") { s.saveAs() }
+                        .keyboardShortcut("s", modifiers: [.command, .shift])
+                        .disabled(s.source == nil)
+                }
             }
         }
+
+        Settings {
+            SettingsView().environment(Session.shared)
+        }
+    }
+}
+
+/// M5 preferences. Only the saving policy for now; grid, ladder, defaults follow.
+struct SettingsView: View {
+    @Environment(Session.self) private var session
+
+    var body: some View {
+        @Bindable var session = session
+        Form {
+            Section("Saving") {
+                Toggle("Show the saved image in Finder", isOn: $session.revealAfterSave)
+                Toggle("Save next to the original without asking", isOn: $session.saveWithoutAsking)
+                Text(session.saveWithoutAsking
+                     ? "⌘S writes {name}_{w}x{h} beside the original. ⇧⌘S opens the save panel."
+                     : "⌘S opens the save panel in the original's folder, pre-filled with {name}_{w}x{h}, so the name can be tweaked.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 460)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 

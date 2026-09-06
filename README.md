@@ -16,7 +16,9 @@ megapixels. Everything else solves itself.
 ## Docs
 
 - [PRD](docs/PRD.md) — requirements, scope, milestones
+- [Roadmap](docs/ROADMAP.md) — what is deferred, and in what order it comes back
 - [ComfyUI node review](docs/reference/comfyui-node-review.md) — source material
+- [Image metadata](docs/reference/image-metadata.md) — what the badges detect
 
 ## The app
 
@@ -68,3 +70,18 @@ aspect/size/multiple controls, real output byte count and Save. Opened from Find
 or a Dock drop) it is a one-shot tool that quits after saving; launched from
 the Applications menu it stays open. Still to do: the §10 keep/strip switches,
 WebP (M4), presets and packaging (M5). The M2 slider was dropped.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). Free on the Mac App Store, source here.
+
+## Acknowledgements
+
+The resize model — one selector for every resize intent, aspect ratio plus
+megapixels as a calculator, snapping to a multiple, and crop-or-stretch as the
+only honest answers to an aspect mismatch — is taken from the stock
+**Resize Image/Mask** and **Resolution Selector** nodes in
+[ComfyUI](https://github.com/comfyanonymous/ComfyUI), which is GPL-3.0. No
+ComfyUI code is used; SnapRescale re-implements the ideas in Swift, and the
+aspect-ratio names in the picker ("Portrait Photo", "Widescreen", …) are
+theirs. Thank you.

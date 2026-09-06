@@ -1,7 +1,13 @@
-# ComfyUI node review — source material for Rescale
+# ComfyUI node review — source material for SnapRescale
 
 Read from the local ComfyUI core install (v0.34.2) at
 `~/ComfyUI-Installs/ComfyUI/ComfyUI/`. Both are stock core nodes, not custom packs.
+
+> **Licensing.** ComfyUI is GPL-3.0. This document describes its *behaviour*
+> and *design* so SnapRescale can re-implement the ideas; it quotes no code.
+> SnapRescale is MIT-licensed and contains no ComfyUI source. The ideas and
+> formulas are not subject to copyright; the credit in the README is owed
+> regardless.
 
 | Node | Display name | Source |
 |---|---|---|
@@ -77,12 +83,10 @@ a *calculator* that turns an intent into a pixel pair.
 
 ### The maths
 
-```python
-total  = megapixels * 1024 * 1024
-scale  = sqrt(total / (w_ratio * h_ratio))
-width  = round(w_ratio * scale / multiple) * multiple
-height = round(h_ratio * scale / multiple) * multiple
-```
+In words: the target pixel count is megapixels × 1024². Divide it by the
+product of the two ratio terms and take the square root; that is the scale
+factor. Width is the first ratio term times the scale, height the second, and
+each is then rounded to the nearest multiple.
 
 Note `1 MP` here means 1024² = 1,048,576 px, not 1,000,000. Worth being explicit
 about in our UI, because photographers read "12 MP" as the decimal kind.

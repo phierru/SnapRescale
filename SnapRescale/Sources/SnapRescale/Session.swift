@@ -33,6 +33,18 @@ final class Session {
         didSet { grid.savePreference() }
     }
 
+    // Preferences (PRD §8, §11). Off: ⌘S opens the save panel pre-filled with
+    // the counter name. On: ⌘S writes next to the original without asking.
+    static let revealAfterSaveKey = "revealSavedImageInFinder"
+    var revealAfterSave: Bool = UserDefaults.standard.object(forKey: Session.revealAfterSaveKey) as? Bool ?? true {
+        didSet { UserDefaults.standard.set(revealAfterSave, forKey: Session.revealAfterSaveKey) }
+    }
+
+    static let saveWithoutAskingKey = "saveNextToOriginalWithoutAsking"
+    var saveWithoutAsking: Bool = UserDefaults.standard.bool(forKey: Session.saveWithoutAskingKey) {
+        didSet { UserDefaults.standard.set(saveWithoutAsking, forKey: Session.saveWithoutAskingKey) }
+    }
+
     // Output
     private(set) var outputBytes: Int?
     private(set) var isEncoding = false
@@ -204,7 +216,7 @@ final class Session {
                     formatNote = nil
                 }
                 scheduleEncode()
-                if saveOnLoad { saveOnLoad = false; save() }
+                if saveOnLoad { saveOnLoad = false; saveNextToOriginal() }
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -303,7 +315,13 @@ final class Session {
         }
     }
 
+    /// ⌘S. The panel is the default (sandbox-honest, and the name can be tweaked);
+    /// the silent path is a preference, and what `--save` uses for scripting.
     func save() {
+        if saveWithoutAsking { saveNextToOriginal() } else { saveAs() }
+    }
+
+    func saveNextToOriginal() {
         guard let source, let spec else { return }
         write(to: OutputNaming.url(for: source, spec: spec), source: source, spec: spec)
     }
@@ -325,7 +343,7 @@ final class Session {
             let data = try Renderer.produce(source, spec: spec)
             try data.write(to: url)
             lastSaved = url
-            NSWorkspace.shared.activateFileViewerSelecting([url])
+            if revealAfterSave { NSWorkspace.shared.activateFileViewerSelecting([url]) }
             if quitsAfterSave {
                 // Let the Finder reveal go out first, then finish the one-shot session.
                 Task { @MainActor in

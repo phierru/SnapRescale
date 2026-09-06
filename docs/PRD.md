@@ -1,6 +1,6 @@
 # SnapRescale — Product Requirements Document
 
-**Status:** Draft v0.12 · 2026-09-06 · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
+**Status:** Draft v0.13 · 2026-09-06 · current milestone **M5** · deferred work in [`ROADMAP.md`](ROADMAP.md) · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
 **Name:** SnapRescale — *Resize to any ratio, snapped to multiples of 8 and 16* · bundle ID `com.phierru.SnapRescale`
 **Platform:** macOS 26+ (Apple Silicon), Swift 6 / SwiftUI
 
@@ -334,7 +334,10 @@ empty window that is a **drop target**: drag one image onto it (or onto the Dock
 icon) and it becomes the session. The same window offers ⌘O and a *Choose
 Image…* button for people who do not drag. Dropping a second image while one is
 open **replaces it immediately** — this is a disposable one-shot session, not a
-document, so there is no dirty check (decided 2026-09-05). v1 never holds two.
+document, so there is no dirty check (decided 2026-09-05). v1 never holds two
+in one window; **multiple windows**, one image each, are planned for v1.1 (see
+[`ROADMAP.md`](ROADMAP.md)), and a drop on a window that already has an image
+will still replace it rather than open another.
 
 Drop accepts the image UTIs in §9. A folder, a multi-selection or a non-image
 is refused with a plain message rather than taking the first file silently.
@@ -363,10 +366,16 @@ cannot offer:
 
 ### Saving
 
-Default `⌘S`: write next to the original as `{name}_{w}x{h}.{ext}`, and reveal it
-in Finder. `⇧⌘S` opens a standard save panel, pre-filled with the next free
-counter name; choosing an existing name — the original included — goes through
-the system's own replace confirmation. `⌘S` never overwrites anything.
+`⌘S` opens the standard save panel, pointed at the original's folder and
+pre-filled with `{name}_{w}x{h}.{ext}` (next free counter), so the name can be
+tweaked before it is written; the file is then revealed in Finder (preference
+**Show the saved image in Finder**, on by default; there is no in-window
+"Saved…" confirmation, the reveal is the confirmation). Choosing an
+existing name — the original included — goes through the system's own replace
+confirmation. This is the sandbox-honest default (decided 2026-09-06): the App
+Store build may only write where the user has pointed. A preferences setting,
+**Save next to the original without asking**, restores the silent path; it asks
+for the folder once and keeps a security-scoped bookmark.
 
 ### What batch mode changes later
 
@@ -430,10 +439,11 @@ most common defect in tools of this class.
 
 ## 11. Output
 
-**v1** writes one file, next to the original, named `{name}_{w}x{h}.{ext}`.
-`⇧⌘S` opens a save panel for anywhere else. Collisions append a counter; nothing
-is ever silently overwritten. Replacing a file, the original included, happens
-only through the save panel's explicit confirmation.
+**v1** writes one file, by default through the save panel pre-filled with
+`{name}_{w}x{h}.{ext}` in the original's folder (§8). Collisions append a
+counter; nothing is ever silently overwritten. Replacing a file, the original
+included, happens only through the save panel's explicit confirmation. The
+silent next-to-the-original path is a preference, off by default.
 
 **Target file size** *(M4)*: an optional byte ceiling per output — "≤ 1 MB" —
 met by searching the encoder quality downward, at fixed geometry, using the
@@ -498,6 +508,10 @@ requires revisiting the model.
 tool for the single-image case. M0 is worth doing first and alone: the solver is
 the product, and it is testable without a single pixel being decoded.
 
+**On 2026-09-06 the still-open parts of v1 (§10 switches, workflow carry-over,
+resampling choice) were deferred to v1.1 in [`ROADMAP.md`](ROADMAP.md) so M5
+could start.**
+
 **v2**, once v1 has been lived with: batch, the headless preset Quick Action, a
 shipped CLI, and the Shortcuts action (§13).
 
@@ -512,8 +526,10 @@ shipped CLI, and the Shortcuts action (§13).
    tagline "Resize to any ratio, snapped to multiples of 8 and 16". Engine stays `RescaleKit`, CLI stays `rescale`
    (short in pipelines). No exact-match collisions found; nearest neighbours are
    SnapResizer (web/iPad) and Snap Converter (Mac App Store).
-3. **Distribution.** Personal tool, or signed and shipped? Determines whether the
-   libwebp dependency and App Sandbox constraints matter.
+3. **Distribution.** **Decided 2026-09-06: free on the Mac App Store, source
+   public under MIT.** So App Sandbox is mandatory, the libwebp dependency (M4)
+   must be sandbox- and notarisation-clean, and ComfyUI (GPL-3.0) is credited
+   but none of its code is used.
 4. **Animated GIF / HEICS.** **Decided 2026-09-05: first frame, for now.** The
    loader takes frame 0; frame selection (and video frames) is future work.
    Since GIF cannot be written, the format switches to PNG/JPEG with a note.
