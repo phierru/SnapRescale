@@ -26,10 +26,17 @@ megapixels. Everything else solves itself.
 runnable bundle (ad-hoc signed, no Xcode project needed) and open an image:
 
 ```sh
-./Scripts/build-app.sh                       # → build/SnapRescale.app
+./Scripts/build-app.sh                       # fast dev build, unsandboxed → build/SnapRescale.app
 open build/SnapRescale.app photo.heic        # or launch it and drop an image on the window
 open build/SnapRescale.app --args --aspect 16:9 --width 1920 --multiple 16 photo.heic
+
+./Scripts/build-xcode.sh Release             # store-style build: sandboxed, hardened → build/xcode/SnapRescale.app
 ```
+
+The Xcode project is generated from `project.yml` by [xcodegen](https://github.com/yonaskolb/XcodeGen)
+(`brew install xcodegen`); the `.xcodeproj` itself is not committed. Under the
+sandbox, files must arrive by Open With, drop, ⌘O or Services — a path in
+`--args` is not readable there, which is why the dev build exists.
 
 ## RescaleKit
 

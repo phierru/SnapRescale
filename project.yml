@@ -1,0 +1,59 @@
+# xcodegen spec — `xcodegen generate` produces SnapRescale.xcodeproj (gitignored).
+# The App Store needs an archive of an app target with entitlements; SwiftPM alone
+# cannot make one. Sources and packages are the same ones `swift build` uses.
+name: SnapRescale
+options:
+  bundleIdPrefix: com.phierru
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+
+packages:
+  RescaleKit:
+    path: RescaleKit
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_HARDENED_RUNTIME: YES
+    # Personal project: Francesco's own team, never the Honegger one. The free
+    # personal team can sign for local runs; App Store / Developer ID needs the
+    # paid programme on the same Apple ID. Until then "-" signs to run locally,
+    # sandbox included — drop that line to let Xcode sign with the team.
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: 7XVA74UJHL
+
+targets:
+  SnapRescale:
+    type: application
+    platform: macOS
+    sources:
+      - path: SnapRescale/Sources/SnapRescale
+      - path: SnapRescale/Assets.xcassets
+    dependencies:
+      - package: RescaleKit
+        product: RescaleKit
+    # No `info:` block on purpose — xcodegen would regenerate the plist and drop
+    # the Services entry, document types and category. INFOPLIST_FILE points at
+    # the hand-written file instead.
+    entitlements:
+      path: SnapRescale/SnapRescale.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-write: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.phierru.SnapRescale
+        PRODUCT_NAME: SnapRescale
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: SnapRescale/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        COMBINE_HIDPI_IMAGES: YES
+    scheme:
+      testTargets: []

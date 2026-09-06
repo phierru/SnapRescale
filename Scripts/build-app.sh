@@ -9,7 +9,7 @@ APP="$ROOT/build/SnapRescale.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp ".build/$CONFIG/SnapRescale" "$APP/Contents/MacOS/"
-cp Info.plist "$APP/Contents/"
+sed -e 's/\$(MARKETING_VERSION)/0.1/' -e 's/\$(CURRENT_PROJECT_VERSION)/1/' Info.plist > "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 codesign --force --sign - "$APP" 2>/dev/null
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP"

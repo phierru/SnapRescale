@@ -7,11 +7,14 @@
     <key>CFBundleIdentifier</key>      <string>com.phierru.SnapRescale</string>
     <key>CFBundleExecutable</key>      <string>SnapRescale</string>
     <key>CFBundlePackageType</key>     <string>APPL</string>
-    <key>CFBundleVersion</key>         <string>1</string>
-    <key>CFBundleShortVersionString</key> <string>0.1</string>
+    <key>CFBundleVersion</key>         <string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>CFBundleShortVersionString</key> <string>$(MARKETING_VERSION)</string>
     <key>LSMinimumSystemVersion</key>  <string>26.0</string>
     <key>NSHighResolutionCapable</key> <true/>
-    <key>NSHumanReadableCopyright</key><string>Resize to any ratio, snapped to multiples of 8 and 16.</string>
+    <key>NSHumanReadableCopyright</key><string>© 2026 Francesco Lardieri. MIT licence.</string>
+    <key>LSApplicationCategoryType</key><string>public.app-category.photography</string>
+    <key>ITSAppUsesNonExemptEncryption</key><false/>
+    <key>CFBundleIconName</key><string>AppIcon</string>
     <key>NSServices</key>
     <array>
         <dict>
