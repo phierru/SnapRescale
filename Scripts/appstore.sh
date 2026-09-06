@@ -13,24 +13,22 @@ OUT="$ROOT/build/appstore"; rm -rf "$OUT"; mkdir -p "$OUT"
 xcodegen generate --quiet
 xcodebuild -project SnapRescale.xcodeproj -scheme SnapRescale -configuration Release \
   -archivePath "$OUT/SnapRescale.xcarchive" -quiet \
-  CODE_SIGN_IDENTITY="Apple Distribution" CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=7XVA74UJHL \
+  CODE_SIGN_IDENTITY="Apple Development" CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=7XVA74UJHL \
   -allowProvisioningUpdates archive
-cat > "$OUT/ExportOptions.plist" <<'PLIST'
+# destination "upload" validates and uploads through the Apple ID Xcode is
+# signed in with — no API key needed. Without UPLOAD it only exports the .pkg.
+DEST=$([ -n "${UPLOAD:-}" ] && echo upload || echo export)
+cat > "$OUT/ExportOptions.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>method</key><string>app-store-connect</string>
   <key>teamID</key><string>7XVA74UJHL</string>
-  <key>destination</key><string>export</string>
+  <key>destination</key><string>$DEST</string>
   <key>uploadSymbols</key><true/>
+  <key>signingStyle</key><string>automatic</string>
 </dict></plist>
 PLIST
 xcodebuild -exportArchive -archivePath "$OUT/SnapRescale.xcarchive" -exportPath "$OUT/export" \
-  -exportOptionsPlist "$OUT/ExportOptions.plist" -allowProvisioningUpdates -quiet
-PKG=$(ls "$OUT"/export/*.pkg | head -1)
-if [ -n "${UPLOAD:-}" ]; then
-  xcrun altool --upload-app -f "$PKG" -t macos --apiKey "${ASC_KEY_ID:?set ASC_KEY_ID}" --apiIssuer "${ASC_ISSUER_ID:?set ASC_ISSUER_ID}"
-else
-  xcrun altool --validate-app -f "$PKG" -t macos --apiKey "${ASC_KEY_ID:?set ASC_KEY_ID}" --apiIssuer "${ASC_ISSUER_ID:?set ASC_ISSUER_ID}"
-fi
-echo "package: $PKG"
+  -exportOptionsPlist "$OUT/ExportOptions.plist" -allowProvisioningUpdates 2>&1 | grep -v -E "^\s*$" | tail -15
+[ "$DEST" = upload ] && echo "uploaded to App Store Connect — it appears under the app's Builds after processing (a few minutes)" || echo "package exported to $OUT/export"

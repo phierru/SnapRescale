@@ -9,7 +9,7 @@ APP="$ROOT/build/SnapRescale.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp ".build/$CONFIG/SnapRescale" "$APP/Contents/MacOS/"
-sed -e 's/\$(MARKETING_VERSION)/0.1/' -e 's/\$(CURRENT_PROJECT_VERSION)/1/' Info.plist > "$APP/Contents/Info.plist"
+sed -e 's/\$(MARKETING_VERSION)/1.0/' -e 's/\$(CURRENT_PROJECT_VERSION)/1/' Info.plist > "$APP/Contents/Info.plist"
 [ -f AppIcon.icns ] || "$ROOT/Scripts/make-icns.sh" >/dev/null
 cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 plutil -replace CFBundleIconFile -string AppIcon "$APP/Contents/Info.plist"
