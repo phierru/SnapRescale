@@ -137,20 +137,38 @@ final class Session {
                 if let v = it.next(), let n = Int(v), let m = Multiple(rawValue: n) { multiple = m }
             case "--fit":
                 if let v = it.next(), let f = FitPolicy(rawValue: v) { fit = f }
+            case "--save":
+                saveOnLoad = true
             default:
-                if !a.hasPrefix("-"), FileManager.default.fileExists(atPath: a) { load(URL(fileURLWithPath: a)) }
+                if !a.hasPrefix("-"), FileManager.default.fileExists(atPath: a) {
+                    accept([URL(fileURLWithPath: a)], origin: .external)
+                }
             }
         }
     }
     private var launchSizeValue: Double?
 
-    // MARK: Loading
+    // MARK: Session lifetime (PRD §8)
 
-    func accept(_ urls: [URL]) {
+    /// Where an image came from. Decides whether this is a one-shot session.
+    enum Origin { case external, user }
+
+    private let launchDate = Date()
+    /// True when the app was *launched for* an image (Open With, Services,
+    /// Dock drop): it quits after a successful save. False when it was opened
+    /// from the Applications menu and the image arrived by drop or ⌘O.
+    private(set) var quitsAfterSave = false
+    /// `--save` launch argument: save immediately after loading (scripting).
+    private var saveOnLoad = false
+
+    func accept(_ urls: [URL], origin: Origin = .user) {
         guard let url = urls.first else { return }
         if urls.count > 1 {
             errorMessage = "SnapRescale takes one image at a time. Drop a single file."
             return
+        }
+        if origin == .external, source == nil, Date().timeIntervalSince(launchDate) < 3 {
+            quitsAfterSave = true
         }
         load(url)
     }
@@ -186,6 +204,7 @@ final class Session {
                     formatNote = nil
                 }
                 scheduleEncode()
+                if saveOnLoad { saveOnLoad = false; save() }
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -307,6 +326,13 @@ final class Session {
             try data.write(to: url)
             lastSaved = url
             NSWorkspace.shared.activateFileViewerSelecting([url])
+            if quitsAfterSave {
+                // Let the Finder reveal go out first, then finish the one-shot session.
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(300))
+                    NSApp.terminate(nil)
+                }
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

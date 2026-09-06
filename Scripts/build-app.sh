@@ -13,4 +13,5 @@ cp Info.plist "$APP/Contents/"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 codesign --force --sign - "$APP" 2>/dev/null
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP"
+/System/Library/CoreServices/pbs -update 2>/dev/null || true   # refresh the Services menu
 echo "built $APP"

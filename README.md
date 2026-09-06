@@ -60,10 +60,11 @@ print the behaviour tables reproduced in §5 and §6 of the PRD.
 
 ## Status
 
-Draft PRD v0.10 (v1 = single image). **M0 done**: solver ported to Swift with
+Draft PRD v0.12 (v1 = single image). **M0 done**: solver ported to Swift with
 property tests and prototype parity. **First vertical slice of M1 + M3
 running**: decode → resize → crop/pad → encode via ImageIO, a `rescale` CLI
 that writes files, and a SwiftUI window with drop target, live crop preview,
-aspect/size/multiple controls, real output byte count and Save. Still to do:
-the log-detented size slider (M2), metadata and colour rules (§10), WebP (M4),
-presets and packaging (M5).
+aspect/size/multiple controls, real output byte count and Save. Opened from Finder (Open With, the *Resize with SnapRescale* Services entry,
+or a Dock drop) it is a one-shot tool that quits after saving; launched from
+the Applications menu it stays open. Still to do: the §10 keep/strip switches,
+WebP (M4), presets and packaging (M5). The M2 slider was dropped.

@@ -120,10 +120,11 @@ struct ControlsPanel: View {
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 4) {
                 HStack {
-                    Button("Save As…") { session.saveAs() }
+                    Button(session.quitsAfterSave ? "Save As & Quit…" : "Save As…") { session.saveAs() }
                     Spacer()
-                    Button("Save") { session.save() }
+                    Button(session.quitsAfterSave ? "Save & Quit" : "Save") { session.save() }
                         .buttonStyle(.borderedProminent)
+                        .help(session.quitsAfterSave ? "Opened from Finder: saves next to the original and quits" : "Saves next to the original")
                 }
                 if let saved = session.lastSaved {
                     Text("Saved \(saved.lastPathComponent)").font(.caption).foregroundStyle(.secondary)

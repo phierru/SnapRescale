@@ -12,6 +12,19 @@
     <key>LSMinimumSystemVersion</key>  <string>26.0</string>
     <key>NSHighResolutionCapable</key> <true/>
     <key>NSHumanReadableCopyright</key><string>Resize to any ratio, snapped to multiples of 8 and 16.</string>
+    <key>NSServices</key>
+    <array>
+        <dict>
+            <key>NSMenuItem</key>
+            <dict><key>default</key> <string>Resize with SnapRescale</string></dict>
+            <key>NSMessage</key>       <string>resizeImage</string>
+            <key>NSPortName</key>      <string>SnapRescale</string>
+            <key>NSSendFileTypes</key>
+            <array><string>public.image</string></array>
+            <key>NSSendTypes</key>
+            <array><string>public.file-url</string></array>
+        </dict>
+    </array>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>

@@ -1,6 +1,6 @@
 # SnapRescale — Product Requirements Document
 
-**Status:** Draft v0.11 · 2026-09-05 · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
+**Status:** Draft v0.12 · 2026-09-06 · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
 **Name:** SnapRescale — *Resize to any ratio, snapped to multiples of 8 and 16* · bundle ID `com.phierru.SnapRescale`
 **Platform:** macOS 26+ (Apple Silicon), Swift 6 / SwiftUI
 
@@ -131,14 +131,19 @@ mode should default to. Both are v2 concerns (§8).
 
 ### The size control
 
-One custom control, reused for Width, Height and Megapixels. Three affordances
+One control, reused for Width, Height, Megapixels and Scale. Three affordances
 over the same value, each for a different intent:
 
 | Affordance | For |
 |---|---|
 | **Numeric field** | You know the number. Type it. |
 | **− / + steppers** | You are one notch off and want to nudge. |
-| **Detented slider** | You do not know the number and want to feel the range. |
+| **Ladder row** | You want one of the usual sizes. One click. |
+
+> **The detented slider was dropped 2026-09-06** after living with the app:
+> the ladder row covers the "I don't know the number" case well enough, and
+> a slider would have cost a day and a row of panel height. The log-scale and
+> detent notes below are kept for the record; M2 is struck from §14.
 
 **The steppers must step by the `multiple`, not by 1.** Prototyped, and this is
 not a preference: at multiple 16, +1 from 1024 gives 1025, which snaps straight
@@ -176,9 +181,9 @@ Details:
 - **⌘1–⌘5** jump to the five detents; ← / → step; ⇧← / ⇧→ step by ten.
 - **The ladder is editable** in preferences. The default is the ML/diffusion
   ladder; web work wants something nearer 640 · 1280 · 1920 · 2560.
-- **Detents past the source size dim** when *Never upscale* is on, so clicking
-  2048 on a 1200 px source visibly does nothing rather than invisibly doing
-  nothing. With one known image (§8) this is exact.
+- **Upscaling is a warning, not a lock** (decided 2026-09-06): a target larger
+  than the source is allowed and flagged under Output with the factor. No
+  *Never upscale* setting.
 - The **megapixel** instance uses its own ladder: 0.25 · 0.5 · 1 · 2 · 4 MP.
 - Dragging re-solves continuously. Numbers update at full rate; the crop preview
   (§7) throttles to keep the drag smooth.
@@ -309,8 +314,19 @@ to get, and there is no such thing as a representative thumbnail for a folder.
 
 Right-click an image in Finder → **Open With → SnapRescale**, the same route the
 Parallels tool takes. The app registers as a viewer for the image UTIs in §9, and
-also ships a Services/Quick Action entry pointing at the same handler, so it
-appears in the Quick Actions submenu for people who look there first.
+also ships a **Services** entry, *Resize with SnapRescale*, so it appears in the
+context menu's Services submenu. (A true *Quick Actions* entry needs an Action
+Extension or a Shortcut; deferred with the rest of §13.)
+
+**Session lifetime follows the entry route** (decided 2026-09-06):
+
+- Launched *for* an image — Open With, Services, a drop on the Dock icon — the
+  app is a one-shot tool: the buttons read **Save & Quit** and **Save As &
+  Quit…**, and a successful save reveals the file in Finder and quits.
+- Launched from the Applications menu and given an image by drop or ⌘O, it is
+  a window: it stays open until closed, and Save is just Save.
+- An image handed to an *already open* window by Open With or Services keeps
+  the window's mode.
 
 **Second route: launch the app itself.** SnapRescale is also an ordinary app in
 Applications, Launchpad and the Dock. Launched with no document, it opens an
@@ -473,12 +489,12 @@ requires revisiting the model.
 |---|---|---|
 | **M0** ✅ | **The solver**, ported from `prototype/solver.py`: aspect + one size parameter, source inheritance, pin-respecting snapping. Pure value code, no image I/O. Property tests: the solved size always honours the axis the user set, and re-solving is idempotent. *Done 2026-09-05: `RescaleKit/`, 20 tests incl. 5,940-case parity fixture.* | 1 day |
 | **M1** | `RescaleKit`: decode → resize → crop/pad → encode, for one image. Fit policies, resampling, metadata and orientation rules. Fixture corpus (portrait, landscape, square, alpha, CMYK, EXIF-rotated, RAW). A throwaway CLI here is the cheapest way to test it. | 2 days |
-| **M2** | **The size control** (§5): field + steppers + logarithmic detented slider. Custom SwiftUI, built and unit-tested standalone before it has an app to live in. | 1 day |
+| ~~**M2**~~ | ~~The size control: field + steppers + logarithmic detented slider.~~ **Dropped 2026-09-06**; the ladder row in M3 covers it. | — |
 | **M3** | **The app**: Open With registration, empty-window drop target + ⌘O, single-image window, large crop preview with draggable rectangle, aspect picker, real output byte count, Save. | 2–3 days |
 | **M4** | Formats: WebP via libwebp, per-format encoder options, target-file-size search. | 1–2 days |
 | **M5** | Presets, icon, help, preferences, DMG, notarisation. | 1–2 days |
 
-**M0–M3 is v1** — roughly a week and a half, and it fully replaces the Parallels
+**M0, M1 and M3 are v1** — roughly a week and a half, and it fully replaces the Parallels
 tool for the single-image case. M0 is worth doing first and alone: the solver is
 the product, and it is testable without a single pixel being decoded.
 
