@@ -28,6 +28,41 @@ final class Session {
     var format: OutputFormat = .keepOriginal
     var quality: Double = 0.95
 
+    // Presets (PRD §12)
+    let presets = PresetStore()
+    /// Name of the preset the current settings came from; nil once anything changed.
+    private(set) var activePreset: String?
+
+    func apply(_ preset: Preset) {
+        aspect = preset.aspect
+        multiple = preset.multiple
+        fit = preset.fit
+        padColor = preset.padColor
+        format = preset.format
+        quality = preset.quality
+        switch preset.size {
+        case .width(let w): sizeKind = .width; sizeValue = Double(w)
+        case .height(let h): sizeKind = .height; sizeValue = Double(h)
+        case .megapixels(let mp): sizeKind = .megapixels; sizeValue = mp
+        case .scale(let k): sizeKind = .scale; sizeValue = k * 100
+        }
+        activePreset = preset.name
+    }
+
+    /// The current settings as a preset.
+    func currentPreset(named name: String) -> Preset {
+        Preset(name: name, aspect: aspect, size: sizeParameter, multiple: multiple, fit: fit,
+               padColor: padColor, format: format, quality: quality)
+    }
+
+    /// Called from the view when any setting changes: the settings no longer match a preset by name.
+    func noteSettingsChanged() {
+        guard let name = activePreset, let p = presets.presets.first(where: { $0.name == name }) else {
+            activePreset = nil; return
+        }
+        if currentPreset(named: name) != p { activePreset = nil }
+    }
+
     // Display only
     var grid: CompositionGrid = CompositionGrid.loadPreference() {
         didSet { grid.savePreference() }
@@ -151,6 +186,8 @@ final class Session {
                 if let v = it.next(), let f = FitPolicy(rawValue: v) { fit = f }
             case "--save":
                 saveOnLoad = true
+            case "--preset":
+                if let v = it.next() { launchPreset = v }
             default:
                 if !a.hasPrefix("-"), FileManager.default.fileExists(atPath: a) {
                     accept([URL(fileURLWithPath: a)], origin: .external)
@@ -159,6 +196,7 @@ final class Session {
         }
     }
     private var launchSizeValue: Double?
+    private var launchPreset: String?
 
     // MARK: Session lifetime (PRD §8)
 
@@ -205,6 +243,10 @@ final class Session {
                 } else {
                     sizeKind = .width
                     sizeValue = Double(min(loaded.size.width, 2048))
+                }
+                if let name = launchPreset, let p = presets.presets.first(where: { $0.name == name }) {
+                    apply(p)
+                    launchPreset = nil
                 }
                 lastSaved = nil
                 // "Keep original" cannot keep GIF, WebP, RAW…: switch to an honest

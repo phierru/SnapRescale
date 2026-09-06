@@ -8,6 +8,10 @@ struct ControlsPanel: View {
     var body: some View {
         @Bindable var session = session
         Form {
+            Section {
+                PresetRow()
+            }
+
             Section("Aspect ratio") {
                 Picker("Aspect", selection: $session.aspect) {
                     ForEach(AspectRatio.all, id: \.self) { Text($0.displayName).tag($0) }
@@ -117,6 +121,7 @@ struct ControlsPanel: View {
             }
         }
         .formStyle(.grouped)
+        .onChange(of: session.spec) { session.noteSettingsChanged() }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 4) {
                 HStack {
@@ -284,5 +289,82 @@ struct PaddingWell: View {
     var body: some View {
         ColorPicker("", selection: color, supportsOpacity: true)
             .labelsHidden()
+    }
+}
+
+/// Preset menu at the top of the panel: pick one, save the current settings as
+/// one, or delete the active one. Any edit afterwards shows "Custom".
+struct PresetRow: View {
+    @Environment(Session.self) private var session
+    @State private var namingSheet = false
+    @State private var newName = ""
+
+    var body: some View {
+        LabeledContent("Preset") {
+            menu
+        }
+        .sheet(isPresented: $namingSheet) { namingView }
+    }
+
+    private var menu: some View {
+        Menu {
+            ForEach(session.presets.presets) { p in
+                Button {
+                    session.apply(p)
+                } label: {
+                    if session.activePreset == p.name {
+                        Label(p.name, systemImage: "checkmark")
+                    } else {
+                        Text(p.name)
+                    }
+                }
+                .help(p.summary)
+            }
+            Divider()
+            Button("Save Current as Preset…") { newName = session.activePreset ?? ""; namingSheet = true }
+                .disabled(session.source == nil)
+            if let name = session.activePreset {
+                Button("Delete “\(name)”") { session.presets.delete(named: name); session.noteSettingsChanged() }
+            }
+            Button("Show Presets Folder in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([session.presets.directory])
+            }
+        } label: {
+            Text(session.activePreset ?? "Custom")
+                .foregroundStyle(session.activePreset == nil ? .secondary : .primary)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
+
+    private var namingView: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Save Preset").font(.headline)
+                TextField("Name", text: $newName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 260)
+                    .onSubmit(saveNamed)
+                Text(session.currentPreset(named: newName.isEmpty ? "Preset" : newName).summary)
+                    .font(.callout).foregroundStyle(.secondary)
+                HStack {
+                    Spacer()
+                    Button("Cancel") { namingSheet = false }.keyboardShortcut(.cancelAction)
+                    Button("Save", action: saveNamed).keyboardShortcut(.defaultAction)
+                        .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            .padding(20)
+    }
+
+    private func saveNamed() {
+        let name = newName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        do {
+            try session.presets.save(session.currentPreset(named: name))
+            session.apply(session.presets.presets.first { $0.name == name }!)
+            namingSheet = false
+        } catch {
+            session.errorMessage = error.localizedDescription
+        }
     }
 }

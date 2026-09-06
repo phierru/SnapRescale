@@ -1,6 +1,6 @@
 # SnapRescale — Product Requirements Document
 
-**Status:** Draft v0.13 · 2026-09-06 · current milestone **M5** · deferred work in [`ROADMAP.md`](ROADMAP.md) · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
+**Status:** Draft v0.14 · 2026-09-06 · current milestone **M5** · deferred work in [`ROADMAP.md`](ROADMAP.md) · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
 **Name:** SnapRescale — *Resize to any ratio, snapped to multiples of 8 and 16* · bundle ID `com.phierru.SnapRescale`
 **Platform:** macOS 26+ (Apple Silicon), Swift 6 / SwiftUI
 
@@ -287,7 +287,7 @@ exact rather than indicative, which is most of the argument for starting there.
   2026-09-05 — dragging covers it.*
 - **Composition grid** inside the frame, display only, disabled in pad mode,
   remembered across launches (the default grid becomes a setting in the M5
-  preferences window): **Frame only · Centre lines · Rule of thirds** *(default)* **·
+  Settings window): **Frame only · Centre lines · Rule of thirds** *(default)* **·
   Golden ratio · Rule of fifths**, picked from an icon button group under the
   image pane, not in the control panel. Reviewed and left out for now, in case
   they are wanted later: diagonals (45° from each corner), golden triangles (one
@@ -461,16 +461,35 @@ A named bundle of *every* setting above — mode, parameters, fit, resampling,
 format, quality, metadata, destination, template. Presets are the point: they
 turn a twelve-control dialog into a one-click action.
 
-Shipped defaults: **Web (Original ratio, 1.5 MP, JPEG q80, sRGB, strip GPS)** ·
-**Email (Original, ≤ 1 MB)** · **Thumbnail (1:1, 320 px, crop)** ·
-**Social 16:9 (1920 px, crop)** · **Discord/Slack (≤ 8 MB)**.
+Shipped defaults: **Web (Original ratio, 1.5 MP, JPEG q80)** · **Thumbnail
+(1:1, 320 px, crop)** · **Social 16:9 (1920 px, ×8, crop)** · **SDXL 1024 (1:1,
+1024 px, ×16, PNG)**. **Email (≤ 1 MB)** and **Discord/Slack (≤ 8 MB)** follow
+with the target-file-size search (roadmap v1.2); "strip GPS" joins Web with the
+§10 switches (v1.1).
+
+The picker sits at the top of the panel: choose one, *Save Current as
+Preset…*, delete the active one, or reveal the folder. Any edit after applying
+a preset shows **Custom**. A preset is also a launch argument, `--preset "Social
+16:9"`, for scripts and for the v2 headless Quick Action.
 
 A preset stores the aspect ratio and the one size parameter, so it replays
 exactly. Presets whose aspect is a preset rather than Original will crop, and the
 preset editor says which.
 
-Stored as JSON in `~/Library/Application Support/SnapRescale/presets/`, so they are
-editable, diffable, and shareable.
+Stored as JSON in `~/Library/Application Support/SnapRescale/presets/` (inside
+the container when sandboxed), one file per preset, written on first run so the
+shipped ones are editable like any other. The shape is meant to be typed by
+hand:
+
+```json
+{ "name": "Social 16:9", "aspect": "16:9", "size": { "width": 1920 },
+  "multiple": 8, "fit": "crop", "padColor": "#ffffff",
+  "format": "keep", "quality": 0.95 }
+```
+
+`aspect` is `"original"` or `"W:H"`; `size` has exactly one of `width`,
+`height`, `megapixels`, `scale`; `format` is `keep`, `jpeg`, `png`, `heic` or
+`tiff`; `padColor` is `#rrggbb` or `#rrggbbaa`.
 
 ## 13. Surfaces
 

@@ -73,8 +73,10 @@ Ordered so that each step leaves something usable.
    *(done 2026-09-06: entitlements, sandboxed build verified with Open With,
    `FolderAccess` bookmark behind the preference with a "Forget All" in
    Settings. `--save` scripting stays dev-build only.)*
-4. **Presets** — JSON in Application Support, five shipped defaults, a picker.
-5. **Preferences** — default grid, ladder values, default multiple and quality,
+4. **Presets** — JSON in Application Support, shipped defaults, a picker.
+   *(done 2026-09-06: Web, Thumbnail, Social 16:9, SDXL 1024; hand-editable
+   JSON; `--preset` launch argument. Email and Discord/Slack wait for v1.2.)*
+5. **Settings** (⌘,) — default grid, ladder values, default multiple and quality,
    *Save next to the original without asking*, *Show the saved image in Finder*.
 6. **Icon, About box with credits, help page.**
 7. **Distribution** — Developer ID build + DMG + notarisation for the GitHub
