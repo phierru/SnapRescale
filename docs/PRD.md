@@ -179,8 +179,9 @@ Details:
 
 - **Range** 128–8192 by default, extending upward if a source image exceeds it.
 - **⌘1–⌘5** jump to the five detents; ← / → step; ⇧← / ⇧→ step by ten.
-- **The ladder is editable** in preferences. The default is the ML/diffusion
-  ladder; web work wants something nearer 640 · 1280 · 1920 · 2560.
+- **The ladder is editable** in Settings (2–6 values; entries not divisible by
+  16 are flagged there because snapping can move them). The default is the
+  ML/diffusion ladder; web work wants something nearer 640 · 1280 · 1920 · 2560.
 - **Upscaling is a warning, not a lock** (decided 2026-09-06): a target larger
   than the source is allowed and flagged under Output with the factor. No
   *Never upscale* setting.

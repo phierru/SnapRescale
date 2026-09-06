@@ -9,3 +9,5 @@ xcuserdata/
 build/
 .vscode/
 *.xcodeproj/
+SnapRescale/AppIcon.icns
+SnapRescale/Assets.xcassets/AppIcon.appiconset/*.png

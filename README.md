@@ -16,6 +16,7 @@ megapixels. Everything else solves itself.
 ## Docs
 
 - [PRD](docs/PRD.md) — requirements, scope, milestones
+- [Help](docs/HELP.md) — the brief in-app help, as a page
 - [Roadmap](docs/ROADMAP.md) — what is deferred, and in what order it comes back
 - [ComfyUI node review](docs/reference/comfyui-node-review.md) — source material
 - [Image metadata](docs/reference/image-metadata.md) — what the badges detect
@@ -32,6 +33,11 @@ open build/SnapRescale.app --args --aspect 16:9 --width 1920 --multiple 16 photo
 
 ./Scripts/build-xcode.sh Release             # store-style build: sandboxed, hardened → build/xcode/SnapRescale.app
 ```
+
+The app icon is a macOS 26 Liquid Glass package, `SnapRescale/AppIcon.icon`
+(three vector layers; the system derives light, dark, clear and tinted). Open it
+in Icon Composer to tweak. `Scripts/make-icns.sh` rasterises the flat version in
+`SnapRescale/IconSource/` for the dev build and the older-OS fallback.
 
 The Xcode project is generated from `project.yml` by [xcodegen](https://github.com/yonaskolb/XcodeGen)
 (`brew install xcodegen`); the `.xcodeproj` itself is not committed. Under the

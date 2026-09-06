@@ -17,7 +17,7 @@ final class Session {
     var aspect: AspectRatio = .original
     var sizeKind: SizeKind = .width
     var sizeValue: Double = 2048
-    var multiple: Multiple = .eight
+    var multiple: Multiple = AppSettings.shared.defaultMultiple
 
     // Fit (PRD §7)
     var fit: FitPolicy = .crop
@@ -26,7 +26,7 @@ final class Session {
 
     // Encoder (PRD §9)
     var format: OutputFormat = .keepOriginal
-    var quality: Double = 0.95
+    var quality: Double = AppSettings.shared.defaultQuality
 
     // Presets (PRD §12)
     let presets = PresetStore()
@@ -68,17 +68,9 @@ final class Session {
         didSet { grid.savePreference() }
     }
 
-    // Preferences (PRD §8, §11). Off: ⌘S opens the save panel pre-filled with
-    // the counter name. On: ⌘S writes next to the original without asking.
-    static let revealAfterSaveKey = "revealSavedImageInFinder"
-    var revealAfterSave: Bool = UserDefaults.standard.object(forKey: Session.revealAfterSaveKey) as? Bool ?? true {
-        didSet { UserDefaults.standard.set(revealAfterSave, forKey: Session.revealAfterSaveKey) }
-    }
-
-    static let saveWithoutAskingKey = "saveNextToOriginalWithoutAsking"
-    var saveWithoutAsking: Bool = UserDefaults.standard.bool(forKey: Session.saveWithoutAskingKey) {
-        didSet { UserDefaults.standard.set(saveWithoutAsking, forKey: Session.saveWithoutAskingKey) }
-    }
+    // Saving preferences live in AppSettings; proxies keep call sites short.
+    var revealAfterSave: Bool { AppSettings.shared.revealAfterSave }
+    var saveWithoutAsking: Bool { AppSettings.shared.saveWithoutAsking }
 
     // Output
     private(set) var outputBytes: Int?
@@ -97,7 +89,7 @@ final class Session {
     /// upscale note under Output covers it.
     var ladder: [Double] {
         switch sizeKind {
-        case .width, .height: return [512, 768, 1024, 1536, 2048]
+        case .width, .height: return AppSettings.shared.ladder.map(Double.init)
         case .megapixels: return [0.25, 0.5, 1, 2, 4]
         case .scale: return [25, 50, 75, 100]
         }
@@ -188,6 +180,12 @@ final class Session {
                 saveOnLoad = true
             case "--preset":
                 if let v = it.next() { launchPreset = v }
+            case "--settings":
+                openSettingsOnLaunch = true
+            case "--about":
+                openWindowOnLaunch = "about"
+            case "--help-window":
+                openWindowOnLaunch = "help"
             default:
                 if !a.hasPrefix("-"), FileManager.default.fileExists(atPath: a) {
                     accept([URL(fileURLWithPath: a)], origin: .external)
@@ -197,6 +195,10 @@ final class Session {
     }
     private var launchSizeValue: Double?
     private var launchPreset: String?
+    /// `--settings`: the root view opens the Settings window once it appears (screenshots, tests).
+    var openSettingsOnLaunch = false
+    /// `--about` / `--help-window`: id of a window to open once the root view appears.
+    var openWindowOnLaunch: String?
 
     // MARK: Session lifetime (PRD §8)
 

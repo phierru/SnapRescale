@@ -10,6 +10,9 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp ".build/$CONFIG/SnapRescale" "$APP/Contents/MacOS/"
 sed -e 's/\$(MARKETING_VERSION)/0.1/' -e 's/\$(CURRENT_PROJECT_VERSION)/1/' Info.plist > "$APP/Contents/Info.plist"
+[ -f AppIcon.icns ] || "$ROOT/Scripts/make-icns.sh" >/dev/null
+cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+plutil -replace CFBundleIconFile -string AppIcon "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 codesign --force --sign - "$APP" 2>/dev/null
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP"

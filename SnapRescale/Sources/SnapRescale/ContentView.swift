@@ -4,6 +4,8 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Environment(Session.self) private var session
+    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         @Bindable var session = session
@@ -28,6 +30,24 @@ struct ContentView: View {
             Text(session.errorMessage ?? "")
         }
         .onChange(of: session.spec) { session.scheduleEncode() }
+        // Launch arguments are parsed in applicationDidFinishLaunching, which can
+        // run after this view appears, so watch the flag rather than read it once.
+        .onChange(of: session.openWindowOnLaunch, initial: true) { _, id in
+            guard let id else { return }
+            session.openWindowOnLaunch = nil
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(500))
+                openWindow(id: id)
+            }
+        }
+        .onChange(of: session.openSettingsOnLaunch, initial: true) { _, wants in
+            guard wants else { return }
+            session.openSettingsOnLaunch = false
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(500))
+                openSettings()
+            }
+        }
     }
 }
 

@@ -78,6 +78,13 @@ Ordered so that each step leaves something usable.
    JSON; `--preset` launch argument. Email and Discord/Slack wait for v1.2.)*
 5. **Settings** (⌘,) — default grid, ladder values, default multiple and quality,
    *Save next to the original without asking*, *Show the saved image in Finder*.
-6. **Icon, About box with credits, help page.**
+   *(done 2026-09-06; the ladder editor flags values not divisible by 16, as
+   PRD §5 asks; `--settings` launch argument opens the window for tests)*
+6. **Icon, About box with credits, help page.** *(done 2026-09-06. Icon:
+   Liquid Glass `SnapRescale/AppIcon.icon` — three vector layers, frame + thirds
+   grid + resize arrow on a blue gradient; the system derives light, dark,
+   clear and tinted. `Scripts/make-icns.sh` rasterises the flat version for
+   the dev build and the catalog fallback. About and Help are native windows,
+   ⌘? and the Help menu; the help text is mirrored in `docs/HELP.md`.)*
 7. **Distribution** — Developer ID build + DMG + notarisation for the GitHub
    release; App Store Connect listing, privacy "no data collected", screenshots.

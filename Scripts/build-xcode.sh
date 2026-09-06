@@ -6,6 +6,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CONFIG=${1:-Debug}
 cd "$ROOT"
+[ -f SnapRescale/AppIcon.icns ] || Scripts/make-icns.sh >/dev/null   # fills the catalog's AppIcon set too
 xcodegen generate --quiet
 xcodebuild -project SnapRescale.xcodeproj -scheme SnapRescale -configuration "$CONFIG" \
   -derivedDataPath build/DerivedData -quiet build

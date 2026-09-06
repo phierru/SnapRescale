@@ -1,0 +1,45 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "srgb:1.00000,0.62000,0.20000,1.00000",
+      "srgb:0.87000,0.30000,0.05000,1.00000"
+    ],
+    "orientation" : {
+      "start" : { "x" : 0.5, "y" : 0 },
+      "stop" : { "x" : 0.5, "y" : 1 }
+    }
+  },
+  "groups" : [
+    {
+      "name" : "Glyph",
+      "layers" : [
+        {
+          "name" : "Grid",
+          "image-name" : "Grid.svg",
+          "glass" : false,
+          "fill" : "none",
+          "opacity" : 0.55,
+          "hidden-specializations" : [
+            { "value" : false },
+            { "appearance" : "tinted", "value" : true }
+          ]
+        },
+        {
+          "name" : "Frame",
+          "image-name" : "Frame.svg",
+          "glass" : true
+        },
+        {
+          "name" : "Arrow",
+          "image-name" : "Arrow.svg",
+          "glass" : true
+        }
+      ],
+      "shadow" : { "kind" : "neutral", "opacity" : 0.5 },
+      "translucency" : { "enabled" : true, "value" : 0.5 }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [ "macOS" ]
+  }
+}
