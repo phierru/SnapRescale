@@ -3,8 +3,8 @@
 # team (7XVA74UJHL), an App Store Connect record for com.phierru.SnapRescale, and
 # Xcode signed in to the Apple ID (Xcode ▸ Settings ▸ Accounts).
 #
-#   Scripts/appstore.sh            # archive + validate
-#   UPLOAD=1 Scripts/appstore.sh   # archive + upload to App Store Connect
+#   Scripts/appstore.sh            # archive + export the .pkg (no upload)
+#   UPLOAD=1 Scripts/appstore.sh   # archive + validate + upload (UPLOAD must be exactly 1)
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
@@ -17,7 +17,7 @@ xcodebuild -project SnapRescale.xcodeproj -scheme SnapRescale -configuration Rel
   -allowProvisioningUpdates archive
 # destination "upload" validates and uploads through the Apple ID Xcode is
 # signed in with — no API key needed. Without UPLOAD it only exports the .pkg.
-DEST=$([ -n "${UPLOAD:-}" ] && echo upload || echo export)
+DEST=$([ "${UPLOAD:-}" = "1" ] && echo upload || echo export)
 cat > "$OUT/ExportOptions.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

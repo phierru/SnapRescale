@@ -49,6 +49,14 @@ window. PRD §8 "v1 never holds two" is superseded by this.
 | Match-source-orientation toggle for aspect presets | §15.8 |
 | Frame selection for animated GIF / HEICS and video frames | §15.4 |
 
+## Known rough edges (from the 2026-09-06 release review)
+
+- The one-shot rule uses an "external open within the first seconds of launch"
+  heuristic. A lifecycle signal would be better, but Services launches offer
+  none; revisit with multiple windows.
+- The 500 MP render limit bounds cost, not memory; very large targets are
+  slow before they are refused.
+
 ## Open verification
 
 - Provenance detection for InvokeAI, NovelAI, Fooocus, SwarmUI, Midjourney and
@@ -92,5 +100,6 @@ Ordered so that each step leaves something usable.
    and notarises when `NOTARY_PROFILE` is set — falls back to ad-hoc without a
    certificate; `Scripts/appstore.sh` archives, exports and validates/uploads;
    `docs/APP-STORE.md` holds the listing copy, keywords, review notes and the
-   checklist; `docs/PRIVACY.md` is the policy. **Blocked on the paid Developer
-   Program on the personal Apple ID.**)*
+   checklist; `docs/PRIVACY.md` is the policy. **Submitted 2026-09-06 16:29: SnapRescale 1.0 (1), submission
+   d3af19ad-35c0-4d7b-9ace-08a9658378bd, Waiting for Review.** GitHub DMG still
+   needs a Developer ID Application certificate.)*

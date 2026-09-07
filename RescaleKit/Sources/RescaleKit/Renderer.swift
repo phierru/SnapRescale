@@ -56,8 +56,10 @@ public enum Renderer {
         case contextFailed
         case encodeFailed(UTType)
         case cannotKeepFormat(UTType)
+        case targetTooLarge(PixelSize)
         public var errorDescription: String? {
             switch self {
+            case .targetTooLarge(let s): return ValidationError.targetTooLarge(s).localizedDescription
             case .contextFailed: return "Could not create a drawing context."
             case .encodeFailed(let t): return "Could not encode as \(t.preferredFilenameExtension ?? t.identifier)."
             case .cannotKeepFormat(let t): return "\(t.preferredFilenameExtension?.uppercased() ?? t.identifier) cannot be written; choose JPEG, PNG, HEIC or TIFF."
@@ -67,6 +69,9 @@ public enum Renderer {
 
     public static func render(_ source: SourceImage, spec: RenderSpec) throws -> CGImage {
         let t = spec.target
+        // The solver keeps inside Limits; a hand-built spec must too (review 2026-09-06).
+        guard t.width >= 1, t.height >= 1, t.width <= Limits.maxDimension, t.height <= Limits.maxDimension,
+              t.pixelCount <= Limits.maxPixels else { throw RenderError.targetTooLarge(t) }
         let wantsAlpha = spec.padNeedsAlpha(sourceType: source.type)
         guard let space = CGColorSpace(name: CGColorSpace.sRGB),
               let ctx = CGContext(data: nil, width: t.width, height: t.height,

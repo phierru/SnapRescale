@@ -32,7 +32,9 @@ modes behind one selector, five resampling algorithms with a stated
 recommendation, and an aspect-mismatch policy with exactly two honest answers.
 See [`reference/comfyui-node-review.md`](reference/comfyui-node-review.md).
 
-**SnapRescale ports that model to a native Mac utility.**
+**SnapRescale takes that way of thinking to a native Mac utility, with its own
+solver and image pipeline.** (ComfyUI is GPL-3.0; nothing of its code is used —
+see the provenance note in [`reference/comfyui-node-review.md`](reference/comfyui-node-review.md).)
 
 ## 2. Goals
 

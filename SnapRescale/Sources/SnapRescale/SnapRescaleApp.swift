@@ -30,11 +30,11 @@ struct SnapRescaleApp: App {
                 Button(s.saveWithoutAsking ? (s.quitsAfterSave ? "Save & Quit" : "Save")
                                            : (s.quitsAfterSave ? "Save & Quit…" : "Save…")) { s.save() }
                     .keyboardShortcut("s")
-                    .disabled(s.source == nil)
+                    .disabled(!s.canSave)
                 if s.saveWithoutAsking {
                     Button(s.quitsAfterSave ? "Save As & Quit…" : "Save As…") { s.saveAs() }
                         .keyboardShortcut("s", modifiers: [.command, .shift])
-                        .disabled(s.source == nil)
+                        .disabled(!s.canSave)
                 }
             }
         }
@@ -90,7 +90,7 @@ struct SettingsView: View {
                 LabeledContent("Quality") {
                     HStack {
                         Slider(value: $settings.defaultQuality, in: 0.1...1, step: 0.05)
-                        Text("\(Int((settings.defaultQuality * 100).rounded()))").monospacedDigit().frame(width: 28, alignment: .trailing)
+                        Text("\(Preset.percent(settings.defaultQuality))").monospacedDigit().frame(width: 28, alignment: .trailing)
                     }
                 }
                 Picker("Composition grid", selection: $session.grid) {
@@ -119,6 +119,14 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .safeAreaInset(edge: .bottom) {
+            HStack {
+                Text("Everything stays on this Mac: no network, no analytics.").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Link("Privacy Policy", destination: Links.privacy).font(.caption)
+            }
+            .padding(.horizontal, 20).padding(.vertical, 8)
+        }
         .frame(width: 520)
         .fixedSize(horizontal: false, vertical: true)
     }

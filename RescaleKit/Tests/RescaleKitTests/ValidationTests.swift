@@ -27,6 +27,29 @@ struct ValidationTests {
         #expect(s.width == 100)
     }
 
+    /// Review 2026-09-06, C6: holding a tiny pinned value can push the derived
+    /// axis past the limit; the search must stay total.
+    @Test func extremeAspectsNeverTrap() {
+        let cases: [(AspectRatio, SizeParameter, PixelSize)] = [
+            (.fixed(width: 1, height: 10000), .width(1), PixelSize(100, 100)),
+            (.fixed(width: 10000, height: 1), .height(1), PixelSize(100, 100)),
+            (.original, .width(8), PixelSize(1, 60000)),
+            (.original, .height(16), PixelSize(60000, 1)),
+            (.fixed(width: 1, height: 10000), .megapixels(400), PixelSize(100, 100)),
+        ]
+        for (aspect, size, src) in cases {
+            for m in Multiple.allCases {
+                let s = ResizeRequest(aspect: aspect, size: size, multiple: m).solve(for: src)
+                #expect(s.width >= 1 && s.height >= 1, "\(aspect.label) \(size) ×\(m.rawValue)")
+                #expect(s.width <= Limits.maxDimension && s.height <= Limits.maxDimension, "\(aspect.label) \(size) ×\(m.rawValue) → \(s)")
+                #expect(s.width % m.rawValue == 0 && s.height % m.rawValue == 0)
+            }
+        }
+        #expect(throws: ValidationError.self) {
+            try ResizeRequest(aspect: .fixed(width: 1, height: 10000), size: .width(1), multiple: .eight).validate(for: PixelSize(100, 100))
+        }
+    }
+
     @Test func validateReportsTheProblem() {
         #expect(throws: ValidationError.sizeNotPositive(.width(0))) {
             try ResizeRequest(size: .width(0)).validate(for: source)

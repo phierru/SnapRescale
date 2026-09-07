@@ -45,6 +45,24 @@ struct PresetTests {
         #expect(p.format == .png)
     }
 
+    /// Review 2026-09-06, C3: valid JSON, nonsense values.
+    @Test func nonsenseValuesAreRejectedAndNeverTrap() throws {
+        let hand = """
+        { "name": "Bad", "aspect": "16:9", "size": { "width": 1920 }, "multiple": 8,
+          "fit": "crop", "padColor": "#ffffff", "format": "jpeg", "quality": 1e100 }
+        """
+        let p = try Preset.from(json: Data(hand.utf8))
+        #expect(throws: PresetError.qualityOutOfRange(1e100)) { try p.validate() }
+        _ = p.summary
+        #expect(p.qualityPercent == 100)
+        #expect(Preset.percent(.nan) == 0 && Preset.percent(-3) == 0 && Preset.percent(0.955) == 96)
+        var bad = Preset.shipped[0]; bad.size = .width(0)
+        #expect(throws: PresetError.self) { try bad.validate() }
+        bad = Preset.shipped[0]; bad.name = "  "
+        #expect(throws: PresetError.emptyName) { try bad.validate() }
+        for good in Preset.shipped { #expect(throws: Never.self) { try good.validate() } }
+    }
+
     @Test func fileNamesAreSafe() {
         #expect(Preset.shipped.first { $0.name == "Social 16:9" }!.fileName == "Social 16-9.json")
         #expect(Preset(name: "a/b", size: .width(1)).fileName == "a-b.json")

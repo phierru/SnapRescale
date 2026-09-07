@@ -30,6 +30,25 @@ public struct Preset: Hashable, Sendable, Codable, Identifiable {
 
     public var request: ResizeRequest { ResizeRequest(aspect: aspect, size: size, multiple: multiple) }
 
+    /// A file can be valid JSON and still nonsense — `"quality": 1e100` decodes
+    /// (review 2026-09-06, C3). Check before admitting a preset anywhere.
+    public func validate() throws(PresetError) {
+        if name.trimmingCharacters(in: .whitespaces).isEmpty { throw .emptyName }
+        do { try aspect.validate(); try size.validate() } catch { throw .invalidRequest(error) }
+        if !quality.isFinite || quality < 0 || quality > 1 { throw .qualityOutOfRange(quality) }
+        if fit == .stretch { throw .unsupportedFit }
+        if let c = padColor, ![c.red, c.green, c.blue, c.alpha].allSatisfy({ $0.isFinite && $0 >= 0 && $0 <= 1 }) {
+            throw .invalidPadColor
+        }
+    }
+
+    /// Quality as a percentage for display, never trapping on garbage.
+    public var qualityPercent: Int { Self.percent(quality) }
+    public static func percent(_ q: Double) -> Int {
+        guard q.isFinite else { return 0 }
+        return Int((min(max(q, 0), 1) * 100).rounded())
+    }
+
     /// One-line summary for menus: "Original · 1.5 MP · JPEG 80".
     public var summary: String {
         var parts = [aspect.label]
@@ -41,7 +60,7 @@ public struct Preset: Hashable, Sendable, Codable, Identifiable {
         }
         if multiple != .one { parts.append("×\(multiple.rawValue)") }
         if fit == .pad { parts.append("pad") }
-        parts.append(format == .keepOriginal ? "keep format" : "\(format.label) \(Int((quality * 100).rounded()))")
+        parts.append(format == .keepOriginal ? "keep format" : "\(format.label) \(qualityPercent)")
         return parts.joined(separator: " · ")
     }
 
@@ -69,5 +88,23 @@ public struct Preset: Hashable, Sendable, Codable, Identifiable {
     public var fileName: String {
         let bad = CharacterSet(charactersIn: "/:\\?%*|\"<>")
         return name.components(separatedBy: bad).joined(separator: "-") + ".json"
+    }
+}
+
+public enum PresetError: Error, LocalizedError, Equatable {
+    case emptyName
+    case invalidRequest(ValidationError)
+    case qualityOutOfRange(Double)
+    case unsupportedFit
+    case invalidPadColor
+
+    public var errorDescription: String? {
+        switch self {
+        case .emptyName: return "The preset has no name."
+        case .invalidRequest(let e): return e.localizedDescription
+        case .qualityOutOfRange(let q): return "Quality \(q) is not between 0 and 1."
+        case .unsupportedFit: return "Fit must be crop or pad."
+        case .invalidPadColor: return "The padding colour is not a valid colour."
+        }
     }
 }

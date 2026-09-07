@@ -44,8 +44,10 @@ public enum Solver {
         if case let .fixed(w, h) = request.aspect, w <= 0 || h <= 0 { request.aspect = .original }
 
         let pinned = request.size.pinnedAxis
+        // Clamp *after* holding the pinned axis: snapping a tiny pinned value
+        // upward can push the derived axis past the limit (review 2026-09-06, C6).
         let typed = clampContinuous(solveContinuous(request, source: source))
-        let ideal = holdPinnedAxis(typed, multiple: request.multiple.rawValue, pinned: pinned)
+        let ideal = clampContinuous(holdPinnedAxis(typed, multiple: request.multiple.rawValue, pinned: pinned))
         let size = snap(ideal, multiple: request.multiple.rawValue, pinned: pinned)
 
         return Solution(
@@ -148,18 +150,25 @@ public enum Solver {
         return best
     }
 
-    /// The nearest lattice value, never below one step. Half-way cases round to
-    /// even (1032 at 16 → 64.5 steps → 64 → 1024), matching the prototype and PRD §6.
+    /// The largest lattice value inside `Limits`.
+    static func maxLattice(_ multiple: Int) -> Int { (Limits.maxDimension / multiple) * multiple }
+
+    /// The nearest lattice value, never below one step nor above the limit.
+    /// Half-way cases round to even (1032 at 16 → 64.5 steps → 64 → 1024),
+    /// matching the prototype and PRD §6.
     static func nearestLattice(_ v: Double, _ multiple: Int) -> Int {
-        min(Limits.maxDimension, max(multiple, roundHalfEven(v / Double(multiple)) * multiple))
+        min(maxLattice(multiple), max(multiple, roundHalfEven(v / Double(multiple)) * multiple))
     }
 
-    /// Lattice values from `searchSpan` steps below the ideal to `searchSpan + 1` above.
+    /// Lattice values from `searchSpan` steps below the ideal to `searchSpan + 1`
+    /// above, inside `Limits`. Never empty: at the top of the range it degrades
+    /// to the largest legal value, so the search is total (review C6).
     static func window(_ v: Double, _ multiple: Int) -> [Int] {
         let base = Int((v / Double(multiple)).rounded(.down))
-        return (-searchSpan...(searchSpan + 1))
+        let candidates = (-searchSpan...(searchSpan + 1))
             .map { (base + $0) * multiple }
-            .filter { $0 >= multiple && $0 <= Limits.maxDimension }
+            .filter { $0 >= multiple && $0 <= maxLattice(multiple) }
+        return candidates.isEmpty ? [maxLattice(multiple)] : candidates
     }
 
     static func roundHalfEven(_ v: Double) -> Int {

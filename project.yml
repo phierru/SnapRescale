@@ -37,6 +37,8 @@ targets:
       - path: SnapRescale/Sources/SnapRescale
       - path: SnapRescale/Assets.xcassets
       - path: SnapRescale/AppIcon.icon      # Liquid Glass icon (macOS 26); the catalog set is the fallback
+      - path: LICENSE                        # bundled as a resource so the app carries its own licence text
+        buildPhase: resources
     dependencies:
       - package: RescaleKit
         product: RescaleKit

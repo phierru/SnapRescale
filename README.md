@@ -2,110 +2,102 @@
 
 **Resize to any ratio, snapped to multiples of 8 and 16.**
 
-A native macOS image resizer, built because Parallels Toolbox's *Resize
-Images* and Apple's *Convert Image* Quick Action both stop one step short of
-useful.
+SnapRescale is a free, native macOS utility for resizing one image to the
+dimensions your workflow needs. Choose an aspect ratio and set width, height,
+megapixels or scale. Snap dimensions to multiples of 8 or 16 for AI image
+workflows, or use ordinary pixel dimensions.
 
-The resize model is ported from ComfyUI's stock `Resize Image/Mask` and
-`Resolution Selector` nodes, which — improbably — think about the problem more
-clearly than any Mac utility on this machine.
+Preview the crop before saving, drag to adjust the framing, or pad with a
+chosen colour. Save useful settings as presets. Images are processed locally,
+without accounts or uploads.
 
-Pick an aspect ratio (or keep the original) and one number — width, height or
-megapixels. Everything else solves itself.
+![SnapRescale with a 16:9 crop preview](docs/screenshots/crop-16x9.jpg)
 
-## Docs
+## Requirements and installation
 
-- [PRD](docs/PRD.md) — requirements, scope, milestones
-- [Help](docs/HELP.md) — the brief in-app help, as a page
-- [Roadmap](docs/ROADMAP.md) — what is deferred, and in what order it comes back
-- [ComfyUI node review](docs/reference/comfyui-node-review.md) — source material
-- [Image metadata](docs/reference/image-metadata.md) — what the badges detect
+- macOS 26 or later, Apple Silicon (that is what has been built and tested).
+- **Mac App Store:** release pending review. The link will appear here.
+- **Direct download:** a notarised DMG will be attached to the GitHub releases
+  page once the Developer ID certificate is in place.
+- **Build it yourself:** see [Building](#building) below.
 
-## The app
+## Using it
 
-`SnapRescale/` is the SwiftUI app, a thin shell over RescaleKit. Build it into a
-runnable bundle (ad-hoc signed, no Xcode project needed) and open an image:
+1. **Open an image.** Right-click it in Finder → *Open With → SnapRescale* (or
+   *Services → Resize with SnapRescale*). Opened that way, the app quits after
+   saving. Or open SnapRescale from Applications, then drop an image on the
+   window or press ⌘O; it then stays open.
+2. **Choose the size.** Pick an aspect ratio — *Original* keeps the image's own
+   ratio; the picker also offers 1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9 and 21:9 —
+   and one number: width, height, megapixels or scale. The other three follow.
+   *Multiple of 8/16* rounds onto that lattice and says what it changed;
+   *Multiple of 1* means no snapping. The preview shows the crop; drag the frame
+   to reframe, or switch to *Pad*.
+3. **Save.** ⌘S opens the save panel, pre-filled with `name_WxH`. Settings can
+   make ⌘S save beside the original without asking (it asks for each folder
+   once). The file size shown before saving is a real encode.
 
-```sh
-./Scripts/build-app.sh                       # fast dev build, unsandboxed → build/SnapRescale.app
-open build/SnapRescale.app photo.heic        # or launch it and drop an image on the window
-open build/SnapRescale.app --args --aspect 16:9 --width 1920 --multiple 16 photo.heic
+Brief in-app help is on ⌘?; the same text is in [docs/HELP.md](docs/HELP.md).
 
-./Scripts/build-xcode.sh Release             # store-style build: sandboxed, hardened → build/xcode/SnapRescale.app
-```
+## What it does and doesn't do (1.0)
 
-The app icon is a macOS 26 Liquid Glass package, `SnapRescale/AppIcon.icon`
-(three vector layers; the system derives light, dark, clear and tinted). Open it
-in Icon Composer to tweak. `Scripts/make-icns.sh` rasterises the flat version in
-`SnapRescale/IconSource/` for the dev build and the older-OS fallback.
+- One image at a time. Output formats: JPEG, PNG, HEIC, TIFF, or the source's
+  own format when it is one of those.
+- **Output is 8-bit sRGB with metadata stripped.** EXIF, GPS, XMP and AI
+  workflow data are not carried over — a resized ComfyUI PNG no longer reopens
+  its generation graph. Orientation is baked in. The badges next to the file
+  name show what was *detected* in the source, not what will be preserved.
+- Animated images use their first frame.
+- Presets store size and export settings as plain JSON you can edit and share.
+- Planned next, in order: metadata keep/strip controls and workflow
+  carry-over, multiple windows, WebP and encoder options. See
+  [docs/ROADMAP.md](docs/ROADMAP.md).
 
-The Xcode project is generated from `project.yml` by [xcodegen](https://github.com/yonaskolb/XcodeGen)
-(`brew install xcodegen`); the `.xcodeproj` itself is not committed. Under the
-sandbox, files must arrive by Open With, drop, ⌘O or Services — a path in
-`--args` is not readable there, which is why the dev build exists.
+## Building
 
-## Releasing
-
-```sh
-./Scripts/release.sh                          # hardened, signed DMG in build/release (ad-hoc without a Developer ID cert)
-NOTARY_PROFILE=snaprescale ./Scripts/release.sh   # + notarise and staple
-./Scripts/appstore.sh                         # App Store archive, export, validate (UPLOAD=1 to submit)
-```
-
-Listing copy, review notes and the submission checklist: [APP-STORE.md](docs/APP-STORE.md).
-Privacy policy: [PRIVACY.md](docs/PRIVACY.md).
-
-## RescaleKit
-
-`RescaleKit/` is the Swift package the app, CLI and Quick Action will all drive.
-M0 (the dimension solver) is in and tested:
-
-```sh
-cd RescaleKit && swift test
-```
-
-The tests replay a fixture generated from the Python prototype
-(`python3 prototype/export_fixture.py > RescaleKit/Tests/RescaleKitTests/Fixtures/solver-parity.json`)
-so the port cannot drift from the behaviour tables in the PRD. Requires Xcode 26 / Swift 6.2+.
-
-A throwaway CLI (PRD §14 M1) exercises the pipeline against real files. Without
-`--write` it only reports the solve; with it, it writes next to the original:
+Prerequisites: Xcode 26 (Swift 6.2), [xcodegen](https://github.com/yonaskolb/XcodeGen)
+and librsvg for the icon (`brew install xcodegen librsvg`), Python 3 (ships
+with Xcode's command line tools).
 
 ```sh
-cd RescaleKit && swift build
-.build/debug/rescale --aspect 16:9 --width 1920 --multiple 16 photo.heic
-.build/debug/rescale --mp 1.5 --source 6000x4000
-.build/debug/rescale --aspect 1:1 --width 1024 --format png --write photo.heic
+./Scripts/build-app.sh                        # fast dev build, unsandboxed → build/SnapRescale.app
+open -a build/SnapRescale.app photo.heic      # or launch it and drop an image on the window
+./Scripts/build-xcode.sh Release              # store-style build: sandboxed, hardened → build/xcode/SnapRescale.app
+cd RescaleKit && swift test                   # the engine's tests
 ```
 
-## Prototype
+The Xcode project is generated from `project.yml`; the `.xcodeproj` is not
+committed. Under the sandbox, files must arrive by Open With, drop, ⌘O or
+Services — a path in `--args` is not readable there, which is why the dev
+build exists. The app icon is a macOS 26 Liquid Glass package,
+`SnapRescale/AppIcon.icon`; `Scripts/make-icns.sh` rasterises the flat
+fallback. Release and App Store steps are in [docs/RELEASING.md](docs/RELEASING.md).
 
-`prototype/solver.py` is a working model of the dimension solver — the piece the
-whole app hangs off. `python3 prototype/cases.py` and `python3 prototype/compare.py`
-print the behaviour tables reproduced in §5 and §6 of the PRD.
+### Layout
 
-## Status
-
-Draft PRD v0.12 (v1 = single image). **M0 done**: solver ported to Swift with
-property tests and prototype parity. **First vertical slice of M1 + M3
-running**: decode → resize → crop/pad → encode via ImageIO, a `rescale` CLI
-that writes files, and a SwiftUI window with drop target, live crop preview,
-aspect/size/multiple controls, real output byte count and Save. Opened from Finder (Open With, the *Resize with SnapRescale* Services entry,
-or a Dock drop) it is a one-shot tool that quits after saving; launched from
-the Applications menu it stays open. Still to do: the §10 keep/strip switches,
-WebP (M4), presets and packaging (M5). The M2 slider was dropped.
+- `RescaleKit/` — the engine: solver, image pipeline, metadata detection,
+  presets. No UI. A throwaway `rescale` CLI exercises it (`--write` writes a
+  file; without it, it only prints the solve).
+- `SnapRescale/` — the SwiftUI app.
+- `prototype/` — the Python model of the solver the Swift port is checked
+  against (5,940-case parity fixture).
+- `docs/` — [PRD](docs/PRD.md), [roadmap](docs/ROADMAP.md), [help](docs/HELP.md),
+  [what the badges detect](docs/reference/image-metadata.md), reviews.
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE). Free on the Mac App Store, source here.
+MIT — see [LICENSE](LICENSE). The same text ships inside the app bundle.
 
 ## Acknowledgements
 
-The resize model — one selector for every resize intent, aspect ratio plus
-megapixels as a calculator, snapping to a multiple, and crop-or-stretch as the
-only honest answers to an aspect mismatch — is taken from the stock
-**Resize Image/Mask** and **Resolution Selector** nodes in
-[ComfyUI](https://github.com/comfyanonymous/ComfyUI), which is GPL-3.0. No
-ComfyUI code is used; SnapRescale re-implements the ideas in Swift, and the
-aspect-ratio names in the picker ("Portrait Photo", "Widescreen", …) are
-theirs. Thank you.
+Inspired by the *Resize Image/Mask* and *Resolution Selector* nodes in
+[ComfyUI](https://github.com/comfyanonymous/ComfyUI), whose way of thinking
+about resizing — aspect ratio plus one number, snapping to a multiple — is the
+starting point. SnapRescale implements its own resizing solver and macOS image
+pipeline; the aspect-ratio names in the picker are theirs. ComfyUI is GPL-3.0
+and none of its code is used. Provenance notes: [docs/reference/comfyui-node-review.md](docs/reference/comfyui-node-review.md).
+
+I thank the ComfyUI team and contributors for the excellent work.
+
+Support and bug reports: [issues](https://github.com/phierru/SnapRescale/issues).
+Privacy: [docs/PRIVACY.md](docs/PRIVACY.md) — nothing leaves your Mac.

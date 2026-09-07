@@ -25,7 +25,9 @@ final class Session {
     var padColor: PadColor? = .white
 
     // Encoder (PRD §9)
-    var format: OutputFormat = .keepOriginal
+    var format: OutputFormat = .keepOriginal {
+        didSet { if let s = source, format.isAvailable(for: s.type) { formatNote = nil } }
+    }
     var quality: Double = AppSettings.shared.defaultQuality
 
     // Presets (PRD §12)
@@ -39,7 +41,8 @@ final class Session {
         fit = preset.fit
         padColor = preset.padColor
         format = preset.format
-        quality = preset.quality
+        quality = Double(Preset.percent(preset.quality)) / 100
+        resolveFormat()   // a preset may ask for "keep" on a source that cannot be kept (review C5)
         switch preset.size {
         case .width(let w): sizeKind = .width; sizeValue = Double(w)
         case .height(let h): sizeKind = .height; sizeValue = Double(h)
@@ -173,7 +176,7 @@ final class Session {
                 sizeValue = d
                 launchSizeValue = d
             case "--multiple":
-                if let v = it.next(), let n = Int(v), let m = Multiple(rawValue: n) { multiple = m }
+                if let v = it.next(), let n = Int(v), let m = Multiple(rawValue: n) { multiple = m; launchMultiple = m }
             case "--fit":
                 if let v = it.next(), let f = FitPolicy(rawValue: v) { fit = f }
             case "--save":
@@ -201,6 +204,7 @@ final class Session {
     }
     private var launchSizeValue: Double?
     private var launchPreset: String?
+    private var launchMultiple: Multiple?
     /// `--settings`: the root view opens the Settings window once it appears (screenshots, tests).
     var openSettingsOnLaunch = false
     /// `--about` / `--help-window`: id of a window to open once the root view appears.
@@ -233,19 +237,33 @@ final class Session {
     }
 
     private(set) var isLoading = false
+    /// Each load gets a number; only the latest may commit (review 2026-09-06, C1).
+    private var loadGeneration = 0
+
+    /// Saving needs a settled source: not while a replacement is decoding.
+    var canSave: Bool { source != nil && !isLoading && !isSaving }
 
     /// Decodes off the main actor so a large file does not freeze the window.
     func load(_ url: URL) {
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
         Task {
+            defer { if generation == loadGeneration { isLoading = false } }
             do {
                 let (loaded, preview) = try await Task.detached(priority: .userInitiated) {
                     let loaded = try SourceImage.load(url)
                     return (loaded, Self.makePreview(loaded.image, maxPixels: 2048))
                 }.value
+                // A newer load was requested while this one decoded: drop it.
+                guard generation == loadGeneration else { return }
                 source = loaded
                 previewImage = preview
                 anchor = .center
+                // Defaults for a new image (review C7); launch overrides win.
+                multiple = launchMultiple ?? AppSettings.shared.defaultMultiple
+                launchMultiple = nil
+                quality = AppSettings.shared.defaultQuality
                 if let v = launchSizeValue {
                     sizeValue = v
                     launchSizeValue = nil
@@ -258,25 +276,29 @@ final class Session {
                     launchPreset = nil
                 }
                 lastSaved = nil
-                // "Keep original" cannot keep GIF, WebP, RAW…: switch to an honest
-                // format rather than silently writing JPEG (finding 5).
-                if !format.isAvailable(for: loaded.type) {
-                    format = OutputFormat.fallback(for: loaded.type, hasAlpha: loaded.hasAlpha)
-                    formatNote = "\(loaded.type.preferredFilenameExtension?.uppercased() ?? "This format") cannot be written; saving as \(format.label)."
-                } else {
-                    formatNote = nil
-                }
+                resolveFormat()
                 scheduleEncode()
-                if saveOnLoad { saveOnLoad = false; saveNextToOriginal() }
+                if saveOnLoad { saveOnLoad = false; isLoading = false; saveNextToOriginal() }
             } catch {
-                errorMessage = error.localizedDescription
+                if generation == loadGeneration { errorMessage = error.localizedDescription }
             }
-            isLoading = false
         }
     }
 
     /// Set when the source format could not be kept.
     private(set) var formatNote: String?
+
+    /// "Keep original" cannot keep GIF, WebP, RAW…: switch to an honest format
+    /// rather than silently writing JPEG. Used by load and by preset application.
+    private func resolveFormat() {
+        guard let source else { return }
+        if format.isAvailable(for: source.type) {
+            formatNote = nil
+        } else {
+            format = OutputFormat.fallback(for: source.type, hasAlpha: source.hasAlpha)
+            formatNote = "\(source.type.preferredFilenameExtension?.uppercased() ?? "This format") cannot be written; saving as \(format.label)."
+        }
+    }
 
     func chooseImage() {
         let panel = NSOpenPanel()
@@ -340,24 +362,30 @@ final class Session {
     /// Latest-request-wins: at most one render runs; anything requested while
     /// it runs collapses into a single pending spec (finding 8). ImageIO work
     /// cannot be interrupted, so cancelling tasks alone would not bound memory.
-    private var pendingSpec: RenderSpec?
+    /// A render job is the source *and* the spec, so a byte count can never be
+    /// published for a different image than the one it was rendered from
+    /// (review 2026-09-06, C2).
+    private struct EncodeJob { let source: SourceImage; let spec: RenderSpec }
+    private var pendingJob: EncodeJob?
     private var encodeRunning = false
 
     func scheduleEncode() {
-        guard let source, let spec else { outputBytes = nil; pendingSpec = nil; return }
-        pendingSpec = spec
+        guard let source, let spec else { outputBytes = nil; pendingJob = nil; return }
+        pendingJob = EncodeJob(source: source, spec: spec)
         isEncoding = true
         guard !encodeRunning else { return }
         encodeRunning = true
         Task { [weak self] in
             // Coalesce a burst of edits before starting a full-size render.
             try? await Task.sleep(for: .milliseconds(80))
-            while let self, let spec = self.pendingSpec {
-                self.pendingSpec = nil
+            while let self, let job = self.pendingJob {
+                self.pendingJob = nil
                 let bytes = await Task.detached(priority: .userInitiated) {
-                    (try? Renderer.produce(source, spec: spec))?.count
+                    (try? Renderer.produce(job.source, spec: job.spec))?.count
                 }.value
-                if self.pendingSpec == nil {
+                // Publish only if nothing newer is queued and the session still
+                // shows this source with these settings.
+                if self.pendingJob == nil, self.source?.url == job.source.url, self.spec == job.spec {
                     self.outputBytes = bytes
                 }
             }
@@ -368,17 +396,20 @@ final class Session {
 
     /// ⌘S. The panel is the default (sandbox-honest, and the name can be tweaked);
     /// the silent path is a preference, and what `--save` uses for scripting.
+    private(set) var isSaving = false
+
     func save() {
+        guard canSave else { return }
         if saveWithoutAsking { saveNextToOriginal() } else { saveAs() }
     }
 
     func saveNextToOriginal() {
-        guard let source, let spec else { return }
+        guard canSave, let source, let spec else { return }
         write(to: OutputNaming.url(for: source, spec: spec), source: source, spec: spec, viaFolderAccess: true)
     }
 
     func saveAs() {
-        guard let source, let spec else { return }
+        guard canSave, let source, let spec else { return }
         let suggested = OutputNaming.url(for: source, spec: spec)
         let panel = NSSavePanel()
         panel.directoryURL = suggested.deletingLastPathComponent()
@@ -390,30 +421,35 @@ final class Session {
     }
 
     /// `viaFolderAccess` is the silent path: it may ask for the folder once under
-    /// the sandbox. The save panel path already carries its own grant.
+    /// the sandbox. The save panel path already carries its own grant. The
+    /// encode runs off the main actor; the window shows a saving state meanwhile.
     private func write(to url: URL, source: SourceImage, spec: RenderSpec, viaFolderAccess: Bool = false) {
-        do {
-            let data = try Renderer.produce(source, spec: spec)
-            if viaFolderAccess {
-                switch FolderAccess.write(data, to: url) {
-                case .written: break
-                case .cancelled: return
-                case .failed(let error): throw error
+        isSaving = true
+        Task {
+            defer { isSaving = false }
+            do {
+                let data = try await Task.detached(priority: .userInitiated) {
+                    try Renderer.produce(source, spec: spec)
+                }.value
+                if viaFolderAccess {
+                    switch FolderAccess.write(data, to: url) {
+                    case .written: break
+                    case .cancelled: return
+                    case .failed(let error): throw error
+                    }
+                } else {
+                    try data.write(to: url)
                 }
-            } else {
-                try data.write(to: url)
-            }
-            lastSaved = url
-            if revealAfterSave { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-            if quitsAfterSave {
-                // Let the Finder reveal go out first, then finish the one-shot session.
-                Task { @MainActor in
+                lastSaved = url
+                if revealAfterSave { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                if quitsAfterSave {
+                    // Let the Finder reveal go out first, then finish the one-shot session.
                     try? await Task.sleep(for: .milliseconds(300))
                     NSApp.terminate(nil)
                 }
+            } catch {
+                errorMessage = error.localizedDescription
             }
-        } catch {
-            errorMessage = error.localizedDescription
         }
     }
 }

@@ -90,7 +90,10 @@ extension ResizeRequest {
     public func validate(for source: PixelSize) throws(ValidationError) {
         try aspect.validate()
         try size.validate()
-        let ideal = Solver.solveContinuous(self, source: source)
+        // Check the ideal *after* the pinned axis is held: that is what the
+        // lattice search actually runs against (review 2026-09-06, C6).
+        let typed = Solver.solveContinuous(self, source: source)
+        let ideal = Solver.holdPinnedAxis(typed, multiple: multiple.rawValue, pinned: size.pinnedAxis)
         if !ideal.width.isFinite || !ideal.height.isFinite
             || ideal.width > Double(Limits.maxDimension) || ideal.height > Double(Limits.maxDimension)
             || ideal.pixelCount > Double(Limits.maxPixels) {

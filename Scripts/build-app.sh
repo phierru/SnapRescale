@@ -12,6 +12,7 @@ cp ".build/$CONFIG/SnapRescale" "$APP/Contents/MacOS/"
 sed -e 's/\$(MARKETING_VERSION)/1.0/' -e 's/\$(CURRENT_PROJECT_VERSION)/1/' Info.plist > "$APP/Contents/Info.plist"
 [ -f AppIcon.icns ] || "$ROOT/Scripts/make-icns.sh" >/dev/null
 cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+cp "$ROOT/LICENSE" "$APP/Contents/Resources/LICENSE.txt"
 plutil -replace CFBundleIconFile -string AppIcon "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 codesign --force --sign - "$APP" 2>/dev/null

@@ -3,11 +3,16 @@
 Read from the local ComfyUI core install (v0.34.2) at
 `~/ComfyUI-Installs/ComfyUI/ComfyUI/`. Both are stock core nodes, not custom packs.
 
-> **Licensing.** ComfyUI is GPL-3.0. This document describes its *behaviour*
-> and *design* so SnapRescale can re-implement the ideas; it quotes no code.
-> SnapRescale is MIT-licensed and contains no ComfyUI source. The ideas and
-> formulas are not subject to copyright; the credit in the README is owed
-> regardless.
+> **Licensing and provenance.** ComfyUI is GPL-3.0. This document describes
+> the nodes' *behaviour* and *design* so SnapRescale could implement the ideas
+> independently. It quotes no function bodies; the short tooltip strings and
+> option labels below are quoted from the upstream UI and attributed here.
+> SnapRescale is MIT-licensed and contains no ComfyUI source: the Python
+> prototype in `prototype/` was written from this behavioural description, and
+> the Swift solver is a port of that prototype (checked by a parity fixture),
+> not of upstream code. Upstream examined: ComfyUI v0.34.2, commit
+> `7fd919f0caff66a52289ea5b19cb6eaca0da04ef`. Ideas and formulas are not
+> subject to copyright; the credit in the README is owed regardless.
 
 | Node | Display name | Source |
 |---|---|---|

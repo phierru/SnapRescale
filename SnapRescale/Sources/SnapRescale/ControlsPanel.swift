@@ -85,7 +85,7 @@ struct ControlsPanel: View {
                     LabeledContent("Quality") {
                         HStack {
                             Slider(value: $session.quality, in: 0.1...1, step: 0.05)
-                            Text("\(Int((session.quality * 100).rounded()))").monospacedDigit().frame(width: 28, alignment: .trailing)
+                            Text("\(Preset.percent(session.quality))").monospacedDigit().frame(width: 28, alignment: .trailing)
                         }
                     }
                 }
@@ -127,10 +127,13 @@ struct ControlsPanel: View {
                 HStack {
                     if session.saveWithoutAsking {
                         Button(session.quitsAfterSave ? "Save As & Quit…" : "Save As…") { session.saveAs() }
+                            .disabled(!session.canSave)
                     }
                     Spacer()
+                    if session.isSaving { ProgressView().controlSize(.small) }
                     Button(saveTitle) { session.save() }
                         .buttonStyle(.borderedProminent)
+                        .disabled(!session.canSave)
                         .help(session.saveWithoutAsking
                               ? "Writes next to the original without asking (Settings)"
                               : "Opens the save panel, pre-filled with the suggested name")
@@ -325,6 +328,12 @@ struct PresetRow: View {
                 .disabled(session.source == nil)
             if let name = session.activePreset {
                 Button("Delete “\(name)”") { session.presets.delete(named: name); session.noteSettingsChanged() }
+            }
+            if !session.presets.problems.isEmpty {
+                Divider()
+                ForEach(session.presets.problems, id: \.self) { problem in
+                    Button("Skipped: \(problem)") {}.disabled(true)
+                }
             }
             Button("Show Presets Folder in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([session.presets.directory])

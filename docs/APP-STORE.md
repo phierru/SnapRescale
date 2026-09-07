@@ -6,7 +6,7 @@ once the Developer Program membership (personal team 7XVA74UJHL) exists.
 ## Name, subtitle, category
 
 - **Name:** SnapRescale
-- **Subtitle (30 chars):** Resize to any ratio, snap to 8/16
+- **Subtitle (30 chars):** Resize images, snap to 8 or 16
 - **Category:** Photo & Video · secondary: Graphics & Design
 - **Price:** Free · no in-app purchases
 - **Bundle ID:** com.phierru.SnapRescale · **SKU:** snaprescale-mac
@@ -36,15 +36,17 @@ usual sizes — 512 · 768 · 1024 · 1536 · 2048 — is one click away and edi
 • Real output file size, from a real encode, before you save.
 • Keep the original format, or write JPEG, PNG, HEIC or TIFF.
 • Badges show what the source carries: colour profile, EXIF, GPS, HDR, and
-  where an AI image came from (ComfyUI, Automatic1111, InvokeAI, …).
+  where an AI image came from (ComfyUI, Automatic1111, InvokeAI, …). This
+  release writes 8-bit sRGB without that metadata; preservation controls are
+  next on the roadmap.
 • Composition grids: thirds, golden ratio, fifths, centre lines.
-• Presets bundle every setting; the files are plain JSON you can edit and share.
+• Presets save your size and export settings; the files are plain JSON you can edit and share.
 • No account, no network, no analytics. MIT-licensed; source on GitHub.
 
 ## Keywords (100 chars)
 
-resize,image,crop,aspect ratio,megapixel,comfyui,stable diffusion,batch,
-photo,scale,png,jpeg
+resize,image,crop,aspect ratio,megapixel,comfyui,stable diffusion,photo,
+scale,png,jpeg,heic
 
 ## What's new (1.0)
 
@@ -89,11 +91,14 @@ Suggested set:
 4. Presets menu open.
 5. Settings window.
 
-## Checklist before submitting
+## Status
 
-- [ ] Paid Developer Program on the personal Apple ID; Xcode signed in.
-- [ ] App record in App Store Connect for `com.phierru.SnapRescale`.
-- [ ] `MARKETING_VERSION` 1.0 in `project.yml`; `CURRENT_PROJECT_VERSION` bumped.
-- [ ] `Scripts/appstore.sh` validates; then `UPLOAD=1`.
-- [ ] Screenshots uploaded; privacy answered "no data collected".
-- [ ] `docs/PRIVACY.md` published (below).
+1.0 (1) submitted 2026-09-06, Waiting for Review. This document is the
+listing draft that was pasted in; it is not a live view of App Store Connect.
+
+## Checklist for the next build
+
+- [ ] Bump `CURRENT_PROJECT_VERSION` in `project.yml` (and `MARKETING_VERSION` for a new version).
+- [ ] `UPLOAD=1 Scripts/appstore.sh` (archives, exports and uploads through Xcode's account).
+- [ ] Select the build on the version page; update "What's New".
+- [ ] Keep the privacy answer "Data not collected" and the policy URL current.

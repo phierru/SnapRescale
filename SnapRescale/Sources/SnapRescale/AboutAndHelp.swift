@@ -7,6 +7,7 @@ enum Links {
     static let licence = URL(string: "https://github.com/phierru/SnapRescale/blob/main/LICENSE")!
     static let comfyUI = URL(string: "https://github.com/comfyanonymous/ComfyUI")!
     static let metadataDoc = URL(string: "https://github.com/phierru/SnapRescale/blob/main/docs/reference/image-metadata.md")!
+    static let privacy = URL(string: "https://github.com/phierru/SnapRescale/blob/main/docs/PRIVACY.md")!
 }
 
 enum AppInfo {
@@ -34,18 +35,23 @@ struct AboutView: View {
             VStack(spacing: 6) {
                 Text("© 2026 Francesco Lardieri · MIT licence")
                     .font(.callout)
-                Text("The resize model — one selector for every intent, aspect ratio plus one number, snapping to a multiple — comes from ComfyUI's Resize Image/Mask and Resolution Selector nodes. No ComfyUI code is used. Thank you.")
+                Text("Inspired by ComfyUI's Resize Image/Mask and Resolution Selector nodes. SnapRescale implements its own resizing solver and macOS image pipeline. Thank you.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(width: 360)
             }
             HStack(spacing: 14) {
                 Link("Source on GitHub", destination: Links.repository)
                 Link("Licence", destination: Links.licence)
+                Link("Privacy Policy", destination: Links.privacy)
                 Link("ComfyUI", destination: Links.comfyUI)
             }
             .font(.callout)
+            Text("No network, no analytics, no accounts. Images stay on your Mac.")
+                .font(.caption).foregroundStyle(.tertiary)
         }
         .padding(28)
         .frame(width: 440)
@@ -77,6 +83,7 @@ struct HelpView: View {
         ]),
         Section(title: "Format and saving", lines: [
             "**Keep original** writes the same format as the source when possible; otherwise the app says which format it switched to.",
+            "**What the file loses today:** output is 8-bit sRGB, and EXIF, GPS, XMP and AI workflow data are not carried over — a resized ComfyUI PNG no longer reopens its graph. Only the first frame of an animation is used. Metadata controls are on the roadmap.",
             "The **file size** shown is a real encode, not an estimate.",
             "**⌘S** opens the save panel, pre-filled with *name_WxH*. In Settings you can make ⌘S save beside the original without asking; the first save into a folder asks for permission once.",
             "**Presets** bundle every setting. Save your own from the Preset menu; the files are plain JSON.",
@@ -107,6 +114,7 @@ struct HelpView: View {
                 HStack(spacing: 14) {
                     Link("Full documentation", destination: Links.repository)
                     Link("What the badges detect", destination: Links.metadataDoc)
+                    Link("Privacy Policy", destination: Links.privacy)
                     Link("Report an issue", destination: Links.issues)
                 }
                 .font(.callout)
