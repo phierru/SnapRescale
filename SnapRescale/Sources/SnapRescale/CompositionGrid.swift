@@ -38,6 +38,23 @@ enum CompositionGrid: String, CaseIterable, Identifiable {
         UserDefaults.standard.set(rawValue, forKey: Self.defaultsKey)
     }
 
+    /// The swatch for the grid-colour switch: a filled disc with a hairline of
+    /// the opposite tone so both read on any segment background (GitHub #7).
+    static func colorSwatch(dark: Bool) -> Image {
+        let size = NSSize(width: 14, height: 14)
+        let image = NSImage(size: size, flipped: false) { rect in
+            let disc = NSBezierPath(ovalIn: rect.insetBy(dx: 1.5, dy: 1.5))
+            (dark ? NSColor.black : NSColor.white).setFill()
+            disc.fill()
+            (dark ? NSColor.white : NSColor.black).withAlphaComponent(0.35).setStroke()
+            disc.lineWidth = 1
+            disc.stroke()
+            return true
+        }
+        image.isTemplate = false
+        return Image(nsImage: image)
+    }
+
     /// A template icon: the frame with this grid's lines, drawn at control size.
     var icon: Image {
         let size = NSSize(width: 22, height: 15)

@@ -34,6 +34,15 @@ struct PreviewView: View {
         return HStack {
             caption
             Spacer()
+            Picker("Grid colour", selection: $session.gridDark) {
+                CompositionGrid.colorSwatch(dark: false).tag(false).help("White frame and grid")
+                CompositionGrid.colorSwatch(dark: true).tag(true).help("Black frame and grid, for light pictures")
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .fixedSize()
+            .disabled(session.fit == .pad)
+            .help("Colour of the frame and grid lines; black for light pictures")
             Picker("Grid", selection: $session.grid) {
                 ForEach(CompositionGrid.allCases) { g in
                     g.icon.tag(g).help(g.label)
@@ -68,7 +77,7 @@ struct PreviewView: View {
             .fill(Color.black.opacity(0.55), style: FillStyle(eoFill: true))
             .allowsHitTesting(false)
             Rectangle()
-                .strokeBorder(.white, lineWidth: 1.5)
+                .strokeBorder(gridColor, lineWidth: 1.5)
                 .frame(width: shown.width, height: shown.height)
                 .offset(x: shown.minX, y: shown.minY)
                 .shadow(radius: 2)
@@ -136,9 +145,11 @@ struct PreviewView: View {
                 p.move(to: CGPoint(x: r.minX, y: y)); p.addLine(to: CGPoint(x: r.maxX, y: y))
             }
         }
-        .stroke(.white.opacity(0.4), lineWidth: 0.5)
+        .stroke(gridColor.opacity(0.5), lineWidth: 1)
         .allowsHitTesting(false)
     }
+
+    private var gridColor: Color { session.gridDark ? .black : .white }
 
     /// Dragging moves the anchor. In crop mode the *window* moves with the
     /// pointer; in pad mode the *image* does, so the sign flips.

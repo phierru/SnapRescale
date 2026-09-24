@@ -71,6 +71,11 @@ final class Session {
         didSet { grid.savePreference() }
     }
 
+    /// Black grid and frame instead of white, for light pictures (GitHub #7). Remembered.
+    var gridDark: Bool = UserDefaults.standard.bool(forKey: "compositionGridDark") {
+        didSet { UserDefaults.standard.set(gridDark, forKey: "compositionGridDark") }
+    }
+
     // Saving preferences live in AppSettings; proxies keep call sites short.
     var revealAfterSave: Bool { AppSettings.shared.revealAfterSave }
     var saveWithoutAsking: Bool { AppSettings.shared.saveWithoutAsking }
