@@ -63,8 +63,6 @@ struct ControlsPanel: View {
 
                 ladderRow
 
-                readouts
-
                 LabeledContent("Fit") {
                     HStack(spacing: 8) {
                         Picker("", selection: $session.fit.deferred) {
@@ -90,6 +88,8 @@ struct ControlsPanel: View {
                         Text("px").foregroundStyle(.secondary).padding(.trailing, 4)   // optical: the well above has no cap
                     }
                 }
+
+                readouts
             }
 
             Section("Format") {
@@ -235,22 +235,24 @@ struct ControlsPanel: View {
               : "Nudge; ⇧ for ×10")
     }
 
-    /// The four views of the number on one line. The one being edited reads
-    /// normally; the solver's three read dimmed (PRD §5).
+    /// The solved size, last in the Size card (GitHub #6): the four views of the
+    /// number on one line. The one being edited reads normally; the solver's
+    /// three read dimmed (PRD §5).
     private var readouts: some View {
         Group {
             if let s = session.solution, let src = session.source {
-                HStack(spacing: 0) {
+                // A plain HStack, not LabeledContent: that would stack the
+                // values under the label when the row gets tight.
+                HStack(spacing: 8) {
+                    Text("Result")
+                    Spacer(minLength: 6)
                     readout("W", "\(s.width)", pinned: session.sizeKind == .width)
-                    Spacer()
                     readout("H", "\(s.height)", pinned: session.sizeKind == .height)
-                    Spacer()
                     readout("MP", String(format: "%.2f", s.megapixels), pinned: session.sizeKind == .megapixels)
-                    Spacer()
                     readout("%", String(format: "%.1f", s.scale(relativeTo: src.size) * 100), pinned: session.sizeKind == .scale)
+                        .padding(.trailing, 4)
                 }
                 .font(.callout.monospacedDigit())
-                .padding(.horizontal, 4)
             }
         }
     }
@@ -260,6 +262,8 @@ struct ControlsPanel: View {
             Text(label).foregroundStyle(.tertiary)
             Text(value).foregroundStyle(pinned ? .primary : .secondary).fontWeight(pinned ? .semibold : .regular)
         }
+        .lineLimit(1)
+        .fixedSize()
     }
 
     /// Quick picks under the field, as a segmented control like the view picker:
