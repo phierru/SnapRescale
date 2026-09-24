@@ -93,7 +93,8 @@ Suggested set:
 
 ## Status
 
-1.0 (1) submitted 2026-09-06, Waiting for Review. This document is the
+1.0 (1) submitted 2026-09-06, Waiting for Review. 1.0 (2) uploaded 2026-09-14
+(post-review fixes from commit 110e688); select it on the version page. This document is the
 listing draft that was pasted in; it is not a live view of App Store Connect.
 
 ## Checklist for the next build
