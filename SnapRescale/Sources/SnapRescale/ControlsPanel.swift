@@ -2,6 +2,31 @@ import SwiftUI
 import AppKit
 import RescaleKit
 
+/// macOS 27 lays a grouped Form (any SwiftUI scroll container) out 430 pt wide
+/// for one pass when its state changes *inside* a mouse event on one of its
+/// controls, overflowing the 340 pt sidebar until the next update (GitHub #2).
+/// The same change made a run-loop turn later is laid out correctly, so every
+/// control in the panel writes through here.
+@MainActor func deferred(_ work: @escaping @MainActor () -> Void) {
+    DispatchQueue.main.async { work() }
+}
+
+/// Carries a non-Sendable value across `DispatchQueue.main.async`; both ends run on the main thread.
+private final class MainThreadBox<T>: @unchecked Sendable {
+    let value: T
+    init(_ value: T) { self.value = value }
+}
+
+extension Binding {
+    /// Writes on the next run-loop turn; see `deferred(_:)`.
+    var deferred: Binding<Value> {
+        Binding(get: { wrappedValue }, set: { new in
+            let box = MainThreadBox((self, new))
+            DispatchQueue.main.async { box.value.0.wrappedValue = box.value.1 }
+        })
+    }
+}
+
 struct ControlsPanel: View {
     @Environment(Session.self) private var session
 
@@ -13,7 +38,7 @@ struct ControlsPanel: View {
             }
 
             Section("Aspect ratio") {
-                Picker("Aspect", selection: $session.aspect) {
+                Picker("Aspect", selection: $session.aspect.deferred) {
                     ForEach(AspectRatio.all, id: \.self) { Text($0.displayName).tag($0) }
                 }
                 .labelsHidden()
@@ -23,7 +48,7 @@ struct ControlsPanel: View {
             Section("Size") {
                 Picker("View", selection: Binding(
                     get: { session.sizeKind },
-                    set: { session.switchSizeKind(to: $0) }
+                    set: { kind in deferred { session.switchSizeKind(to: kind) } }
                 )) {
                     ForEach(Session.SizeKind.allCases) { Text($0.rawValue).tag($0) }
                 }
@@ -33,7 +58,7 @@ struct ControlsPanel: View {
                 HStack(spacing: 6) {
                     stepButton("minus", -1)
                     Spacer()
-                    TextField("", value: $session.sizeValue, format: .number.precision(.fractionLength(0...2)).grouping(.never))
+                    TextField("", value: $session.sizeValue.deferred, format: .number.precision(.fractionLength(0...2)).grouping(.never))
                         .textFieldStyle(.roundedBorder)
                         .multilineTextAlignment(.trailing)
                         .monospacedDigit()
@@ -49,7 +74,7 @@ struct ControlsPanel: View {
 
                 LabeledContent("Fit") {
                     HStack(spacing: 8) {
-                        Picker("", selection: $session.fit) {
+                        Picker("", selection: $session.fit.deferred) {
                             Text("Crop").tag(FitPolicy.crop)
                             Text("Pad").tag(FitPolicy.pad)
                         }
@@ -62,14 +87,14 @@ struct ControlsPanel: View {
                     }
                 }
 
-                Picker("Multiple of", selection: $session.multiple) {
+                Picker("Multiple of", selection: $session.multiple.deferred) {
                     ForEach(Multiple.allCases, id: \.self) { Text("\($0.rawValue)").tag($0) }
                 }
                 .pickerStyle(.segmented)
             }
 
             Section("Format") {
-                Picker("Format", selection: $session.format) {
+                Picker("Format", selection: $session.format.deferred) {
                     ForEach(OutputFormat.allCases, id: \.self) { f in
                         if f == .keepOriginal {
                             let ok = session.source.map { f.isAvailable(for: $0.type) } ?? true
@@ -84,7 +109,7 @@ struct ControlsPanel: View {
                 if let src = session.source, session.format.isLossy(for: src.type) {
                     LabeledContent("Quality") {
                         HStack {
-                            Slider(value: $session.quality, in: 0.1...1, step: 0.05)
+                            Slider(value: $session.quality.deferred, in: 0.1...1, step: 0.05)
                             Text("\(Preset.percent(session.quality))").monospacedDigit().frame(width: 28, alignment: .trailing)
                         }
                     }
@@ -126,12 +151,12 @@ struct ControlsPanel: View {
             VStack(spacing: 4) {
                 HStack {
                     if session.saveWithoutAsking {
-                        Button(session.quitsAfterSave ? "Save As & Quit…" : "Save As…") { session.saveAs() }
+                        Button(session.quitsAfterSave ? "Save As & Quit…" : "Save As…") { deferred { session.saveAs() } }
                             .disabled(!session.canSave)
                     }
                     Spacer()
                     if session.isSaving { ProgressView().controlSize(.small) }
-                    Button(saveTitle) { session.save() }
+                    Button(saveTitle) { deferred { session.save() } }
                         .buttonStyle(.borderedProminent)
                         .disabled(!session.canSave)
                         .help(session.saveWithoutAsking
@@ -175,7 +200,7 @@ struct ControlsPanel: View {
     private func stepButton(_ icon: String, _ direction: Int) -> some View {
         Button {
             let big = NSEvent.modifierFlags.contains(.shift)
-            session.step(direction, big: big)
+            deferred { session.step(direction, big: big) }
         } label: {
             Image(systemName: icon)
                 .font(.body.weight(.medium))
@@ -219,7 +244,7 @@ struct ControlsPanel: View {
     private var ladderRow: some View {
         Picker("", selection: Binding<Double>(
             get: { session.ladder.first { abs(session.sizeValue - $0) < 0.001 } ?? -1 },
-            set: { if $0 > 0 { session.sizeValue = $0 } }
+            set: { v in if v > 0 { deferred { session.sizeValue = v } } }
         )) {
             ForEach(session.ladder, id: \.self) { v in
                 Text(session.ladderLabel(v)).tag(v)
@@ -283,8 +308,9 @@ struct PaddingWell: View {
             },
             set: { new in
                 guard let ns = NSColor(new).usingColorSpace(.sRGB) else { return }
-                session.padColor = PadColor(red: ns.redComponent, green: ns.greenComponent,
-                                            blue: ns.blueComponent, alpha: ns.alphaComponent)
+                let color = PadColor(red: ns.redComponent, green: ns.greenComponent,
+                                     blue: ns.blueComponent, alpha: ns.alphaComponent)
+                deferred { session.padColor = color }
             }
         )
     }
@@ -313,7 +339,7 @@ struct PresetRow: View {
         Menu {
             ForEach(session.presets.presets) { p in
                 Button {
-                    session.apply(p)
+                    deferred { session.apply(p) }
                 } label: {
                     if session.activePreset == p.name {
                         Label(p.name, systemImage: "checkmark")
@@ -327,7 +353,7 @@ struct PresetRow: View {
             Button("Save Current as Preset…") { newName = session.activePreset ?? ""; namingSheet = true }
                 .disabled(session.source == nil)
             if let name = session.activePreset {
-                Button("Delete “\(name)”") { session.presets.delete(named: name); session.noteSettingsChanged() }
+                Button("Delete “\(name)”") { deferred { session.presets.delete(named: name); session.noteSettingsChanged() } }
             }
             if !session.presets.problems.isEmpty {
                 Divider()

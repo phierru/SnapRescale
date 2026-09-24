@@ -76,7 +76,7 @@ struct PreviewView: View {
             gridLines(in: shown)
         }
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { session.anchor = .center }
+        .onTapGesture(count: 2) { deferred { session.anchor = .center } }
         .gesture(dragGesture(scale: scale, slackX: slackX, slackY: slackY, invert: false))
     }
 
@@ -108,7 +108,7 @@ struct PreviewView: View {
                 .allowsHitTesting(false)
         }
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { session.anchor = .center }
+        .onTapGesture(count: 2) { deferred { session.anchor = .center } }
         .gesture(dragGesture(scale: scale, slackX: slackX, slackY: slackY, invert: true))
     }
 
@@ -152,7 +152,9 @@ struct PreviewView: View {
                 let dy = v.translation.height / scale
                 let nx = slackX > 0 ? start.x + sign * dx / slackX : start.x
                 let ny = slackY > 0 ? start.y + sign * dy / slackY : start.y
-                session.anchor = CropAnchor(x: nx, y: ny)
+                // Written a run-loop turn later: the sidebar Form mis-lays out
+                // when its state changes inside the mouse event (GitHub #2).
+                deferred { session.anchor = CropAnchor(x: nx, y: ny) }
             }
             .onEnded { _ in dragStart = nil }
     }
