@@ -35,14 +35,7 @@ struct ControlsPanel: View {
         Form {
             Section {
                 PresetRow()
-            }
-
-            Section("Aspect ratio") {
-                Picker("Aspect", selection: $session.aspect.deferred) {
-                    ForEach(AspectRatio.all, id: \.self) { Text($0.displayName).tag($0) }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
+                LabeledContent("Aspect ratio") { aspectMenu }
             }
 
             Section("Size") {
@@ -174,6 +167,27 @@ struct ControlsPanel: View {
     }
 
     // MARK: Pieces
+
+    /// Same borderless drop-down as the preset row above it (GitHub #4).
+    private var aspectMenu: some View {
+        Menu {
+            ForEach(AspectRatio.all, id: \.self) { a in
+                Button {
+                    deferred { session.aspect = a }
+                } label: {
+                    if a == session.aspect {
+                        Label(a.displayName, systemImage: "checkmark")
+                    } else {
+                        Text(a.displayName)
+                    }
+                }
+            }
+        } label: {
+            Text(session.aspect.displayName)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
 
     private var saveTitle: String {
         switch (session.saveWithoutAsking, session.quitsAfterSave) {
