@@ -6,7 +6,7 @@ once the Developer Program membership (personal team 7XVA74UJHL) exists.
 ## Name, subtitle, category
 
 - **Name:** SnapRescale
-- **Subtitle (30 chars):** Resize images, snap to 8 or 16
+- **Subtitle (30 chars):** Resize images, snap to 8/16/32
 - **Category:** Photo & Video · secondary: Graphics & Design
 - **Price:** Free · no in-app purchases
 - **Bundle ID:** com.phierru.SnapRescale · **SKU:** snaprescale-mac
@@ -26,7 +26,7 @@ exactly what will be cropped; drag the frame to reframe, or pad instead with
 any colour, including transparent.
 
 Made for AI image workflows as much as for photos: sizes snap to multiples
-of 8 or 16, the number you typed is never changed behind your back, and the
+of 8, 16 or 32, the number you typed is never changed behind your back, and the
 panel tells you when the multiple forced an adjustment. A ladder of the
 usual sizes — 512 · 768 · 1024 · 1536 · 2048 — is one click away and editable.
 

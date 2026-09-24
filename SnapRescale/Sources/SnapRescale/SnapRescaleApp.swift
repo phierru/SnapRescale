@@ -134,8 +134,8 @@ struct SettingsView: View {
     private var ladderNote: String {
         if let e = ladderError { return e }
         let unsafe = AppSettings.latticeUnsafe(settings.ladder)
-        if unsafe.isEmpty { return "2–6 values, comma-separated. All are multiples of 16, so snapping never moves them." }
-        return "Not multiples of 16, so a multiple of 8 or 16 will move them: \(unsafe.map(String.init).joined(separator: ", "))."
+        if unsafe.isEmpty { return "2–6 values, comma-separated. All are multiples of 32, so snapping never moves them." }
+        return "Not multiples of 32, so snapping to 8, 16 or 32 may move them: \(unsafe.map(String.init).joined(separator: ", "))."
     }
 
     private func commitLadder() {

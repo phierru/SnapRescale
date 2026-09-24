@@ -126,11 +126,15 @@ struct PropertyTests {
     }
 
     @Test func originalAspectPreservesSourceRatioAtLargeSizes() {
-        // Under Original, a comfortably large target keeps the source ratio to well under a percent.
+        // Under Original, a comfortably large target keeps the source ratio to well
+        // under a percent for multiples up to 16. A step of 32 on a ~1000 px side is
+        // over 3 %, so there the bound is half a lattice step on the shorter side.
         for s in Self.samples where s.request.aspect == .original {
             let r = s.request.solve(for: s.source)
             if min(r.width, r.height) >= 1024 {
-                #expect(r.aspectError < 0.01, "\(s.source) \(s.request) → \(r)")
+                let step = Double(s.request.multiple.rawValue)
+                let bound = max(0.01, 0.5 * step / Double(min(r.width, r.height)))
+                #expect(r.aspectError < bound, "\(s.source) \(s.request) → \(r)")
             }
         }
     }

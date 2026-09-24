@@ -4,7 +4,7 @@
 
 SnapRescale is a free, native macOS utility for resizing one image to the
 dimensions your workflow needs. Choose an aspect ratio and set width, height,
-megapixels or scale. Snap dimensions to multiples of 8 or 16 for AI image
+megapixels or scale. Snap dimensions to multiples of 8, 16 or 32 for AI image
 workflows, or use ordinary pixel dimensions.
 
 Preview the crop before saving, drag to adjust the framing, or pad with a

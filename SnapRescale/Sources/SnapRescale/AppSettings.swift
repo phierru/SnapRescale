@@ -35,6 +35,6 @@ final class AppSettings {
         return (2...6).contains(clean.count) ? clean : nil
     }
 
-    /// Values that snapping can displace (PRD §5: every detent should be divisible by 8 and 16).
-    static func latticeUnsafe(_ values: [Int]) -> [Int] { values.filter { $0 % 16 != 0 } }
+    /// Values that snapping can displace (PRD §5: every detent should be divisible by 8, 16 and 32).
+    static func latticeUnsafe(_ values: [Int]) -> [Int] { values.filter { $0 % 32 != 0 } }
 }

@@ -118,7 +118,7 @@ both. So at multiple 16 the derived axis can legally move by one lattice step
 on a view switch, and the notes under Output say so. At multiple 1 nothing
 moves.
 
-**Original is exact up to the multiple.** With a multiple of 8 or 16 the
+**Original is exact up to the multiple.** With a multiple of 8, 16 or 32 the
 snapped size can differ from the source ratio by a few pixels; the renderer
 then crops that sliver and the crop percentage reports it (typically under
 0.5 %).
@@ -196,7 +196,7 @@ Details:
 
 ### `multiple` is not a degree of freedom
 
-The multiple — **1, 8 or 16** — is a quantiser applied *after* the continuous
+The multiple — **1, 8, 16 or 32** — is a quantiser applied *after* the continuous
 solve, not another constraint competing for a DOF. Given the ideal real-valued
 (W\*, H\*), the solver searches nearby lattice points and minimises a weighted sum of
 squared log errors, aspect ratio weighted 1.0 and pixel count 0.05 — so aspect

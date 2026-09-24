@@ -80,10 +80,16 @@ struct ControlsPanel: View {
                     }
                 }
 
-                Picker("Multiple of", selection: $session.multiple.deferred) {
-                    ForEach(Multiple.allCases, id: \.self) { Text("\($0.rawValue)").tag($0) }
+                LabeledContent("Multiple of") {
+                    HStack(spacing: 6) {
+                        Picker("", selection: $session.multiple.deferred) {
+                            ForEach(Multiple.allCases, id: \.self) { Text("\($0.rawValue)").tag($0) }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+                        Text("px").foregroundStyle(.secondary).padding(.trailing, 4)   // optical: the well above has no cap
+                    }
                 }
-                .pickerStyle(.segmented)
             }
 
             Section("Format") {

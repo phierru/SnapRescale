@@ -2,7 +2,7 @@
 // there is an app. Solves geometry only for now; no pixels are written yet.
 //
 //   rescale [--aspect 16:9|original] (--width N | --height N | --mp X | --scale X)
-//           [--multiple 1|8|16] [--fit crop|pad|stretch] [--format keep|jpeg|png|heic|tiff]
+//           [--multiple 1|8|16|32] [--fit crop|pad|stretch] [--format keep|jpeg|png|heic|tiff]
 //           [--quality 0.95] [--write] (<image> | --source WxH)
 
 import Foundation
@@ -17,7 +17,7 @@ func fail(_ message: String) -> Never {
 func usage() -> Never {
     print("""
     usage: rescale [--aspect 16:9|original] (--width N | --height N | --mp X | --scale X)
-                   [--multiple 1|8|16] [--fit crop|pad|stretch] [--format keep|jpeg|png|heic|tiff]
+                   [--multiple 1|8|16|32] [--fit crop|pad|stretch] [--format keep|jpeg|png|heic|tiff]
                    [--quality 0.95] [--write] (<image> | --source WxH)
     """)
     exit(1)
@@ -70,7 +70,7 @@ while !args.isEmpty {
     case "--mp": guard let v = Double(take()) else { fail("bad megapixels") }; size = .megapixels(v)
     case "--scale": guard let v = Double(take()) else { fail("bad scale") }; size = .scale(v)
     case "--multiple":
-        guard let v = Int(take()), let m = Multiple(rawValue: v) else { fail("multiple must be 1, 8 or 16") }
+        guard let v = Int(take()), let m = Multiple(rawValue: v) else { fail("multiple must be 1, 8, 16 or 32") }
         multiple = m
     case "--source": source = parseSize(take())
     case "--fit": guard let f = FitPolicy(rawValue: take()) else { fail("fit must be crop, pad or stretch") }; fit = f
