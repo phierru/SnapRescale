@@ -146,6 +146,10 @@ struct ControlsPanel: View {
             }
         }
         .formStyle(.grouped)
+        // Pins the Preset row's height whether or not the panel scrolls (the
+        // grouped style otherwise moves it), and pulls it up over the style's
+        // built-in top spacing so it centres on the header row (GitHub #3).
+        .contentMargins(.top, -15, for: .scrollContent)
         .onChange(of: session.spec) { session.noteSettingsChanged() }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 4) {

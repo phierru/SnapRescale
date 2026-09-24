@@ -109,7 +109,11 @@ struct EditorView: View {
                 PreviewView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .padding(16)
+            // Top and bottom chosen so the header row centres on the sidebar's
+            // Preset row and the footer on its Save bar (GitHub #3).
+            .padding(.horizontal, 16)
+            .padding(.top, 11)
+            .padding(.bottom, 12)
             Divider()
             ControlsPanel()
                 .frame(width: 340)
