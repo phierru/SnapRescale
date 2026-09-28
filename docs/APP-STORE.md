@@ -14,7 +14,7 @@ once the Developer Program membership (personal team 7XVA74UJHL) exists.
 ## Promotional text (170 chars)
 
 Pick a ratio, pick one number, see the crop before you save. Snaps to
-multiples of 8 and 16 for diffusion models and video. Free and open source.
+multiples of 8, 16 or 32 for diffusion models and video. Free and open source.
 
 ## Description
 
@@ -47,6 +47,16 @@ usual sizes — 512 · 768 · 1024 · 1536 · 2048 — is one click away and edi
 
 resize,image,crop,aspect ratio,megapixel,comfyui,stable diffusion,photo,
 scale,png,jpeg,heic
+
+## What's new (1.1)
+
+• Multiple of 32, for image models that prefer it.
+• The final size now sits as a Result row at the bottom of the Size card.
+• Bolder composition grid, with a white/black switch for light pictures.
+• Tidier sidebar: Preset and Aspect ratio side by side, aligned rows.
+• A new image now starts with the original aspect ratio.
+• Fixed on macOS 27: the sidebar briefly widened after a click, a drop or
+  opening a file.
 
 ## What's new (1.0)
 
@@ -93,8 +103,9 @@ Suggested set:
 
 ## Status
 
-1.0 (1) submitted 2026-09-06, Waiting for Review. 1.0 (2) uploaded 2026-09-14
-(post-review fixes from commit 110e688); select it on the version page. This document is the
+1.0 (1) submitted 2026-09-06; 1.0 (2) uploaded 2026-09-14 (post-review fixes from
+commit 110e688); 1.0 approved, Ready for Distribution. 1.1 (3) uploaded 2026-09-28
+(tag v1.1-build3). This document is the
 listing draft that was pasted in; it is not a live view of App Store Connect.
 
 ## Checklist for the next build
