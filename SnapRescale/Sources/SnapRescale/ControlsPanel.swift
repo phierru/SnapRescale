@@ -2,31 +2,6 @@ import SwiftUI
 import AppKit
 import RescaleKit
 
-/// macOS 27 lays a grouped Form (any SwiftUI scroll container) out 430 pt wide
-/// for one pass when its state changes *inside* a mouse event on one of its
-/// controls, overflowing the 340 pt sidebar until the next update (GitHub #2).
-/// The same change made a run-loop turn later is laid out correctly, so every
-/// control in the panel writes through here.
-@MainActor func deferred(_ work: @escaping @MainActor () -> Void) {
-    DispatchQueue.main.async { work() }
-}
-
-/// Carries a non-Sendable value across `DispatchQueue.main.async`; both ends run on the main thread.
-private final class MainThreadBox<T>: @unchecked Sendable {
-    let value: T
-    init(_ value: T) { self.value = value }
-}
-
-extension Binding {
-    /// Writes on the next run-loop turn; see `deferred(_:)`.
-    var deferred: Binding<Value> {
-        Binding(get: { wrappedValue }, set: { new in
-            let box = MainThreadBox((self, new))
-            DispatchQueue.main.async { box.value.0.wrappedValue = box.value.1 }
-        })
-    }
-}
-
 struct ControlsPanel: View {
     @Environment(Session.self) private var session
 
@@ -108,7 +83,7 @@ struct ControlsPanel: View {
                 if let src = session.source, session.format.isLossy(for: src.type) {
                     LabeledContent("Quality") {
                         HStack {
-                            Slider(value: $session.quality.deferred, in: 0.1...1, step: 0.05)
+                            Slider(value: $session.quality.deferredLive, in: 0.1...1, step: 0.05)
                             Text("\(Preset.percent(session.quality))").monospacedDigit().frame(width: 28, alignment: .trailing)
                         }
                     }

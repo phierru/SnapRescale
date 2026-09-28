@@ -28,11 +28,11 @@ struct SnapRescaleApp: App {
             CommandGroup(replacing: .saveItem) {
                 let s = Session.shared
                 Button(s.saveWithoutAsking ? (s.quitsAfterSave ? "Save & Quit" : "Save")
-                                           : (s.quitsAfterSave ? "Save & Quit…" : "Save…")) { s.save() }
+                                           : (s.quitsAfterSave ? "Save & Quit…" : "Save…")) { deferred { s.save() } }
                     .keyboardShortcut("s")
                     .disabled(!s.canSave)
                 if s.saveWithoutAsking {
-                    Button(s.quitsAfterSave ? "Save As & Quit…" : "Save As…") { s.saveAs() }
+                    Button(s.quitsAfterSave ? "Save As & Quit…" : "Save As…") { deferred { s.saveAs() } }
                         .keyboardShortcut("s", modifiers: [.command, .shift])
                         .disabled(!s.canSave)
                 }
@@ -65,7 +65,7 @@ struct SettingsView: View {
         Form {
             Section("Saving") {
                 Toggle("Show the saved image in Finder", isOn: $settings.revealAfterSave)
-                Toggle("Save next to the original without asking", isOn: $settings.saveWithoutAsking)
+                Toggle("Save next to the original without asking", isOn: $settings.saveWithoutAsking.deferred)
                 Text(settings.saveWithoutAsking
                      ? "⌘S writes {name}_{w}x{h} beside the original. ⇧⌘S opens the save panel. The first save into a folder asks for permission once."
                      : "⌘S opens the save panel in the original's folder, pre-filled with {name}_{w}x{h}, so the name can be tweaked.")
@@ -83,13 +83,13 @@ struct SettingsView: View {
             }
 
             Section("Defaults for a new image") {
-                Picker("Multiple of", selection: $settings.defaultMultiple) {
+                Picker("Multiple of", selection: $settings.defaultMultiple.deferred) {
                     ForEach(Multiple.allCases, id: \.self) { Text("\($0.rawValue)").tag($0) }
                 }
                 .pickerStyle(.segmented)
                 LabeledContent("Quality") {
                     HStack {
-                        Slider(value: $settings.defaultQuality, in: 0.1...1, step: 0.05)
+                        Slider(value: $settings.defaultQuality.deferredLive, in: 0.1...1, step: 0.05)
                         Text("\(Preset.percent(settings.defaultQuality))").monospacedDigit().frame(width: 28, alignment: .trailing)
                     }
                 }
@@ -105,15 +105,17 @@ struct SettingsView: View {
                 TextField("Pixel values", text: $ladderText)
                     .textFieldStyle(.roundedBorder)
                     .monospacedDigit()
-                    .onSubmit(commitLadder)
+                    .onSubmit { deferred { commitLadder() } }
                 HStack {
                     Text(ladderNote).font(.callout).foregroundStyle(ladderError == nil ? Color.secondary : Color.orange)
                     Spacer()
-                    Button("Apply", action: commitLadder)
+                    Button("Apply") { deferred { commitLadder() } }
                     Button("Reset") {
-                        settings.ladder = AppSettings.defaultLadder
-                        ladderText = settings.ladder.map(String.init).joined(separator: ", ")
-                        ladderError = nil
+                        deferred {
+                            settings.ladder = AppSettings.defaultLadder
+                            ladderText = settings.ladder.map(String.init).joined(separator: ", ")
+                            ladderError = nil
+                        }
                     }
                 }
             }
@@ -160,7 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Open With, Dock-icon drop, or a file passed to `open -a`.
     func application(_ application: NSApplication, open urls: [URL]) {
-        Session.shared.accept(urls, origin: .external)
+        deferred { Session.shared.accept(urls, origin: .external) }   // an Apple event is an event too (GitHub #2)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

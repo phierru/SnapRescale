@@ -17,10 +17,7 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 960, minHeight: 640)
-        .dropDestination(for: URL.self) { urls, _ in
-            session.accept(urls)
-            return true
-        }
+        .overlay { FileDropTarget { session.accept($0) } }
         .alert("SnapRescale", isPresented: Binding(
             get: { session.errorMessage != nil },
             set: { if !$0 { session.errorMessage = nil } }

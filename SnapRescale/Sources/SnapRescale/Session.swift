@@ -310,7 +310,8 @@ final class Session {
         panel.allowedContentTypes = [.image]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        if panel.runModal() == .OK, let url = panel.url { load(url) }
+        // The modal panel runs inside the click that opened it (GitHub #2).
+        if panel.runModal() == .OK, let url = panel.url { deferred { self.load(url) } }
     }
 
     nonisolated private static func makePreview(_ image: CGImage, maxPixels: Int) -> CGImage {

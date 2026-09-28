@@ -165,7 +165,7 @@ struct PreviewView: View {
                 let ny = slackY > 0 ? start.y + sign * dy / slackY : start.y
                 // Written a run-loop turn later: the sidebar Form mis-lays out
                 // when its state changes inside the mouse event (GitHub #2).
-                deferred { session.anchor = CropAnchor(x: nx, y: ny) }
+                deferredLive { session.anchor = CropAnchor(x: nx, y: ny) }
             }
             .onEnded { _ in dragStart = nil }
     }
