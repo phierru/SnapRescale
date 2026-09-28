@@ -175,6 +175,7 @@ final class Session {
                     let p = v.split(separator: ":").compactMap { Int($0) }
                     if p.count == 2, p[0] > 0, p[1] > 0 { aspect = .fixed(width: p[0], height: p[1]) }
                 }
+                launchAspect = aspect
             case "--width", "--height", "--mp", "--scale":
                 guard let v = it.next(), let d = Double(v) else { break }
                 sizeKind = a == "--width" ? .width : a == "--height" ? .height : a == "--mp" ? .megapixels : .scale
@@ -210,6 +211,7 @@ final class Session {
     private var launchSizeValue: Double?
     private var launchPreset: String?
     private var launchMultiple: Multiple?
+    private var launchAspect: AspectRatio?
     /// `--settings`: the root view opens the Settings window once it appears (screenshots, tests).
     var openSettingsOnLaunch = false
     /// `--about` / `--help-window`: id of a window to open once the root view appears.
@@ -266,6 +268,8 @@ final class Session {
                 previewImage = preview
                 anchor = .center
                 // Defaults for a new image (review C7); launch overrides win.
+                aspect = launchAspect ?? .original
+                launchAspect = nil
                 multiple = launchMultiple ?? AppSettings.shared.defaultMultiple
                 launchMultiple = nil
                 quality = AppSettings.shared.defaultQuality
