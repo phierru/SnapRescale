@@ -17,8 +17,10 @@ without accounts or uploads.
 
 - macOS 26 or later, Apple Silicon (that is what has been built and tested).
 - **Mac App Store:** release pending review. The link will appear here.
-- **Direct download:** a notarised DMG will be attached to the GitHub releases
-  page once the Developer ID certificate is in place.
+- **Direct download:** [Download SnapRescale 1.1 (DMG)](https://github.com/phierru/SnapRescale/releases/download/v1.1-build3/SnapRescale-1.1.dmg),
+  signed with Developer ID and notarised by Apple. Open the DMG and drag
+  SnapRescale to Applications. See [GitHub releases](https://github.com/phierru/SnapRescale/releases)
+  for release notes and checksums.
 - **Build it yourself:** see [Building](#building) below.
 
 ## Using it
@@ -38,6 +40,7 @@ without accounts or uploads.
    once). The file size shown before saving is a real encode.
 
 Brief in-app help is on ⌘?; the same text is in [docs/HELP.md](docs/HELP.md).
+Version history is in the [changelog](CHANGELOG.md).
 
 ## What it does and doesn't do (1.0)
 

@@ -25,8 +25,10 @@ fi
 
 [ -f SnapRescale/AppIcon.icns ] || Scripts/make-icns.sh >/dev/null
 xcodegen generate --quiet
+# Developer ID builds must not include Xcode's get-task-allow debug entitlement.
 xcodebuild -project SnapRescale.xcodeproj -scheme SnapRescale -configuration Release \
-  -derivedDataPath build/DerivedData -quiet "${SIGN_ARGS[@]}" OTHER_CODE_SIGN_FLAGS="--timestamp --options=runtime" build
+  -derivedDataPath build/DerivedData -quiet "${SIGN_ARGS[@]}" CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
+  OTHER_CODE_SIGN_FLAGS="--timestamp --options=runtime" build
 APP="$OUT/SnapRescale.app"
 cp -R build/DerivedData/Build/Products/Release/SnapRescale.app "$APP"
 codesign --verify --deep --strict "$APP" && echo "signature verified"
