@@ -16,7 +16,7 @@ without accounts or uploads.
 ## Requirements and installation
 
 - macOS 26 or later, Apple Silicon (that is what has been built and tested).
-- **Mac App Store:** release pending review. The link will appear here.
+- **Mac App Store:** [Download SnapRescale](https://apps.apple.com/app/snaprescale/id6809174592).
 - **Direct download:** [Download SnapRescale 1.1 (DMG)](https://github.com/phierru/SnapRescale/releases/download/v1.1-build3/SnapRescale-1.1.dmg),
   signed with Developer ID and notarised by Apple. Open the DMG and drag
   SnapRescale to Applications. See [GitHub releases](https://github.com/phierru/SnapRescale/releases)
