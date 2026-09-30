@@ -7,16 +7,22 @@ import UniformTypeIdentifiers
 extension MetadataPolicy {
     /// The reason an AI workflow switch is disabled outside PNG.
     public static let requiresPNGNote = "Requires PNG output"
+    /// The reason the XMP switch is disabled for a source whose XMP was shown
+    /// from ImageIO's fields, with no packet the writer could copy.
+    public static let xmpNotCarriedNote = "This file's XMP can be shown but not carried over."
 
     /// Whether `type` can carry a section of this source. Differs from the
-    /// plain table for the AI workflow: a ComfyUI / InvokeAI graph lives in PNG
-    /// text chunks and survives only in PNG, while A1111-style parameters also
-    /// ride in the EXIF user comment, one text at a time. `type` is the
-    /// resolved output type; `nil` (a source "Keep original" cannot keep)
-    /// carries nothing.
+    /// plain table for XMP read without its packet (GIF, RAW, PSD, …: only
+    /// ImageIO's display fields, which the writer cannot copy; review
+    /// 2026-09-30, G8), and for the AI workflow: a ComfyUI / InvokeAI graph
+    /// lives in PNG text chunks and survives only in PNG, while A1111-style
+    /// parameters also ride in the EXIF user comment, one text at a time.
+    /// `type` is the resolved output type; `nil` (a source "Keep original"
+    /// cannot keep) carries nothing.
     public static func capability(of section: Section, in type: UTType?, carrying metadata: ImageMetadata) -> Capability {
         guard let type else { return .none("This format cannot be written.") }
         let table = capability(of: section, in: type)
+        if section == .xmp, table.canCarry, metadata.hasXMP, metadata.xmpPacket == nil { return .none(xmpNotCarriedNote) }
         guard section == .aiWorkflow, table.canCarry, !type.conforms(to: .png) else { return table }
         let payloads = metadata.aiPayloads
         // The user comment holds one text (`MetadataWriter.movedParameters`);
@@ -94,7 +100,8 @@ extension MetadataPolicy {
             }
             // Stripping: the copies in a kept XMP packet go too (PRD §10.3).
             guard section != .xmp, source.metadata.hasXMP, reserving || policy.xmp == .keep,
-                  capability(of: .xmp, in: type).canCarry, mirrors(section, in: source.metadata.xmpPacket)
+                  capability(of: .xmp, in: type, carrying: source.metadata).canCarry,
+                  let packet = source.metadata.xmpPacket, mirrors(section, in: packet)
             else { return nil }
             return "Also removed from XMP"
         }
@@ -155,10 +162,8 @@ extension MetadataPolicy {
         isPNGChunk(payload) && payload.name != "parameters"
     }
 
-    /// Whether an XMP packet repeats fields of a section. A packet that was not
-    /// read (containers `XMPScanner` does not walk) is assumed to.
-    private static func mirrors(_ section: Section, in packet: String?) -> Bool {
-        guard let packet else { return true }
+    /// Whether an XMP packet repeats fields of a section.
+    private static func mirrors(_ section: Section, in packet: String) -> Bool {
         switch section {
         case .gps: return packet.contains("exif:GPS")
         case .exif: return packet.contains("tiff:") || packet.replacingOccurrences(of: "exif:GPS", with: "").contains("exif:")
