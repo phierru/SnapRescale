@@ -186,8 +186,9 @@ final class Session {
                 guard let v = it.next() else { break }
                 if v.lowercased() == "original" { aspect = .original }
                 else {
-                    let p = v.split(separator: ":").compactMap { Int($0) }
-                    if p.count == 2, p[0] > 0, p[1] > 0 { aspect = .fixed(width: p[0], height: p[1]) }
+                    // Exactly two numbers: "16:x:9" is not 16:9 (review 2026-09-30, S4).
+                    let p = v.split(separator: ":", omittingEmptySubsequences: false).map { Int($0) }
+                    if p.count == 2, let w = p[0], let h = p[1], w > 0, h > 0 { aspect = .fixed(width: w, height: h) }
                 }
                 launchAspect = aspect
             case "--width", "--height", "--mp", "--scale":
@@ -208,8 +209,10 @@ final class Session {
             case "--window":
                 // "1440x900": frame size in points, for App Store screenshots (2× → 2880×1800).
                 if let v = it.next() {
-                    let p = v.lowercased().split(separator: "x").compactMap { Double($0) }
-                    if p.count == 2 { launchWindowSize = CGSize(width: p[0], height: p[1]) }
+                    let p = v.lowercased().split(separator: "x", omittingEmptySubsequences: false).map { Double($0) }
+                    if p.count == 2, let w = p[0], let h = p[1], w.isFinite, h.isFinite, w > 0, h > 0 {
+                        launchWindowSize = CGSize(width: w, height: h)
+                    }
                 }
             case "--about":
                 openWindowOnLaunch = "about"
