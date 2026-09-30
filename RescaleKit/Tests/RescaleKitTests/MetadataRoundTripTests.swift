@@ -84,18 +84,21 @@ struct FixtureDetectionTests {
         #expect(jpeg.hasEXIF)
     }
 
-    @Test func compressedTextChunksAreSeenByKeyword() throws {
+    @Test func compressedTextChunksAreInflated() throws {
         let m = try Fixture.load(.compressedText).metadata
         #expect(m.pngTextKeywords == ["prompt", "workflow"])
-        #expect(m.provenance == [.comfyUI])              // from the `workflow` keyword alone
-        // Not inflated today: the text is unavailable.
-        #expect(PNGScanner.textChunks(in: Fixture.compressedText.data).allSatisfy { $0.text == nil })
+        #expect(m.provenance == [.comfyUI])
+        let chunks = PNGScanner.textChunks(in: Fixture.compressedText.data)
+        #expect(chunks.allSatisfy { $0.isCompressed })
+        // Same graphs as the uncompressed fixture, recovered from zTXt / iTXt.
+        let plain = PNGScanner.textChunks(in: Fixture.comfyUI.data)
+        #expect(chunks.map(\.text) == plain.map(\.text))
     }
 }
 
 /// BASELINE, not a specification. These pin what `Renderer.produce` writes
 /// today — every metadata block stripped, 8-bit sRGB, orientation baked in —
-/// so the writer issues (#13 EXIF/GPS/IPTC/XMP, #14, #15 AI workflow, #18 ICC)
+/// so the writer issues (#13 EXIF/GPS/IPTC, #18 XMP, #14 AI workflow, #15 ICC)
 /// have to change an expectation here deliberately, in the commit that changes
 /// the behaviour. The two orientation tests are the exception: PRD §10.3 keeps
 /// them true for good.
