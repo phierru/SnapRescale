@@ -41,6 +41,11 @@ public struct ImageMetadata: Hashable, Sendable {
     public var xmpPacket: String?
     /// A JPEG's extended XMP (the part over 64 KB), reassembled. A second RDF document.
     public var xmpExtendedPacket: String?
+    /// What the scanners left unread: over the per-image `MetadataBudget`, or
+    /// extended XMP that is not the packet's. It is in none of the fields above,
+    /// so it is neither shown nor written on save; the Structure section's note
+    /// (the XMP section's, for extended XMP) says so. Empty for a file read in full.
+    public var skipped: [MetadataBudget.Skip] = []
 
     public enum Provenance: String, CaseIterable, Hashable, Sendable {
         case comfyUI = "ComfyUI"
@@ -96,8 +101,11 @@ public struct ImageMetadata: Hashable, Sendable {
 
     // MARK: - Detection
 
-    public static func inspect(source: CGImageSource, data: Data?, type: UTType) -> ImageMetadata {
+    /// `budget` bounds what the container scanners decode and keep, for the whole image.
+    public static func inspect(source: CGImageSource, data: Data?, type: UTType,
+                               budget: MetadataBudget = MetadataBudget()) -> ImageMetadata {
         var m = ImageMetadata()
+        var budget = budget
         m.frameCount = CGImageSourceGetCount(source)
         var exif = MetadataSection(kind: .exif)
         var gps = MetadataSection(kind: .gps)
@@ -164,7 +172,7 @@ public struct ImageMetadata: Hashable, Sendable {
 
         if let data {
             if type.conforms(to: .png) {
-                let chunks = PNGScanner.textChunks(in: data)
+                let chunks = PNGScanner.textChunks(in: data, budget: &budget)
                 m.pngTextChunks = chunks
                 m.pngTextKeywords = chunks.map(\.keyword)
                 let found = provenance(fromPNGChunks: chunks)
@@ -184,13 +192,18 @@ public struct ImageMetadata: Hashable, Sendable {
 
         // XMP is what the file holds, not what ImageIO derives from EXIF / TIFF / IPTC.
         var xmp = MetadataSection(kind: .xmp)
-        switch data.map({ XMPScanner.packet(in: $0, type: type, pngChunks: type.conforms(to: .png) ? m.pngTextChunks : nil) })
-            ?? .notScanned {
+        let scanned = data.map {
+            XMPScanner.packet(in: $0, type: type, pngChunks: type.conforms(to: .png) ? m.pngTextChunks : nil,
+                              budget: &budget)
+        }
+        m.skipped = budget.skipped
+        switch scanned ?? .notScanned {
         case .found(let packet, let extended):
             m.xmpPacket = packet
             m.xmpExtendedPacket = extended
             xmp.fields = XMPReader.fields(packet: packet) ?? []
             if let extended { xmp.addMissing(XMPReader.fields(packet: extended) ?? []) }
+            if m.skipped.contains(.extendedXMP) { xmp.note = MetadataBudget.Skip.extendedXMP.note }
             // A packet that does not parse, or is empty, is still a packet.
             if xmp.fields.isEmpty { xmp.add("Packet", MetadataFormat.bytes(packet.utf8.count)) }
         case .absent:
@@ -257,9 +270,17 @@ public struct ImageMetadata: Hashable, Sendable {
     /// `hdrGainMapNote` when the source has a gain map that Save will drop, else nil.
     public var hdrNote: String? { hasHDR ? Self.hdrGainMapNote : nil }
 
+    /// The gain-map remark, then what the scanners skipped: Structure is the
+    /// one section every file shows, so the inspector always has it to display.
+    /// Ignored extended XMP is remarked on the XMP section instead.
+    var structureNote: String? {
+        let notes = [hdrNote].compactMap { $0 } + skipped.filter { $0 != .extendedXMP }.map(\.note)
+        return notes.isEmpty ? nil : notes.joined(separator: " ")
+    }
+
     /// Read-only facts about the pixels.
     var structureSection: MetadataSection {
-        var s = MetadataSection(kind: .structure, note: hdrNote)
+        var s = MetadataSection(kind: .structure, note: structureNote)
         s.add("Alpha", hasAlpha ? "Yes" : "No")
         s.add("Bit depth", "\(bitDepth) bits per channel")
         s.fields.append(MetadataField(key: "HDR gain map", value: hasHDR ? "Yes" : "No",
