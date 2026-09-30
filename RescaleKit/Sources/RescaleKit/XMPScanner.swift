@@ -25,17 +25,23 @@ public enum XMPScanner {
     static let sizeLimit = 64 << 20
 
     public static func packet(in data: Data, type: UTType) -> Result {
-        packet(in: data, type: type, pngChunks: nil)
+        var budget = MetadataBudget()
+        return packet(in: data, type: type, pngChunks: nil, budget: &budget)
     }
 
-    /// `pngChunks` spares a second walk when the caller has them already.
-    static func packet(in data: Data, type: UTType, pngChunks: [PNGScanner.TextChunk]?) -> Result {
+    /// `pngChunks` spares a second walk when the caller has them already, and
+    /// were charged to `budget` then. What is assembled here draws on it too;
+    /// TIFF and WebP packets are single runs of the file's own bytes.
+    static func packet(in data: Data, type: UTType, pngChunks: [PNGScanner.TextChunk]?,
+                       budget: inout MetadataBudget) -> Result {
         let bytes = Bytes(data)
-        if type.conforms(to: .png) { return png(pngChunks ?? PNGScanner.textChunks(in: data), bytes) }
+        if type.conforms(to: .png) { return png(pngChunks ?? PNGScanner.textChunks(in: data, budget: &budget), bytes) }
         if type.conforms(to: .jpeg) { return jpeg(bytes) }
         if type.conforms(to: .tiff) { return tiff(bytes) }
         if type.conforms(to: .webP) { return webP(bytes) }
-        if type.conforms(to: .heic) || type.conforms(to: .heif) || type.identifier == "public.avif" { return isoBMFF(bytes) }
+        if type.conforms(to: .heic) || type.conforms(to: .heif) || type.identifier == "public.avif" {
+            return isoBMFF(bytes, &budget)
+        }
         return .notScanned
     }
 
@@ -126,7 +132,7 @@ public enum XMPScanner {
 
     /// The `mime` item of content type `application/rdf+xml`, located through
     /// the `meta` box's `iinf` and `iloc`.
-    static func isoBMFF(_ d: Bytes) -> Result {
+    static func isoBMFF(_ d: Bytes, _ budget: inout MetadataBudget) -> Result {
         guard d.count >= 12, d.fourCC(4) == "ftyp" else { return .notScanned }
         guard let meta = boxes(d, 0, d.count).first(where: { $0.type == "meta" }) else { return .absent }
         let children = boxes(d, meta.start + 4, meta.end)               // FullBox: version and flags first
@@ -148,9 +154,12 @@ public enum XMPScanner {
             if string(d.slice(nameEnd + 1, contentEnd)) == mimeType { itemID = id; break }
         }
         guard let itemID else { return .absent }
-        guard let iloc = children.first(where: { $0.type == "iloc" }),
-              let packet = item(itemID, d, iloc: iloc, idat: children.first { $0.type == "idat" })
-        else { return .notScanned }
+        guard let iloc = children.first(where: { $0.type == "iloc" }) else { return .notScanned }
+        let skips = budget.skipped.count
+        guard let packet = item(itemID, d, iloc: iloc, idat: children.first { $0.type == "idat" }, &budget) else {
+            // Over the budget is not handed to ImageIO to assemble instead.
+            return budget.skipped.count > skips ? .absent : .notScanned
+        }
         return .found(packet: string(packet), extended: nil)
     }
 
@@ -176,7 +185,9 @@ public enum XMPScanner {
     }
 
     /// An item's bytes, its extents joined. File offsets and `idat` offsets only.
-    private static func item(_ wanted: Int, _ d: Bytes, iloc: Box, idat: Box?) -> Data? {
+    /// Extents may repeat a range, so the joined size is held to `budget`, not
+    /// to the file's: past it the item is recorded as skipped and nil returned.
+    private static func item(_ wanted: Int, _ d: Bytes, iloc: Box, idat: Box?, _ budget: inout MetadataBudget) -> Data? {
         var p = iloc.start
         guard p + 6 <= iloc.end else { return nil }
         let version = d[p]
@@ -187,6 +198,10 @@ public enum XMPScanner {
             guard [0, 4, 8].contains(size), p + size <= iloc.end else { return nil }
             defer { p += size }
             return size == 0 ? 0 : size == 4 ? d.u32(p) : d.u64(p)
+        }
+        func over() -> Data? {
+            budget.skipped.append(.xmpPacket)
+            return nil
         }
         guard p + (version < 2 ? 2 : 4) <= iloc.end else { return nil }
         let items = version < 2 ? d.u16(p) : d.u32(p)
@@ -224,9 +239,10 @@ public enum XMPScanner {
                 // A zero length means "to the end" for a single extent.
                 let size = length == 0 ? limit - at : length
                 guard at >= 0, size > 0, size <= sizeLimit, at + size <= limit else { return nil }
+                guard size <= budget.bytes - out.count else { return over() }
                 out.append(d.slice(at, at + size))
             }
-            if id == wanted { return out.isEmpty ? nil : out }
+            if id == wanted { return out.isEmpty ? nil : budget.take(out.count) ? out : over() }
         }
         return nil
     }
