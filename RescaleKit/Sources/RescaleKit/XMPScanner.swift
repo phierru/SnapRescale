@@ -154,10 +154,10 @@ public enum XMPScanner {
         return .found(packet: string(packet), extended: nil)
     }
 
-    private struct Box { let type: String; let start: Int; let end: Int }
+    struct Box { let type: String; let start: Int; let end: Int }
 
     /// Child boxes of a range; `start` / `end` bound each payload.
-    private static func boxes(_ d: Bytes, _ from: Int, _ to: Int) -> [Box] {
+    static func boxes(_ d: Bytes, _ from: Int, _ to: Int) -> [Box] {
         var out: [Box] = []
         var i = from
         while i + 8 <= to {

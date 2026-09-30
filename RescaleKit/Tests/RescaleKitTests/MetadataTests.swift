@@ -132,7 +132,8 @@ struct MetadataTests {
 
     @Test func badgesOrderAndTooltip() {
         var m = ImageMetadata()
-        m.iccProfileName = "Display P3"; m.hasEXIF = true; m.hasGPS = true; m.orientation = 6; m.provenance = [.comfyUI]
+        // The ICC badge is for an embedded profile only (issue #25).
+        m.iccProfileName = "Display P3"; m.iccOrigin = .embedded; m.hasEXIF = true; m.hasGPS = true; m.orientation = 6; m.provenance = [.comfyUI]
         let labels = m.badges.map(\.label)
         #expect(labels == ["ICC", "Rotated", "EXIF", "GPS", "ComfyUI"])
         #expect(m.badges[0].detail.contains("Display P3"))

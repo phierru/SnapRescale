@@ -19,14 +19,17 @@ public struct MetadataExport: Hashable, Sendable, Identifiable {
 // MARK: - Copy and Export All
 
 extension ImageMetadata {
-    /// Every section as a title line and its `Key: value` lines, blank line between sections (Copy All, PRD §10.5).
+    /// Every section as a title line and its `Label: value` lines, blank line between
+    /// sections (Copy All, PRD §10.5). Readable: friendly labels, translated values.
     public var copyAllText: String {
         sections.map { "\($0.title)\n\($0.text)" }.joined(separator: "\n\n")
     }
 
     /// Every section as one pretty-printed UTF-8 JSON object (Export All…, PRD §10.5):
     /// section titles in inspector order, each an object of its fields in field order.
-    /// Values are the display strings; a payload that is itself JSON stays a string.
+    /// Faithful: raw keys (`FocalLenIn35mmFilm`) and values as stored (`Flash: 16`), never
+    /// the friendly labels or translations; derived fields (GPS `Position`, ICC `Embedded`)
+    /// are extra keys. A payload that is itself JSON stays a string.
     public var exportAllJSON: Data {
         var out = "{\n"
         for (i, section) in sections.enumerated() {
@@ -220,7 +223,7 @@ enum PromptReader {
     }
 
     /// A graph link is `[node id, output index]`; the id may be a string or a number.
-    private static func link(_ value: Any?) -> String? {
+    static func link(_ value: Any?) -> String? {
         guard let pair = value as? [Any], pair.count == 2, pair[1] is NSNumber else { return nil }
         if let s = pair[0] as? String { return s }
         if let n = pair[0] as? NSNumber { return n.stringValue }
@@ -229,8 +232,9 @@ enum PromptReader {
 
     /// Walks upstream from a conditioning link to the text encoder. Follows a node's own
     /// `positive` or `conditioning` input, or its only link (reroutes); stops at anything
-    /// that mixes or blanks conditioning.
-    private static func conditioningText(_ id: String, in graph: [String: Any], visited: Set<String>) -> String? {
+    /// that mixes or blanks conditioning. `side` is `negative` for the negative prompt.
+    static func conditioningText(_ id: String, in graph: [String: Any], visited: Set<String>,
+                                 side: String = "positive") -> String? {
         guard !visited.contains(id), visited.count < 64,
               let node = graph[id] as? [String: Any], let inputs = node["inputs"] as? [String: Any] else { return nil }
         let seen = visited.union([id])
@@ -239,11 +243,11 @@ enum PromptReader {
         if let g = inputs["text_g"] as? String, let l = inputs["text_l"] as? String { return g == l ? g : nil }
         if let from = link(inputs["text"]) { return stringValue(from, in: graph) }
         if node["class_type"] as? String == "ConditioningZeroOut" { return nil }
-        for name in ["positive", "conditioning"] {
-            if let next = link(inputs[name]) { return conditioningText(next, in: graph, visited: seen) }
+        for name in [side, "conditioning"] {
+            if let next = link(inputs[name]) { return conditioningText(next, in: graph, visited: seen, side: side) }
         }
         let links = inputs.values.compactMap(link)
-        return links.count == 1 ? conditioningText(links[0], in: graph, visited: seen) : nil
+        return links.count == 1 ? conditioningText(links[0], in: graph, visited: seen, side: side) : nil
     }
 
     /// A primitive string node feeding an encoder's `text`: exactly one of `text` / `value` / `string`.
