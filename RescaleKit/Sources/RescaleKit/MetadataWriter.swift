@@ -6,7 +6,10 @@ import UniformTypeIdentifiers
 /// Turns a source's ImageIO properties into what the encoder is handed, for the
 /// EXIF, GPS and IPTC switches of a `MetadataPolicy` (PRD §10.2–10.4). It keeps
 /// or strips whole blocks and never edits a field, other than the three fixes
-/// of §10.4. XMP, ICC and the AI workflow are decided elsewhere.
+/// of §10.4. The exception is the AI payloads stored in EXIF / TIFF (A1111
+/// parameters in UserComment, a Midjourney ImageDescription): the AI workflow
+/// switch owns those. The XMP packet is `XMPWriter`'s, ICC is `ColorPlan`'s and
+/// PNG workflow chunks are `PNGSplicer`'s.
 enum MetadataWriter {
     /// The property dictionary for `CGImageDestinationAddImage`: the kept blocks
     /// of `source`, fixed up for an output of `size`. A block the policy strips,
@@ -16,18 +19,34 @@ enum MetadataWriter {
                            size: PixelSize) -> [CFString: Any] {
         var out: [CFString: Any] = [:]
         let keepIPTC = writes(.iptc, policy: policy, type: type)
+        let keepAI = writes(.aiWorkflow, policy: policy, type: type)
+        let userCommentKey = kCGImagePropertyExifUserComment as String
+        let descriptionKey = kCGImagePropertyTIFFImageDescription as String
+        let captionKey = kCGImagePropertyIPTCCaptionAbstract as String
 
+        // AI payloads that live in EXIF / TIFF belong to the AI workflow switch,
+        // whatever the EXIF and IPTC switches say (PRD §10.2, issue #18).
+        let sourceTIFF = dictionary(source[kCGImagePropertyTIFFDictionary])
+        let sourceEXIF = dictionary(source[kCGImagePropertyExifDictionary])
+        let aiUserComment = (sourceEXIF[userCommentKey] as? String).flatMap { ImageMetadata.looksLikeA1111($0) ? $0 : nil }
+        let aiDescription = (sourceTIFF[descriptionKey] as? String).flatMap { looksLikeMidjourney($0) ? $0 : nil }
+
+        var tiff: [String: Any] = [:]
+        var exif: [String: Any] = [:]
+        var hasCameraData = false
         if writes(.exif, policy: policy, type: type) {
-            var tiff = dictionary(source[kCGImagePropertyTIFFDictionary])
+            tiff = sourceTIFF
             // The encoder's business, or describing the source's pixels.
             for key in structuralTIFFKeys { tiff[key] = nil }
             // Mirrored data follows its switch (PRD §10.3): these surface as the
-            // IPTC caption, byline and copyright notice.
+            // IPTC caption, byline and copyright.
             if !keepIPTC { for key in iptcMirrorTIFFKeys { tiff[key] = nil } }
+            if aiDescription != nil { tiff[descriptionKey] = nil }
 
-            var exif = dictionary(source[kCGImagePropertyExifDictionary])
+            exif = sourceEXIF
             // ImageIO derives these from the pixels it is given.
             for key in ImageMetadata.synthesisedEXIFKeys { exif[key] = nil }
+            if aiUserComment != nil { exif[userCommentKey] = nil }
 
             var extras: [CFString: Any] = [:]
             for (key, value) in source where isCameraExtra(key) && !dictionary(value).isEmpty { extras[key] = value }
@@ -36,16 +55,27 @@ enum MetadataWriter {
             // there. A bare resolution, which ImageIO also makes up, does not count.
             let hasTIFFTags = tiff.keys.contains { !resolutionTIFFKeys.contains($0) }
             if hasTIFFTags || !exif.isEmpty || !extras.isEmpty {
-                // PRD §10.4: pixel dimensions are the output's, orientation is 1
-                // wherever it appears. No thumbnail is ever asked for.
-                exif[kCGImagePropertyExifPixelXDimension as String] = size.width
-                exif[kCGImagePropertyExifPixelYDimension as String] = size.height
-                tiff[kCGImagePropertyTIFFOrientation as String] = 1
-                out[kCGImagePropertyOrientation] = 1
-                out[kCGImagePropertyTIFFDictionary] = tiff
-                out[kCGImagePropertyExifDictionary] = exif
                 out.merge(extras) { _, new in new }
+                hasCameraData = true
+            } else {
+                tiff = [:]
             }
+        }
+        // Kept AI payloads go back in: next to the kept EXIF, or as a block
+        // holding nothing else (bar the fixes below) when EXIF is stripped.
+        if keepAI, MetadataPolicy.capability(of: .exif, in: type).canCarry {
+            if let aiUserComment { exif[userCommentKey] = aiUserComment }
+            if let aiDescription { tiff[descriptionKey] = aiDescription }
+        }
+        if hasCameraData || !tiff.isEmpty || !exif.isEmpty {
+            // PRD §10.4: pixel dimensions are the output's, orientation is 1
+            // wherever it appears. No thumbnail is ever asked for.
+            exif[kCGImagePropertyExifPixelXDimension as String] = size.width
+            exif[kCGImagePropertyExifPixelYDimension as String] = size.height
+            tiff[kCGImagePropertyTIFFOrientation as String] = 1
+            out[kCGImagePropertyOrientation] = 1
+            out[kCGImagePropertyTIFFDictionary] = tiff
+            out[kCGImagePropertyExifDictionary] = exif
         }
 
         // Its own switch although it is stored inside EXIF (PRD §10.2).
@@ -55,11 +85,19 @@ enum MetadataWriter {
         }
 
         if keepIPTC {
-            let iptc = dictionary(source[kCGImagePropertyIPTCDictionary])
+            var iptc = dictionary(source[kCGImagePropertyIPTCDictionary])
+            // ImageIO's name for `xmp:Rating`: it exists only in the packet, so
+            // it travels with the XMP switch (`XMPWriter`), not with IPTC.
+            iptc[kCGImagePropertyIPTCStarRating as String] = nil
+            // A Midjourney description surfaces as the caption too.
+            if !keepAI, let caption = iptc[captionKey] as? String, looksLikeMidjourney(caption) { iptc[captionKey] = nil }
             if !iptc.isEmpty { out[kCGImagePropertyIPTCDictionary] = iptc }
         }
         return out
     }
+
+    /// Midjourney writes its prompt and job ID into the description.
+    static func looksLikeMidjourney(_ text: String) -> Bool { text.contains("Job ID:") }
 
     /// Removes what ImageIO adds unasked. Given EXIF dates, its JPEG encoder
     /// writes an IPTC block (APP13) mirroring them and the TIFF caption, artist

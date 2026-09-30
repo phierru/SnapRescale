@@ -166,10 +166,14 @@ public struct MetadataPolicy: Hashable, Sendable, Codable {
 
     /// The capability table (PRD §10.3). Covers every type `OutputFormat` can
     /// resolve to, plus GIF and BMP; any other type carries nothing.
+    ///
+    /// XMP that ImageIO derives from kept EXIF / TIFF / IPTC belongs to those
+    /// sections, not to the XMP switch (issue #18): PNG and HEIC carry IPTC only
+    /// that way, which their IPTC note says.
     public static func capability(of section: Section, in type: UTType) -> Capability {
         if type.conforms(to: .png) {
             switch section {
-            case .iptc: return .limited("PNG has no IPTC block. Caption, keywords and copyright are kept as their XMP copies.")
+            case .iptc: return .limited("PNG has no IPTC block. Caption, keywords and copyright are kept as XMP, so the file holds an XMP packet even when XMP is stripped.")
             // ImageIO always writes the one-byte `sRGB` chunk for sRGB pixels.
             case .icc: return .limited("Strip removes the profile, but a PNG still carries a one-byte sRGB marker.")
             default: return .full
@@ -183,7 +187,7 @@ public struct MetadataPolicy: Hashable, Sendable, Codable {
         }
         if type.conforms(to: .heic) {
             switch section {
-            case .iptc: return .limited("HEIC has no IPTC block. Caption, keywords and copyright are kept as their XMP copies.")
+            case .iptc: return .limited("HEIC has no IPTC block. Caption, keywords and copyright are kept as XMP, so the file holds an XMP packet even when XMP is stripped.")
             case .aiWorkflow: return .limited(partialWorkflowNote("HEIC"))
             // An sRGB HEIC holds a colour tag (`nclx`), never ICC bytes.
             case .icc: return .limited("HEIC never embeds a profile for sRGB, so Strip and Convert to sRGB write the same file.")
@@ -211,7 +215,7 @@ public struct MetadataPolicy: Hashable, Sendable, Codable {
     }
 
     private static func partialWorkflowNote(_ format: String) -> String {
-        "\(format) keeps A1111-style parameters in the EXIF user comment, but cannot hold a ComfyUI or InvokeAI graph. Save as PNG to keep the graph."
+        "\(format) keeps A1111-style parameters in the EXIF user comment, even when EXIF is stripped, but cannot hold a ComfyUI or InvokeAI graph. Save as PNG to keep the graph."
     }
 
     private static func nothingNote(_ format: String, _ section: Section) -> String {
