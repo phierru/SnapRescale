@@ -21,8 +21,13 @@ public struct MetadataExport: Hashable, Sendable, Identifiable {
 extension ImageMetadata {
     /// Every section as a title line and its `Label: value` lines, blank line between
     /// sections (Copy All, PRD §10.5). Readable: friendly labels, translated values.
+    /// The AI workflow leads with its summary, as the section's own Copy does.
     public var copyAllText: String {
-        sections.map { "\($0.title)\n\($0.text)" }.joined(separator: "\n\n")
+        let summary = aiSummaryText
+        return sections.map { section in
+            let lead = section.kind == .aiWorkflow && !summary.isEmpty ? summary + "\n" : ""
+            return "\(section.title)\n\(lead)\(section.text)"
+        }.joined(separator: "\n\n")
     }
 
     /// Every section as one pretty-printed UTF-8 JSON object (Export All…, PRD §10.5):
