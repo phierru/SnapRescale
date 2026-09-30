@@ -14,8 +14,8 @@ public struct RenderSpec: Hashable, Sendable {
     public var format: OutputFormat
     /// 0…1, used by lossy encoders only.
     public var quality: Double
-    /// What to keep of the source's metadata (PRD §10.2). Carried only: the
-    /// writer does not consult it yet.
+    /// What to keep of the source's metadata (PRD §10.2). The encoder honours
+    /// EXIF, GPS and IPTC; the other sections are carried only, for now.
     public var metadata: MetadataPolicy
 
     /// Whether the padding in this spec needs an alpha channel and the format
@@ -115,25 +115,40 @@ public enum Renderer {
         return out
     }
 
+    /// Encodes without a source, so without metadata: nothing is there to keep.
     public static func encode(_ image: CGImage, spec: RenderSpec, sourceType: UTType) throws -> Data {
+        try encode(image, spec: spec, sourceType: sourceType, sourceProperties: [:])
+    }
+
+    /// Encodes keeping what `spec.metadata` says of the source's EXIF, GPS and
+    /// IPTC (PRD §10.2), with the fixes of §10.4: no embedded thumbnail, EXIF
+    /// pixel dimensions of the output, orientation 1.
+    public static func encode(_ image: CGImage, spec: RenderSpec, source: SourceImage) throws -> Data {
+        try encode(image, spec: spec, sourceType: source.type, sourceProperties: source.properties)
+    }
+
+    private static func encode(_ image: CGImage, spec: RenderSpec, sourceType: UTType,
+                               sourceProperties: [CFString: Any]) throws -> Data {
         guard let type = spec.format.resolvedType(for: sourceType) else {
             throw RenderError.cannotKeepFormat(sourceType)
         }
         let data = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(data, type.identifier as CFString, 1, nil)
         else { throw RenderError.encodeFailed(type) }
-        var props: [CFString: Any] = [:]
+        let kept = MetadataWriter.properties(from: sourceProperties, policy: spec.metadata, type: type,
+                                             size: PixelSize(image.width, image.height))
+        var props = kept
         if spec.format.isLossy(for: sourceType) {
             props[kCGImageDestinationLossyCompressionQuality] = spec.quality
         }
         CGImageDestinationAddImage(dest, image, props as CFDictionary)
         guard CGImageDestinationFinalize(dest) else { throw RenderError.encodeFailed(type) }
-        return data as Data
+        return MetadataWriter.finish(data as Data, type: type, written: kept)
     }
 
     /// Render and encode in one go; the byte count is what the UI shows (PRD §8).
     public static func produce(_ source: SourceImage, spec: RenderSpec) throws -> Data {
-        try encode(try render(source, spec: spec), spec: spec, sourceType: source.type)
+        try encode(try render(source, spec: spec), spec: spec, source: source)
     }
 }
 
