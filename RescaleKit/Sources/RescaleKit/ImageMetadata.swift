@@ -3,7 +3,7 @@ import ImageIO
 import UniformTypeIdentifiers
 
 /// What a source file carries besides pixels (PRD §10, `docs/reference/image-metadata.md`).
-/// Detection only; nothing here is written back yet.
+/// Presence flags for the badge row, and the contents for the inspector and the writer.
 public struct ImageMetadata: Hashable, Sendable {
     public var hasEXIF = false
     public var hasGPS = false
@@ -21,6 +21,16 @@ public struct ImageMetadata: Hashable, Sendable {
     public var provenance: [Provenance] = []
     /// Keywords of PNG text chunks, in file order. Empty for other formats.
     public var pngTextKeywords: [String] = []
+    /// What the file carries, section by section, in inspector order (PRD §10.2),
+    /// as captured by `inspect`. Only sections with content appear; Structure always does.
+    public var sections: [MetadataSection] = []
+    /// Every PNG `tEXt` / `iTXt` / `zTXt` chunk in file order, with its text and
+    /// raw bytes so the writer can splice it back unchanged. Empty for other formats.
+    public var pngTextChunks: [PNGScanner.TextChunk] = []
+    /// AI-generation payloads (ComfyUI graphs, A1111 parameters, …) in file order.
+    public var aiPayloads: [AIPayload] = []
+    /// Where the C2PA manifest was found, e.g. "JPEG APP11 segment (JUMBF)".
+    public var c2paLocation: String?
 
     public enum Provenance: String, CaseIterable, Hashable, Sendable {
         case comfyUI = "ComfyUI"
@@ -78,6 +88,9 @@ public struct ImageMetadata: Hashable, Sendable {
     public static func inspect(source: CGImageSource, data: Data?, type: UTType) -> ImageMetadata {
         var m = ImageMetadata()
         m.frameCount = CGImageSourceGetCount(source)
+        var exif = MetadataSection(kind: .exif)
+        var gps = MetadataSection(kind: .gps)
+        var iptc = MetadataSection(kind: .iptc)
 
         if let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
             m.hasEXIF = hasRealEXIF(props)
@@ -89,23 +102,50 @@ public struct ImageMetadata: Hashable, Sendable {
             m.hasAlpha = props[kCGImagePropertyHasAlpha] as? Bool ?? false
             m.orientation = props[kCGImagePropertyOrientation] as? Int ?? 1
 
-            let tiff = props[kCGImagePropertyTIFFDictionary] as? [CFString: Any]
-            let exif = props[kCGImagePropertyExifDictionary] as? [CFString: Any]
-            let png = props[kCGImagePropertyPNGDictionary] as? [CFString: Any]
-            let iptc = props[kCGImagePropertyIPTCDictionary] as? [CFString: Any]
+            let tiffDict = props[kCGImagePropertyTIFFDictionary] as? [String: Any] ?? [:]
+            let exifDict = props[kCGImagePropertyExifDictionary] as? [String: Any] ?? [:]
+            let pngDict = props[kCGImagePropertyPNGDictionary] as? [String: Any] ?? [:]
+            let iptcDict = props[kCGImagePropertyIPTCDictionary] as? [String: Any] ?? [:]
+            let tiffDescription = tiffDict[kCGImagePropertyTIFFImageDescription as String] as? String
             // ImageIO files a JPEG's ImageDescription under IPTC caption; check both.
-            let description = (tiff?[kCGImagePropertyTIFFImageDescription] as? String)
-                ?? (iptc?[kCGImagePropertyIPTCCaptionAbstract] as? String) ?? ""
-            let userComment = (exif?[kCGImagePropertyExifUserComment] as? String) ?? ""
-            let software = (tiff?[kCGImagePropertyTIFFSoftware] as? String)
-                ?? (png?[kCGImagePropertyPNGSoftware] as? String) ?? ""
+            let description = tiffDescription
+                ?? (iptcDict[kCGImagePropertyIPTCCaptionAbstract as String] as? String) ?? ""
+            let userComment = (exifDict[kCGImagePropertyExifUserComment as String] as? String) ?? ""
+            let software = (tiffDict[kCGImagePropertyTIFFSoftware as String] as? String)
+                ?? (pngDict[kCGImagePropertyPNGSoftware as String] as? String) ?? ""
 
-            if description.contains("Job ID:") { m.provenance.append(.midjourney) }
-            if looksLikeA1111(userComment) { m.provenance.append(.a1111) }
+            if description.contains("Job ID:") {
+                m.provenance.append(.midjourney)
+                m.aiPayloads.append(AIPayload(source: .midjourney, name: "ImageDescription",
+                                              location: tiffDescription != nil ? "TIFF ImageDescription" : "IPTC caption",
+                                              text: description))
+            }
+            if looksLikeA1111(userComment) {
+                m.provenance.append(.a1111)
+                m.aiPayloads.append(AIPayload(source: .a1111, name: "UserComment", location: "EXIF UserComment",
+                                              text: userComment))
+            }
             if software.hasPrefix("NovelAI") { m.provenance.append(.novelAI) }
+
+            if m.hasEXIF {
+                // TIFF tags (IFD0) first, then the EXIF IFD and its lens extras.
+                exif.fields = MetadataFormat.fields(tiffDict, first: tiffOrder)
+                exif.addMissing(MetadataFormat.fields(exifDict, first: exifOrder, format: MetadataFormat.exif))
+                let aux = props[kCGImagePropertyExifAuxDictionary] as? [String: Any] ?? [:]
+                exif.addMissing(MetadataFormat.fields(aux))
+                if let maker = props[kCGImagePropertyMakerAppleDictionary] as? [String: Any], !maker.isEmpty {
+                    exif.add("Apple MakerNote", "‹\(maker.count) fields›")
+                }
+            }
+            if m.hasGPS {
+                gps.fields = MetadataFormat.fields(props[kCGImagePropertyGPSDictionary] as? [String: Any] ?? [:],
+                                                   first: gpsOrder)
+            }
+            iptc.fields = MetadataFormat.fields(iptcDict, first: iptcOrder)
         }
 
-        m.hasXMP = hasXMPTags(source)
+        let xmp = MetadataSection(kind: .xmp, fields: XMPReader.fields(source))
+        m.hasXMP = !xmp.fields.isEmpty
         m.hasHDR = hasAuxiliary(source, [kCGImageAuxiliaryDataTypeHDRGainMap, kCGImageAuxiliaryDataTypeISOGainMap])
         m.hasDepth = hasAuxiliary(source, [kCGImageAuxiliaryDataTypeDepth, kCGImageAuxiliaryDataTypeDisparity,
                                            kCGImageAuxiliaryDataTypePortraitEffectsMatte])
@@ -113,18 +153,77 @@ public struct ImageMetadata: Hashable, Sendable {
         if let data {
             if type.conforms(to: .png) {
                 let chunks = PNGScanner.textChunks(in: data)
+                m.pngTextChunks = chunks
                 m.pngTextKeywords = chunks.map(\.keyword)
-                m.provenance.append(contentsOf: provenance(fromPNGChunks: chunks))
-                if PNGScanner.hasChunk("caBX", in: data) { m.provenance.append(.c2pa) }
+                let found = provenance(fromPNGChunks: chunks)
+                m.provenance.append(contentsOf: found)
+                m.aiPayloads.append(contentsOf: payloads(fromPNGChunks: chunks, provenance: found))
+                if PNGScanner.hasChunk("caBX", in: data) {
+                    m.provenance.append(.c2pa)
+                    m.c2paLocation = "PNG caBX chunk"
+                }
             } else if type.conforms(to: .jpeg) {
-                if JPEGScanner.hasC2PA(in: data) { m.provenance.append(.c2pa) }
+                if JPEGScanner.hasC2PA(in: data) {
+                    m.provenance.append(.c2pa)
+                    m.c2paLocation = "JPEG APP11 segment (JUMBF)"
+                }
             }
         }
 
         // Dedupe, keep first-seen order.
         var seen = Set<Provenance>()
         m.provenance = m.provenance.filter { seen.insert($0).inserted }
+        // A PNG's Description can surface both through ImageIO and as a chunk.
+        var seenPayloads = Set<[String]>()
+        m.aiPayloads = m.aiPayloads.filter { seenPayloads.insert([$0.source.rawValue, $0.text]).inserted }
+
+        // The colour space is read off a lazily decoded image; no pixels are touched.
+        let profile = CGImageSourceCreateImageAtIndex(source, 0, nil)?.colorSpace?.copyICCData() as Data?
+        let icc = MetadataSection(kind: .icc, fields: m.iccProfileName == nil && profile == nil ? []
+            : ICCReader.fields(name: m.iccProfileName, colorModel: m.colorModel, profile: profile))
+
+        m.sections = [exif, gps, iptc, xmp, icc, m.aiWorkflowSection, m.c2paSection].filter { !$0.fields.isEmpty }
+            + [m.structureSection]
         return m
+    }
+
+    // Common tags lead; the rest follow alphabetically.
+    static let tiffOrder = ["Make", "Model", "Software", "DateTime", "Artist", "Copyright", "ImageDescription"]
+    static let exifOrder = ["DateTimeOriginal", "DateTimeDigitized", "LensMake", "LensModel", "ExposureTime", "FNumber",
+                            "ISOSpeedRatings", "FocalLength", "FocalLenIn35mmFilm", "ExposureBiasValue", "Flash"]
+    static let gpsOrder = ["Latitude", "LatitudeRef", "Longitude", "LongitudeRef", "Altitude", "AltitudeRef",
+                           "DateStamp", "TimeStamp"]
+    static let iptcOrder = ["ObjectName", "Headline", "Caption/Abstract", "Keywords", "Byline", "Credit", "Source",
+                            "CopyrightNotice", "City", "Province/State", "Country/PrimaryLocationName"]
+
+    /// Sources other than C2PA, then each payload in full.
+    private var aiWorkflowSection: MetadataSection {
+        var s = MetadataSection(kind: .aiWorkflow)
+        let sources = provenance.filter { $0 != .c2pa }
+        guard !sources.isEmpty else { return s }
+        s.add("Source", sources.map(\.rawValue).joined(separator: ", "))
+        for p in aiPayloads { s.add(sources.count > 1 ? "\(p.source.rawValue) \(p.name)" : p.name, p.text) }
+        return s
+    }
+
+    private var c2paSection: MetadataSection {
+        var s = MetadataSection(kind: .c2pa)
+        guard provenance.contains(.c2pa) else { return s }
+        s.add("Manifest", "Present")
+        if let c2paLocation { s.add("Found in", c2paLocation) }
+        return s
+    }
+
+    /// Read-only facts about the pixels.
+    private var structureSection: MetadataSection {
+        var s = MetadataSection(kind: .structure)
+        s.add("Alpha", hasAlpha ? "Yes" : "No")
+        s.add("Bit depth", "\(bitDepth) bits per channel")
+        s.add("HDR gain map", hasHDR ? "Yes" : "No")
+        s.add("Depth map", hasDepth ? "Yes" : "No")
+        s.add("Frames", "\(frameCount)")
+        s.add("Orientation", MetadataFormat.orientation(orientation))
+        return s
     }
 
     /// ImageIO synthesises a small `{Exif}` block (pixel dimensions, colour
@@ -157,17 +256,6 @@ public struct ImageMetadata: Hashable, Sendable {
         types.contains { CGImageSourceCopyAuxiliaryDataInfoAtIndex(source, 0, $0) != nil }
     }
 
-    /// ImageIO folds EXIF/TIFF into the metadata tree; only other namespaces prove a real XMP packet.
-    private static func hasXMPTags(_ source: CGImageSource) -> Bool {
-        guard let meta = CGImageSourceCopyMetadataAtIndex(source, 0, nil),
-              let tags = CGImageMetadataCopyTags(meta) as? [CGImageMetadataTag] else { return false }
-        let synthesised: Set<String> = ["exif", "exifEX", "exifAux", "tiff", "GPS", "gps"]
-        return tags.contains { tag in
-            guard let prefix = CGImageMetadataTagCopyPrefix(tag) as String? else { return false }
-            return !synthesised.contains(prefix)
-        }
-    }
-
     static func looksLikeA1111(_ text: String) -> Bool {
         text.contains("Steps:") && (text.contains("Sampler:") || text.contains("CFG scale:"))
     }
@@ -187,68 +275,31 @@ public struct ImageMetadata: Hashable, Sendable {
         if let d = byKey["Description"], d.contains("Job ID:") { out.append(.midjourney) }
         return out
     }
-}
 
-/// Minimal PNG chunk walker: keywords (and text for uncompressed chunks) of
-/// `tEXt` / `iTXt` / `zTXt`, and presence of any named chunk.
-public enum PNGScanner {
-    public struct TextChunk: Hashable, Sendable {
-        public let keyword: String
-        /// Nil for zTXt and compressed iTXt (we don't inflate; the keyword is enough).
-        public let text: String?
-    }
-
-    static let signature: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
-
-    public static func textChunks(in data: Data) -> [TextChunk] {
-        var out: [TextChunk] = []
-        forEachChunk(in: data) { type, body in
-            switch type {
-            case "tEXt":
-                if let nul = body.firstIndex(of: 0) {
-                    let keyword = String(decoding: body[body.startIndex..<nul], as: UTF8.self)
-                    let text = String(decoding: body[(nul + 1)...], as: UTF8.self)
-                    out.append(TextChunk(keyword: keyword, text: text))
-                }
-            case "zTXt":
-                if let nul = body.firstIndex(of: 0) {
-                    out.append(TextChunk(keyword: String(decoding: body[body.startIndex..<nul], as: UTF8.self), text: nil))
-                }
-            case "iTXt":
-                // keyword\0 compressionFlag(1) method(1) language\0 translated\0 text
-                guard let nul = body.firstIndex(of: 0), nul + 2 < body.endIndex else { return }
-                let keyword = String(decoding: body[body.startIndex..<nul], as: UTF8.self)
-                let compressed = body[nul + 1] != 0
-                var i = nul + 3
-                guard let langEnd = body[i...].firstIndex(of: 0) else { return }
-                i = langEnd + 1
-                guard let transEnd = body[i...].firstIndex(of: 0) else { return }
-                i = transEnd + 1
-                out.append(TextChunk(keyword: keyword, text: compressed ? nil : String(decoding: body[i...], as: UTF8.self)))
+    /// The chunks that hold each detected source's payload, in file order.
+    static func payloads(fromPNGChunks chunks: [PNGScanner.TextChunk], provenance found: [Provenance]) -> [AIPayload] {
+        let has = Set(found)
+        func source(for keyword: String) -> Provenance? {
+            switch keyword {
+            case "prompt", "workflow":
+                return has.contains(.comfyUI) ? .comfyUI : nil
+            case "parameters":
+                return [.swarmUI, .fooocus, .a1111].first(where: has.contains)
+            case "fooocus_scheme":
+                return has.contains(.fooocus) ? .fooocus : nil
+            case "invokeai_metadata", "invokeai_graph", "sd-metadata":
+                return has.contains(.invokeAI) ? .invokeAI : nil
+            case "Description":
+                return [.novelAI, .midjourney].first(where: has.contains)
+            case "Software", "Comment", "Title", "Source":
+                return has.contains(.novelAI) ? .novelAI : nil
             default:
-                break
+                return nil
             }
         }
-        return out
-    }
-
-    public static func hasChunk(_ name: String, in data: Data) -> Bool {
-        var found = false
-        forEachChunk(in: data) { type, _ in if type == name { found = true } }
-        return found
-    }
-
-    private static func forEachChunk(in data: Data, _ body: (String, Data) -> Void) {
-        guard data.count > 8, Array(data.prefix(8)) == signature else { return }
-        var i = data.startIndex + 8
-        while i + 8 <= data.endIndex {
-            let length = Int(UInt32(bigEndian: data[i..<i + 4].withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }))
-            let type = String(decoding: data[i + 4..<i + 8], as: UTF8.self)
-            let start = i + 8
-            guard length >= 0, start + length + 4 <= data.endIndex else { return }
-            body(type, data[start..<start + length])
-            if type == "IEND" { return }
-            i = start + length + 4
+        return chunks.compactMap { chunk in
+            guard let text = chunk.text, let source = source(for: chunk.keyword) else { return nil }
+            return AIPayload(source: source, name: chunk.keyword, location: "PNG \(chunk.type) chunk", text: text)
         }
     }
 }
