@@ -48,7 +48,8 @@ PNG chunks are spliced in after `IHDR` with valid CRCs.
   detector ignores because it looks for the packet itself (issue #22).
 - **sRGB JPEGs and PNGs** carry no ICC profile bytes (the PNGs have an `sRGB`
   chunk, the JPEGs EXIF ColorSpace = 1); ImageIO still names the profile
-  "sRGB IEC61966-2.1", so they show the `ICC` badge.
+  "sRGB IEC61966-2.1". They get no `ICC` badge (it is for an embedded profile
+  only, issue #25); their ICC section is flagged as assumed (`iccOrigin`).
 - **`cmyk.jpg`**: Generic CMYK, converted naively from the RGB card; not a
   press profile such as FOGRA or SWOP.
 - **`display-p3.heic`**: 8-bit, no HDR gain map, no depth, no EXIF.

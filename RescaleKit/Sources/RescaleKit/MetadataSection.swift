@@ -2,15 +2,34 @@ import Foundation
 import CoreGraphics
 import ImageIO
 
-/// One key / value row of the metadata inspector. The value is display-ready.
+/// One key / value row of the metadata inspector (PRD §10.2).
+///
+/// `key` / `value` are what the file holds: the raw identifier (`FocalLenIn35mmFilm`)
+/// and the value as stored, display-ready (`16`). `label` / `readableValue` are what
+/// a person reads ("Focal length (35 mm)", "Off, did not fire"); both fall back to
+/// the raw pair. Copy uses the readable pair, Export All the raw one (PRD §10.5).
 public struct MetadataField: Hashable, Sendable, Identifiable {
+    /// Primary fields are shown first; secondary ones fold under "More".
+    public enum Priority: Hashable, Sendable { case primary, secondary }
+
     public let key: String
     public let value: String
+    /// Friendly name; the key itself when there is none.
+    public var label: String
+    /// The value with codes translated and units added; `value` when there is nothing to translate.
+    public var readableValue: String
+    public var priority: Priority
     public var id: String { key }
+    /// True when `readableValue` says something `value` does not.
+    public var isTranslated: Bool { readableValue != value }
 
-    public init(key: String, value: String) {
+    public init(key: String, value: String, label: String? = nil, readableValue: String? = nil,
+                priority: Priority = .secondary) {
         self.key = key
         self.value = value
+        self.label = label ?? key
+        self.readableValue = readableValue ?? value
+        self.priority = priority
     }
 }
 
@@ -30,12 +49,33 @@ public struct MetadataSection: Hashable, Sendable, Identifiable {
 
     public let kind: Kind
     public var fields: [MetadataField]
+    /// A remark to show under the title: an assumed colour profile, a gain map
+    /// that is not saved. Nil for most sections.
+    public var note: String?
     public var id: Kind { kind }
     public var title: String { kind.rawValue }
 
-    public init(kind: Kind, fields: [MetadataField] = []) {
+    public init(kind: Kind, fields: [MetadataField] = [], note: String? = nil) {
         self.kind = kind
         self.fields = fields
+        self.note = note
+    }
+
+    /// The important fields, in reading order (camera, lens, date, exposure, …).
+    public var primaryFields: [MetadataField] {
+        let order = MetadataLabels.primaryKeys[kind] ?? []
+        return fields.enumerated().filter { $0.element.priority == .primary }
+            .sorted { a, b in
+                let (ra, rb) = (order.firstIndex(of: a.element.key) ?? order.count,
+                                order.firstIndex(of: b.element.key) ?? order.count)
+                return ra != rb ? ra < rb : a.offset < b.offset
+            }
+            .map(\.element)
+    }
+
+    /// Everything else, in field order: what the UI folds under "More".
+    public var secondaryFields: [MetadataField] {
+        fields.filter { $0.priority == .secondary }
     }
 
     /// The value for a key, if the section has it.
@@ -43,9 +83,10 @@ public struct MetadataSection: Hashable, Sendable, Identifiable {
         fields.first { $0.key == key }?.value
     }
 
-    /// Readable `Key: value` lines, for Copy (PRD §10.5).
+    /// Readable `Label: value` lines in field order, for Copy (PRD §10.5): friendly
+    /// labels and translated values. The raw keys and values are in Export All.
     public var text: String {
-        fields.map { "\($0.key): \($0.value)" }.joined(separator: "\n")
+        fields.map { "\($0.label): \($0.readableValue)" }.joined(separator: "\n")
     }
 
     /// Appends a field; a key already present gets a numeric suffix so ids stay unique.
