@@ -35,7 +35,8 @@ public enum Solver {
     static let searchSpan = 3
 
     /// Never traps. Non-finite or non-positive inputs are clamped to the nearest
-    /// legal value and oversized targets to `Limits`; call
+    /// legal value and oversized targets to `Limits`, whatever the size of the
+    /// source (its area may exceed `Int`); call
     /// `ResizeRequest.validate(for:)` first when you want a message instead.
     public static func solve(_ request: ResizeRequest, source: PixelSize) -> Solution {
         let source = PixelSize(max(source.width, 1), max(source.height, 1))
@@ -75,7 +76,9 @@ public enum Solver {
             // A linear scale of the source is a pixel budget of source × s².
             // Routed through megapixels exactly as the prototype does, so the
             // two stay numerically identical.
-            let mp = Double(source.pixelCount) * s * s / Megapixel.pixels
+            // The area is taken as a real number: an oversized source must not
+            // overflow here, before the target is clamped (review 2026-09-30, S4).
+            let mp = source.area * s * s / Megapixel.pixels
             return fromPixelCount(mp * Megapixel.pixels, aspect: ar)
         }
     }

@@ -50,6 +50,61 @@ struct ValidationTests {
         }
     }
 
+    /// Review 2026-09-30, S4: a source whose area does not fit in `Int` must
+    /// not trap the solver, the validator or the megapixel readout.
+    @Test func oversizedSourceNeverTraps() {
+        let sources = [PixelSize(Int.max, Int.max), PixelSize(Int.max, 2), PixelSize(1 << 32, 1 << 32),
+                       PixelSize(3_037_000_500, 3_037_000_500)]
+        let sizes: [SizeParameter] = [.scale(1), .scale(0.001), .scale(64), .megapixels(12), .width(1920), .height(1080)]
+        for src in sources {
+            for size in sizes {
+                for m in Multiple.allCases {
+                    let request = ResizeRequest(size: size, multiple: m)
+                    let s = request.solve(for: src)
+                    #expect(s.width >= 1 && s.height >= 1, "\(src) \(size) → \(s)")
+                    #expect(s.width <= Limits.maxDimension && s.height <= Limits.maxDimension, "\(src) \(size) → \(s)")
+                    #expect(s.size.pixelCount <= Limits.maxPixels, "\(src) \(size) → \(s)")
+                    #expect(s.scale(relativeTo: src).isFinite)
+                    // Validation answers with its own error or not at all.
+                    _ = try? request.validate(for: src)
+                }
+            }
+        }
+        #expect(throws: ValidationError.self) {
+            try ResizeRequest(size: .scale(1)).validate(for: PixelSize(Int.max, Int.max))
+        }
+    }
+
+    @Test func sourceAreaIsCheckedAtTheBoundary() {
+        // 3_037_000_499² is the largest square that fits in a 64-bit Int.
+        let fits = PixelSize(3_037_000_499, 3_037_000_499)
+        #expect(fits.checkedPixelCount == 9_223_372_030_926_249_001)
+        #expect(fits.pixelCount == 9_223_372_030_926_249_001)
+        let over = PixelSize(3_037_000_500, 3_037_000_500)
+        #expect(over.checkedPixelCount == nil)
+        #expect(over.pixelCount == Int.max)
+        #expect(over.megapixels > fits.megapixels && over.megapixels.isFinite)
+        #expect(PixelSize(Int.max, 1).checkedPixelCount == Int.max)
+        #expect(PixelSize(Int.max, 2).checkedPixelCount == nil)
+        #expect(PixelSize(6000, 4000).megapixels == 24)
+    }
+
+    /// Composite arguments need exactly two valid components (the CLI's `--source` and `--aspect`).
+    @Test func compositeArgumentsNeedExactlyTwoComponents() {
+        #expect(PixelSize(parsing: "6000x4000") == PixelSize(6000, 4000))
+        #expect(PixelSize(parsing: "6000X4000") == PixelSize(6000, 4000))
+        #expect(PixelSize(parsing: "3037000499x3037000499") != nil)
+        let bad = ["6000xjunkx4000", "6000xx4000", "x6000x4000", "6000x4000x", "6000x", "6000", "", "0x10", "10x-1",
+                   "6000x4000x3", "1.5x2", "3037000500x3037000500", "4294967296x4294967296", "99999999999999999999x1"]
+        for s in bad { #expect(PixelSize(parsing: s) == nil, "\(s)") }
+
+        #expect(NumberPair.parse("16:9", separator: ":", as: Int.self).map { [$0.0, $0.1] } == [16, 9])
+        #expect(NumberPair.parse("1440x900", separator: "x", as: Double.self).map { [$0.0, $0.1] } == [1440, 900])
+        for s in ["16:x:9", "16::9", ":16:9", "16:9:", "16", "16:", "a:9", "16:9:4"] {
+            #expect(NumberPair.parse(s, separator: ":", as: Int.self) == nil, "\(s)")
+        }
+    }
+
     @Test func validateReportsTheProblem() {
         #expect(throws: ValidationError.sizeNotPositive(.width(0))) {
             try ResizeRequest(size: .width(0)).validate(for: source)
