@@ -475,7 +475,8 @@ click away.
 
 The sidebar carries a one-line summary of the policy — e.g. *Metadata:
 Default · only ICC, AI kept* — so it is visible with the inspector closed. The
-policy is part of every preset (§12).
+policy is part of every preset (§12). Opening another image sets it back to
+the default: what was kept for one picture is not kept for the next by accident.
 
 ### 10.3 Rules the switches obey
 

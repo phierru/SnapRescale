@@ -429,7 +429,7 @@ extension MetadataPolicy.Summary {
 
 /// The switch in a section title: keep · strip, or keep · sRGB · strip for
 /// the colour profile. The app's segmented control, one size down. It reads and
-/// writes the session's policy, which a new image does not reset.
+/// writes the session's policy, which a new image resets to the default.
 private struct SectionSwitch: View {
     @Environment(Session.self) private var session
     let section: MetadataPolicy.Section
