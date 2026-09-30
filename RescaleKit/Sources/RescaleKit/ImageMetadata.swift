@@ -96,6 +96,11 @@ public struct ImageMetadata: Hashable, Sendable {
         if hasIPTC { out.append(Badge(label: "IPTC", detail: "Caption, keywords, credit", tone: .neutral)) }
         if hasXMP { out.append(Badge(label: "XMP", detail: "XMP packet (ratings, edits, rights, …)", tone: .neutral)) }
         for p in provenance { out.append(Badge(label: p.rawValue, detail: p.detail, tone: .provenance)) }
+        // Nothing detected, yet Keep carries text: the AI workflow section still needs its way in.
+        if !unrecognisedAIChunks.isEmpty, provenance.allSatisfy({ $0 == .c2pa }) {
+            out.append(Badge(label: Self.unrecognisedAIBadge, detail: "PNG text under an AI tool's keyword, not recognised as its data",
+                             tone: .provenance))
+        }
         return out
     }
 
@@ -246,14 +251,29 @@ public struct ImageMetadata: Hashable, Sendable {
     static let iptcOrder = ["ObjectName", "Headline", "Caption/Abstract", "Keywords", "Byline", "Credit", "Source",
                             "CopyrightNotice", "City", "Province/State", "Country/PrimaryLocationName"]
 
-    /// Sources other than C2PA, then each payload in full.
+    /// Sources other than C2PA, then each payload in full, then the PNG text
+    /// that is carried along without having been recognised.
     private var aiWorkflowSection: MetadataSection {
         var s = MetadataSection(kind: .aiWorkflow)
         let sources = provenance.filter { $0 != .c2pa }
-        guard !sources.isEmpty else { return s }
-        s.add("Source", sources.map(\.rawValue).joined(separator: ", "))
+        let unrecognised = unrecognisedAIChunks
+        guard !sources.isEmpty || !unrecognised.isEmpty else { return s }
+        s.add("Source", sources.isEmpty ? Self.unrecognisedAISource : sources.map(\.rawValue).joined(separator: ", "))
         for p in aiPayloads { s.add(sources.count > 1 ? "\(p.source.rawValue) \(p.name)" : p.name, p.text) }
+        for chunk in unrecognised { s.add(chunk.keyword, chunk.text ?? MetadataFormat.bytes(chunk.raw.count)) }
+        if !unrecognised.isEmpty { s.note = Self.unrecognisedAINote(unrecognised.map(\.keyword)) }
         return s
+    }
+
+    /// The badge of a file whose only AI workflow content is unrecognised PNG text.
+    public static let unrecognisedAIBadge = "AI text"
+    static let unrecognisedAISource = "Not recognised"
+
+    /// Shown with the AI workflow section when Keep carries PNG text no detector recognised.
+    static func unrecognisedAINote(_ keywords: [String]) -> String {
+        var seen = Set<String>()
+        let names = keywords.filter { seen.insert($0).inserted }.map { "“\($0)”" }.joined(separator: ", ")
+        return "The PNG text under \(names) is not recognised as an AI tool's data. It is kept or stripped with the AI workflow."
     }
 
     private var c2paSection: MetadataSection {
@@ -341,8 +361,25 @@ public struct ImageMetadata: Hashable, Sendable {
         return out
     }
 
-    /// The chunks that hold each detected source's payload, in file order.
-    static func payloads(fromPNGChunks chunks: [PNGScanner.TextChunk], provenance found: [Provenance]) -> [AIPayload] {
+    /// Keywords that only an AI tool writes. A chunk under one is carried by the
+    /// AI workflow switch whatever it holds, so it is always shown there too.
+    static let toolKeywords: Set<String> = [
+        "prompt", "workflow", "parameters", "fooocus_scheme", "invokeai_metadata", "invokeai_graph", "sd-metadata",
+    ]
+
+    /// A PNG text chunk the AI workflow switch carries. `source` is nil for text
+    /// under a tool keyword that no detector recognised.
+    struct WorkflowChunk {
+        let chunk: PNGScanner.TextChunk
+        let source: Provenance?
+    }
+
+    /// The one classification of a PNG's text chunks, in file order: what the
+    /// inspector shows and what `PNGSplicer` carries both come from here, so
+    /// nothing is kept that is not shown (review 2026-09-30, S3). The generic
+    /// keywords NovelAI and Midjourney use count only in a file of theirs;
+    /// never `XML:com.adobe.xmp`, which belongs to the XMP switch.
+    static func workflowChunks(fromPNGChunks chunks: [PNGScanner.TextChunk], provenance found: [Provenance]) -> [WorkflowChunk] {
         let has = Set(found)
         func source(for keyword: String) -> Provenance? {
             switch keyword {
@@ -363,9 +400,26 @@ public struct ImageMetadata: Hashable, Sendable {
             }
         }
         return chunks.compactMap { chunk in
-            guard let text = chunk.text, let source = source(for: chunk.keyword) else { return nil }
-            return AIPayload(source: source, name: chunk.keyword, location: "PNG \(chunk.type) chunk", text: text)
+            let source = source(for: chunk.keyword)
+            guard source != nil || toolKeywords.contains(chunk.keyword) else { return nil }
+            return WorkflowChunk(chunk: chunk, source: source)
         }
+    }
+
+    /// The chunks that hold each detected source's payload, in file order.
+    static func payloads(fromPNGChunks chunks: [PNGScanner.TextChunk], provenance found: [Provenance]) -> [AIPayload] {
+        workflowChunks(fromPNGChunks: chunks, provenance: found).compactMap { entry in
+            guard let text = entry.chunk.text, let source = entry.source else { return nil }
+            return AIPayload(source: source, name: entry.chunk.keyword, location: "PNG \(entry.chunk.type) chunk", text: text)
+        }
+    }
+
+    /// The carried PNG text chunks that are no payload of a detected source:
+    /// ordinary text under a tool keyword, or a chunk that does not decode.
+    /// Keep writes them, so the AI workflow section lists them.
+    public var unrecognisedAIChunks: [PNGScanner.TextChunk] {
+        Self.workflowChunks(fromPNGChunks: pngTextChunks, provenance: Self.provenance(fromPNGChunks: pngTextChunks))
+            .filter { $0.source == nil || $0.chunk.text == nil }.map(\.chunk)
     }
 }
 
