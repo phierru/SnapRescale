@@ -41,9 +41,10 @@ public struct ImageMetadata: Hashable, Sendable {
     public var xmpPacket: String?
     /// A JPEG's extended XMP (the part over 64 KB), reassembled. A second RDF document.
     public var xmpExtendedPacket: String?
-    /// What the scanners left unread, over the per-image `MetadataBudget`. It is
-    /// in none of the fields above, so it is neither shown nor written on save;
-    /// the Structure section's note says so. Empty for a file read in full.
+    /// What the scanners left unread: over the per-image `MetadataBudget`, or
+    /// extended XMP that is not the packet's. It is in none of the fields above,
+    /// so it is neither shown nor written on save; the Structure section's note
+    /// (the XMP section's, for extended XMP) says so. Empty for a file read in full.
     public var skipped: [MetadataBudget.Skip] = []
 
     public enum Provenance: String, CaseIterable, Hashable, Sendable {
@@ -202,6 +203,7 @@ public struct ImageMetadata: Hashable, Sendable {
             m.xmpExtendedPacket = extended
             xmp.fields = XMPReader.fields(packet: packet) ?? []
             if let extended { xmp.addMissing(XMPReader.fields(packet: extended) ?? []) }
+            if m.skipped.contains(.extendedXMP) { xmp.note = MetadataBudget.Skip.extendedXMP.note }
             // A packet that does not parse, or is empty, is still a packet.
             if xmp.fields.isEmpty { xmp.add("Packet", MetadataFormat.bytes(packet.utf8.count)) }
         case .absent:
@@ -270,8 +272,9 @@ public struct ImageMetadata: Hashable, Sendable {
 
     /// The gain-map remark, then what the scanners skipped: Structure is the
     /// one section every file shows, so the inspector always has it to display.
+    /// Ignored extended XMP is remarked on the XMP section instead.
     var structureNote: String? {
-        let notes = [hdrNote].compactMap { $0 } + skipped.map(\.note)
+        let notes = [hdrNote].compactMap { $0 } + skipped.filter { $0 != .extendedXMP }.map(\.note)
         return notes.isEmpty ? nil : notes.joined(separator: " ")
     }
 

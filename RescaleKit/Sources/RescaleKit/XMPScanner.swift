@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import UniformTypeIdentifiers
 
 /// Finds the XMP packet in the container itself, so presence does not depend on
@@ -36,7 +37,7 @@ public enum XMPScanner {
                        budget: inout MetadataBudget) -> Result {
         let bytes = Bytes(data)
         if type.conforms(to: .png) { return png(pngChunks ?? PNGScanner.textChunks(in: data, budget: &budget), bytes) }
-        if type.conforms(to: .jpeg) { return jpeg(bytes) }
+        if type.conforms(to: .jpeg) { return jpeg(bytes, &budget) }
         if type.conforms(to: .tiff) { return tiff(bytes) }
         if type.conforms(to: .webP) { return webP(bytes) }
         if type.conforms(to: .heic) || type.conforms(to: .heif) || type.identifier == "public.avif" {
@@ -49,10 +50,16 @@ public enum XMPScanner {
 
     /// The standard packet is one APP1 segment; anything over 64 KB continues in
     /// extended segments (namespace, 32-byte GUID, total length, offset, portion).
-    static func jpeg(_ d: Bytes) -> Result {
+    ///
+    /// Only the extension the standard packet names in `xmpNote:HasExtendedXMP`
+    /// is its own, and only when the portions agree on the total length and
+    /// cover it exactly once (XMP Part 3 §1.1.3.1). Anything else is left out
+    /// and reported through `budget.skipped`.
+    static func jpeg(_ d: Bytes, _ budget: inout MetadataBudget) -> Result {
         guard d.count > 4, d[0] == 0xFF, d[1] == 0xD8 else { return .notScanned }
         var main: Data?
-        var portions: [(offset: Int, data: Data)] = []
+        var portions: [Portion] = []
+        var unusable = false
         var i = 2
         while i + 4 <= d.count, d[i] == 0xFF {
             let marker = d[i + 1]
@@ -66,14 +73,53 @@ public enum XMPScanner {
                     main = d.slice(start + jpegNamespace.count, end)
                 } else if d.starts(with: jpegExtensionNamespace, at: start, end: end) {
                     let header = start + jpegExtensionNamespace.count + 32
-                    if header + 8 <= end { portions.append((d.u32(header + 4), d.slice(header + 8, end))) }
+                    if header + 8 < end {
+                        portions.append(Portion(guid: d.slice(header - 32, header), total: d.u32(header),
+                                                offset: d.u32(header + 4), data: d.slice(header + 8, end)))
+                    } else {
+                        unusable = true
+                    }
                 }
             }
             i = end
         }
         guard let main else { return .absent }
-        let extended = portions.sorted { $0.offset < $1.offset }.reduce(into: Data()) { $0.append($1.data) }
-        return .found(packet: string(main), extended: extended.isEmpty ? nil : string(extended))
+        guard !portions.isEmpty || unusable else { return .found(packet: string(main), extended: nil) }
+
+        let packet = string(main)
+        let own = extensionGUID(in: packet).map { guid in portions.filter { $0.guid.elementsEqual(guid) } } ?? []
+        let extended = assembled(own, &budget)
+        if extended == nil || own.count != portions.count || unusable { budget.skipped.append(.extendedXMP) }
+        return .found(packet: packet, extended: extended.map(string))
+    }
+
+    /// One extension segment: the packet's GUID (32 ASCII hex digits), its
+    /// total length, and this portion's place in it.
+    struct Portion { let guid: Data; let total: Int; let offset: Int; let data: Data }
+
+    /// The GUID a standard packet names as its extension, found by namespace, not prefix.
+    static func extensionGUID(in packet: String) -> [UInt8]? {
+        guard let meta = CGImageMetadataCreateFromXMPData(Data(packet.utf8) as CFData),
+              let tags = CGImageMetadataCopyTags(meta) as? [CGImageMetadataTag] else { return nil }
+        for tag in tags where CGImageMetadataTagCopyNamespace(tag) as String? == XMPWriter.note
+            && CGImageMetadataTagCopyName(tag) as String? == "HasExtendedXMP" {
+            return (CGImageMetadataTagCopyValue(tag) as? String).map { Array($0.utf8) }
+        }
+        return nil
+    }
+
+    /// One group's portions joined in offset order, whatever their order in the
+    /// file. Nil unless they agree on a total within the budget and each starts
+    /// where the last ended, from 0 to that total: no gap, no overlap, no excess.
+    static func assembled(_ portions: [Portion], _ budget: inout MetadataBudget) -> Data? {
+        guard let total = portions.first?.total, total > 0, total <= sizeLimit, total <= budget.bytes,
+              portions.allSatisfy({ $0.total == total }) else { return nil }
+        var out = Data(capacity: total)
+        for portion in portions.sorted(by: { $0.offset < $1.offset }) {
+            guard portion.offset == out.count, portion.data.count <= total - out.count else { return nil }
+            out.append(portion.data)
+        }
+        return out.count == total && budget.take(total) ? out : nil
     }
 
     // MARK: PNG

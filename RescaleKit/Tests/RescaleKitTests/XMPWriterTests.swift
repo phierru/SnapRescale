@@ -271,7 +271,8 @@ struct XMPWriterTests {
     func packetOverTheJPEGSegmentLimit(_ format: OutputFormat) throws {
         let long = String(repeating: "lorem ipsum ", count: 9000)   // 108 KB
         let packet = XMPDetectionTests.packet.replacingOccurrences(of: "xmp:Rating=\"4\"", with: "xmp:Rating=\"4\" xmp:Nickname=\"\(long)\"")
-        let source = try Self.source(packet: XMPDetectionTests.packet, extended: packet)
+        let source = try Self.source(packet: ExtendedXMPTests.main(naming: String(repeating: "A", count: 32)),
+                                     extended: packet)
         let out = try Self.render(source, format, .keepMost)
         #expect(out.xmp("xmp:Rating") == "4" && out.xmp("xmp:Nickname") == long)
         #expect((out.metadata.xmpExtendedPacket != nil) == (format == .jpeg))
