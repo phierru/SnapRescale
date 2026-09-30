@@ -570,6 +570,16 @@ hand:
 `height`, `megapixels`, `scale`; `format` is `keep`, `jpeg`, `png`, `heic` or
 `tiff`; `padColor` is `#rrggbb` or `#rrggbbaa`.
 
+`metadata` is optional — a preset without it takes the default policy (§10.2):
+
+```json
+"metadata": { "exif": "keep", "gps": "strip", "iptc": "keep", "xmp": "keep",
+              "icc": "preserve", "aiWorkflow": "keep" }
+```
+
+Each section is `keep` or `strip`; `icc` is `preserve`, `srgb` or `strip`. A
+section left out takes its default.
+
 ## 13. Surfaces
 
 1. **App, one image** *(v1, the primary surface)* — opened from Finder via
