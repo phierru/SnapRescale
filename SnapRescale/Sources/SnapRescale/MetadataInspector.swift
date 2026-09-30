@@ -572,24 +572,17 @@ private struct InspectorSection<Controls: View>: View {
     }
 
     /// Under the title, folded or not: why the switch is disabled, or what the
-    /// selected option costs. Every note the switch can show is laid out and
-    /// only the current one drawn, so the room is the same whichever option is
-    /// selected and a toggle moves nothing; the room changes with the format.
+    /// selected option costs. Shown only while it applies: room reserved for a
+    /// note that is not there reads as a stray blank line.
     @ViewBuilder private var switchNote: some View {
-        if let switchState, !switchState.possibleNotes.isEmpty {
-            ZStack(alignment: .topLeading) {
-                ForEach(switchState.possibleNotes, id: \.self) { text in
-                    Text(text)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .opacity(text == switchState.note ? 1 : 0)
-                        .accessibilityHidden(text != switchState.note)
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(switchState.isEnabled ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
-            .padding(.leading, 28).padding(.trailing, 12)
-            .padding(.bottom, 6)
+        if let switchState, let text = switchState.note {
+            Text(text)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .font(.caption)
+                .foregroundStyle(switchState.isEnabled ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
+                .padding(.leading, 28).padding(.trailing, 12)
+                .padding(.bottom, 6)
         }
     }
 
