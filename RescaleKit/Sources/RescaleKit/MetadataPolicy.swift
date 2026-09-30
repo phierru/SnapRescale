@@ -123,6 +123,8 @@ public struct MetadataPolicy: Hashable, Sendable, Codable {
         if type.conforms(to: .png) {
             switch section {
             case .iptc: return .limited("PNG has no IPTC block. Caption, keywords and copyright are kept as their XMP copies.")
+            // ImageIO always writes the one-byte `sRGB` chunk for sRGB pixels.
+            case .icc: return .limited("Strip removes the profile, but a PNG still carries a one-byte sRGB marker.")
             default: return .full
             }
         }
@@ -136,6 +138,8 @@ public struct MetadataPolicy: Hashable, Sendable, Codable {
             switch section {
             case .iptc: return .limited("HEIC has no IPTC block. Caption, keywords and copyright are kept as their XMP copies.")
             case .aiWorkflow: return .limited(partialWorkflowNote("HEIC"))
+            // An sRGB HEIC holds a colour tag (`nclx`), never ICC bytes.
+            case .icc: return .limited("HEIC never embeds a profile for sRGB, so Strip and Convert to sRGB write the same file.")
             default: return .full
             }
         }

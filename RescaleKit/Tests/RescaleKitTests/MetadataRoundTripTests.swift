@@ -97,7 +97,8 @@ struct FixtureDetectionTests {
 }
 
 /// BASELINE, not a specification. These pin what `Renderer.produce` writes
-/// today — every metadata block stripped, 8-bit sRGB, orientation baked in —
+/// today — every metadata block stripped, orientation baked in; colour and
+/// depth follow the ICC policy since #15 (detail in `ColorPlanTests`) —
 /// so the writer issues (#13 EXIF/GPS/IPTC, #18 XMP, #14 AI workflow, #15 ICC)
 /// have to change an expectation here deliberately, in the commit that changes
 /// the behaviour. The two orientation tests are the exception: PRD §10.3 keeps
@@ -111,16 +112,29 @@ struct MetadataRoundTripBaselineTests {
         #expect(m.provenance.isEmpty)
         #expect(m.pngTextKeywords.isEmpty)
         #expect(!out.hasEXIFThumbnail)
-        let blocks: Set = ["EXIF", "GPS", "IPTC", "XMP", "Rotated", "CMYK", "16-bit"]
+        // "16-bit" is not in this list since #15: depth is kept, not stripped.
+        let blocks: Set = ["EXIF", "GPS", "IPTC", "XMP", "Rotated", "CMYK"]
         #expect(m.badges.allSatisfy { !blocks.contains($0.label) && $0.tone != .provenance })
     }
 
+    /// The default policy preserves the profile and the depth (#15). CMYK is
+    /// the exception: the loader hands it over as sRGB, so it is written as sRGB.
     @Test(arguments: Fixture.allCases)
-    func outputIsEightBitSRGB(_ fixture: Fixture) throws {
+    func defaultOutputKeepsProfileAndDepth(_ fixture: Fixture) throws {
         let m = try fixture.roundTrip().metadata
+        #expect(m.iccProfileName == (fixture == .displayP3 ? "Display P3" : "sRGB IEC61966-2.1"))
+        #expect(m.colorModel == "RGB")
+        #expect(m.bitDepth == (fixture == .sixteenBit ? 16 : 8))
+        #expect(m.badges.contains { $0.label == "16-bit" } == (fixture == .sixteenBit))
+    }
+
+    /// Convert to sRGB is what every file got before #15, bar the depth.
+    @Test(arguments: Fixture.allCases)
+    func convertedOutputIsSRGB(_ fixture: Fixture) throws {
+        let m = try fixture.roundTrip { $0.metadata.icc = .convertToSRGB }.metadata
         #expect(m.iccProfileName == "sRGB IEC61966-2.1")
         #expect(m.colorModel == "RGB")
-        #expect(m.bitDepth == 8)
+        #expect(m.bitDepth == (fixture == .sixteenBit ? 16 : 8))
     }
 
     @Test(arguments: Fixture.allCases)
