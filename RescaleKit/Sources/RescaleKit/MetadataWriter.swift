@@ -8,15 +8,19 @@ import UniformTypeIdentifiers
 /// or strips whole blocks and never edits a field, other than the three fixes
 /// of §10.4. The exception is the AI payloads stored in EXIF / TIFF (A1111
 /// parameters in UserComment, a Midjourney ImageDescription): the AI workflow
-/// switch owns those. The XMP packet is `XMPWriter`'s, ICC is `ColorPlan`'s and
-/// PNG workflow chunks are `PNGSplicer`'s.
+/// switch owns those, and outside PNG it also puts the `parameters` of a PNG
+/// text chunk into UserComment, where A1111 itself stores them. The XMP packet
+/// is `XMPWriter`'s, ICC is `ColorPlan`'s and PNG workflow chunks are
+/// `PNGSplicer`'s.
 enum MetadataWriter {
     /// The property dictionary for `CGImageDestinationAddImage`: the kept blocks
     /// of `source`, fixed up for an output of `size`. A block the policy strips,
     /// the format cannot carry (`MetadataPolicy.capability`) or the source lacks
-    /// is left out; nothing kept gives an empty dictionary.
+    /// is left out; nothing kept gives an empty dictionary. `metadata` is what
+    /// was read off the source's container, for the AI payloads ImageIO's
+    /// dictionaries do not hold.
     static func properties(from source: [CFString: Any], policy: MetadataPolicy, type: UTType,
-                           size: PixelSize) -> [CFString: Any] {
+                           size: PixelSize, carrying metadata: ImageMetadata? = nil) -> [CFString: Any] {
         var out: [CFString: Any] = [:]
         let keepIPTC = writes(.iptc, policy: policy, type: type)
         let keepAI = writes(.aiWorkflow, policy: policy, type: type)
@@ -28,7 +32,11 @@ enum MetadataWriter {
         // whatever the EXIF and IPTC switches say (PRD §10.2, issue #18).
         let sourceTIFF = dictionary(source[kCGImagePropertyTIFFDictionary])
         let sourceEXIF = dictionary(source[kCGImagePropertyExifDictionary])
-        let aiUserComment = (sourceEXIF[userCommentKey] as? String).flatMap { ImageMetadata.looksLikeA1111($0) ? $0 : nil }
+        let ownUserComment = (sourceEXIF[userCommentKey] as? String).flatMap { ImageMetadata.looksLikeA1111($0) ? $0 : nil }
+        // `parameters` from a PNG text chunk has no chunk to live in outside
+        // PNG (review 2026-09-30, G2).
+        let aiUserComment = ownUserComment
+            ?? (type.conforms(to: .png) ? nil : metadata.flatMap(movedParameters)?.text)
         let aiDescription = (sourceTIFF[descriptionKey] as? String).flatMap { looksLikeMidjourney($0) ? $0 : nil }
 
         var tiff: [String: Any] = [:]
@@ -46,7 +54,7 @@ enum MetadataWriter {
             exif = sourceEXIF
             // ImageIO derives these from the pixels it is given.
             for key in ImageMetadata.synthesisedEXIFKeys { exif[key] = nil }
-            if aiUserComment != nil { exif[userCommentKey] = nil }
+            if ownUserComment != nil { exif[userCommentKey] = nil }
 
             var extras: [CFString: Any] = [:]
             for (key, value) in source where isCameraExtra(key) && !dictionary(value).isEmpty { extras[key] = value }
@@ -64,7 +72,17 @@ enum MetadataWriter {
         // Kept AI payloads go back in: next to the kept EXIF, or as a block
         // holding nothing else (bar the fixes below) when EXIF is stripped.
         if keepAI, MetadataPolicy.capability(of: .exif, in: type).canCarry {
-            if let aiUserComment { exif[userCommentKey] = aiUserComment }
+            if let aiUserComment {
+                // ImageIO writes the `ASCII` form, as in a file it read, and
+                // turns anything else into question marks: see `PendingUserComment`.
+                if type.conforms(to: .png) || aiUserComment.utf8.allSatisfy({ $0 < 0x80 }) {
+                    exif[userCommentKey] = aiUserComment
+                } else {
+                    let pending = PendingUserComment(aiUserComment)
+                    exif[userCommentKey] = pending.placeholder
+                    out[pendingUserCommentKey] = pending
+                }
+            }
             if let aiDescription { tiff[descriptionKey] = aiDescription }
         }
         if hasCameraData || !tiff.isEmpty || !exif.isEmpty {
@@ -93,6 +111,84 @@ enum MetadataWriter {
             if !keepAI, let caption = iptc[captionKey] as? String, looksLikeMidjourney(caption) { iptc[captionKey] = nil }
             if !iptc.isEmpty { out[kCGImagePropertyIPTCDictionary] = iptc }
         }
+        return out
+    }
+
+    /// The `parameters` PNG chunk (A1111, Forge, Fooocus, SwarmUI) that moves
+    /// into the EXIF user comment outside PNG. One comment holds one text: an
+    /// AI comment the source's EXIF already has stays and nothing moves; else
+    /// the first chunk in file order does. `MetadataPolicy.capability` reports
+    /// the ones left out.
+    static func movedParameters(in metadata: ImageMetadata) -> ImageMetadata.AIPayload? {
+        guard !metadata.aiPayloads.contains(where: isUserComment) else { return nil }
+        return metadata.aiPayloads.first(where: isPNGParameters)
+    }
+
+    static func isUserComment(_ payload: ImageMetadata.AIPayload) -> Bool { payload.location == "EXIF UserComment" }
+
+    static func isPNGParameters(_ payload: ImageMetadata.AIPayload) -> Bool {
+        payload.location.hasPrefix("PNG ") && payload.name == "parameters"
+    }
+
+    /// A comment in the source's EXIF that is not an AI payload: the user's own.
+    static func ordinaryUserComment(in source: [CFString: Any]) -> String? {
+        let comment = dictionary(source[kCGImagePropertyExifDictionary])[kCGImagePropertyExifUserComment as String] as? String
+        return comment.flatMap { $0.isEmpty || ImageMetadata.looksLikeA1111($0) ? nil : $0 }
+    }
+
+    // MARK: - User comment outside ASCII
+
+    /// Where `properties` leaves a comment that `PendingUserComment.applied`
+    /// still has to encode. The kit's own key: `encoderProperties` drops it.
+    static var pendingUserCommentKey: CFString { "SnapRescalePendingUserComment" as CFString }
+
+    /// An AI user comment ImageIO cannot write: its encoder knows the `ASCII`
+    /// form only. A1111 (through piexif) writes `UNICODE` and UTF-16, big
+    /// endian, which is also what ImageIO and A1111 read back. ImageIO is given
+    /// an ASCII stand-in of the same byte length, swapped in the encoded file
+    /// for the real comment, so no offset in the EXIF block moves.
+    struct PendingUserComment {
+        let text: String
+        /// As many ASCII characters as the comment has UTF-16 bytes, unlikely to occur anywhere else.
+        let placeholder: String
+
+        init(_ text: String) {
+            self.text = text
+            let length = text.utf16.count * 2
+            placeholder = String(String(repeating: UUID().uuidString, count: length / 36 + 1).prefix(length))
+        }
+
+        /// `data` with the stand-in replaced, or nil when it is not there exactly
+        /// once as an EXIF comment and nowhere else (an XMP mirror, say).
+        func applied(to data: Data) -> Data? {
+            let standIn = Data(placeholder.utf8)
+            let stored = Data("ASCII\0\0\0".utf8) + standIn
+            guard let range = data.range(of: standIn), range.lowerBound - data.startIndex >= 8,
+                  data[(range.lowerBound - 8)..<range.upperBound] == stored,
+                  data.range(of: standIn, in: range.upperBound..<data.endIndex) == nil else { return nil }
+            var comment = Data("UNICODE\0".utf8)
+            for unit in text.utf16 { comment.append(contentsOf: [UInt8(unit >> 8), UInt8(unit & 0xFF)]) }
+            var out = data
+            out.replaceSubrange((range.lowerBound - 8)..<range.upperBound, with: comment)
+            return out
+        }
+    }
+
+    /// `written` as ImageIO takes it: without the kit's own key.
+    static func encoderProperties(_ written: [CFString: Any]) -> [CFString: Any] {
+        var out = written
+        out[pendingUserCommentKey] = nil
+        return out
+    }
+
+    /// `written` with the pending comment handed to ImageIO after all, which
+    /// writes what of it is ASCII: the way out when the stand-in cannot be swapped.
+    static func lettingImageIOEncodeUserComment(_ written: [CFString: Any]) -> [CFString: Any] {
+        guard let pending = written[pendingUserCommentKey] as? PendingUserComment else { return written }
+        var out = encoderProperties(written)
+        var exif = dictionary(out[kCGImagePropertyExifDictionary])
+        exif[kCGImagePropertyExifUserComment as String] = pending.text
+        out[kCGImagePropertyExifDictionary] = exif
         return out
     }
 

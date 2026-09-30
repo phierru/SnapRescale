@@ -46,6 +46,10 @@ enum XMPWriter {
     /// What is written of the sections a property may mirror.
     struct Kept: Hashable {
         var exif = true, gps = true, iptc = true, aiWorkflow = true
+        /// False when `parameters` from a PNG chunk takes the EXIF user comment
+        /// (`MetadataWriter.movedParameters`): the packet's copy of the comment
+        /// it replaces would otherwise be written over it.
+        var userComment = true
     }
 
     /// The tree to write, or nil when XMP is stripped, the format cannot carry
@@ -57,7 +61,9 @@ enum XMPWriter {
             policy.keeps(section) && MetadataPolicy.capability(of: section, in: type).canCarry
         }
         guard writes(.xmp), let packet = source.xmpPacket else { return nil }
-        let kept = Kept(exif: writes(.exif), gps: writes(.gps), iptc: writes(.iptc), aiWorkflow: writes(.aiWorkflow))
+        let moves = writes(.aiWorkflow) && !type.conforms(to: .png) && MetadataWriter.movedParameters(in: source) != nil
+        let kept = Kept(exif: writes(.exif), gps: writes(.gps), iptc: writes(.iptc), aiWorkflow: writes(.aiWorkflow),
+                        userComment: !moves)
         return metadata(packet: packet, extended: source.xmpExtendedPacket, kept: kept, size: size)
     }
 
@@ -145,7 +151,10 @@ enum XMPWriter {
         if namespace == note && name == "HasExtendedXMP" { return false }
 
         // AI payloads belong to the AI workflow switch wherever they sit.
-        if namespace == exif && name == "UserComment" && ImageMetadata.looksLikeA1111(value()) { return kept.aiWorkflow }
+        if namespace == exif && name == "UserComment" {
+            if ImageMetadata.looksLikeA1111(value()) { return kept.aiWorkflow }
+            if !kept.userComment { return false }
+        }
         let isDescription = (namespace == tiff && name == "ImageDescription") || (namespace == dublinCore && name == "description")
         if isDescription && MetadataWriter.looksLikeMidjourney(value()) { return kept.aiWorkflow }
 

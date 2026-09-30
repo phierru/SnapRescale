@@ -66,6 +66,16 @@ struct MetadataCapabilityTests {
         #expect(!MetadataPolicy.capability(of: .aiWorkflow, in: .tiff, carrying: invoke).canCarry)
     }
 
+    /// Unrecognised text under a tool keyword stays a PNG chunk while the parameters beside it move.
+    @Test func unrecognisedTextBesideParametersIsPartlyKept() throws {
+        let parameters = try #require(try Fixture.load(.a1111PNG).metadata.pngTextChunks.first)
+        let source = try PNGSplicerTests.source(holding: [parameters, PNGSplicerTests.text("prompt", PNGSplicerTests.privateNote)])
+        let state = MetadataPolicy.switchState(of: .aiWorkflow, for: source, spec: RenderSpec(target: source.size, format: .jpeg))
+        #expect(state.isEnabled && state.note == "Only the generation parameters are kept; the unrecognised text requires PNG output.")
+        let out = try FixtureProbe.inspect(try Renderer.produce(source, spec: RenderSpec(target: source.size, format: .jpeg)))
+        #expect(out.metadata.provenance == [.a1111] && !out.contains(PNGSplicerTests.privateNote))
+    }
+
     @Test func otherSectionsFollowTheTable() throws {
         let metadata = try Fixture.load(.comfyUI).metadata
         for section in Section.allCases where section != .aiWorkflow {

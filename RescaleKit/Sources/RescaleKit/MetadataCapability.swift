@@ -11,15 +11,21 @@ extension MetadataPolicy {
     /// Whether `type` can carry a section of this source. Differs from the
     /// plain table for the AI workflow: a ComfyUI / InvokeAI graph lives in PNG
     /// text chunks and survives only in PNG, while A1111-style parameters also
-    /// ride in the EXIF user comment. `type` is the resolved output type; `nil`
-    /// (a source "Keep original" cannot keep) carries nothing.
+    /// ride in the EXIF user comment, one text at a time. `type` is the
+    /// resolved output type; `nil` (a source "Keep original" cannot keep)
+    /// carries nothing.
     public static func capability(of section: Section, in type: UTType?, carrying metadata: ImageMetadata) -> Capability {
         guard let type else { return .none("This format cannot be written.") }
         let table = capability(of: section, in: type)
         guard section == .aiWorkflow, table.canCarry, !type.conforms(to: .png) else { return table }
         let payloads = metadata.aiPayloads
-        guard isPartlyKept(metadata) else { return table }
+        // The user comment holds one text (`MetadataWriter.movedParameters`);
+        // any other `parameters` chunk that differs from it stays behind.
+        let held = payloads.first(where: MetadataWriter.isUserComment) ?? MetadataWriter.movedParameters(in: metadata)
+        let leavesParameters = payloads.contains { MetadataWriter.isPNGParameters($0) && $0.text != held?.text }
+        guard isPartlyKept(metadata) || leavesParameters else { return table }
         if payloads.allSatisfy(isPNGOnly) { return .none(requiresPNGNote) }
+        if leavesParameters { return .limited("Only the first generation parameters are kept; the rest requires PNG output.") }
         // Unrecognised text under a tool keyword is carried as a PNG chunk only.
         let lost = payloads.contains(where: isPNGOnly) ? "the graph" : "the unrecognised text"
         return .limited("Only the generation parameters are kept; \(lost) requires PNG output.")
@@ -75,9 +81,12 @@ extension MetadataPolicy {
                 if policy.iptc == .keep { return png || heic ? "\(format) has no IPTC block; kept as the XMP copies." : nil }
             case .aiWorkflow:
                 if policy.aiWorkflow == .keep {
-                    if cap.note != nil, isPartlyKept(source.metadata) { return cap.note }
-                    let moved = !png && source.metadata.aiPayloads.contains { isPNGChunk($0) && !isPNGOnly($0) }
-                    return moved ? "Kept in the EXIF user comment." : nil
+                    // What this source loses in the format, over the table's general remark.
+                    if cap != capability(of: section, in: type) { return cap.note }
+                    guard !png, MetadataWriter.movedParameters(in: source.metadata) != nil else { return nil }
+                    let replaces = policy.exif == .keep && capability(of: .exif, in: type).canCarry
+                        && MetadataWriter.ordinaryUserComment(in: source.properties) != nil
+                    return movedParametersNote(replacingComment: replaces)
                 }
                 return nil
             case .exif, .gps, .xmp:
@@ -95,6 +104,13 @@ extension MetadataPolicy {
             if let n = note(option, reserving: true), !all.contains(n) { all.append(n) }
         }
         return SwitchState(isEnabled: true, note: note(spec.metadata, reserving: false), possibleNotes: all)
+    }
+
+    /// Where `parameters` from a PNG text chunk goes outside PNG. A comment of
+    /// the user's own that kept EXIF would have written there gives way.
+    static func movedParametersNote(replacingComment: Bool) -> String {
+        replacingComment ? "Kept in the EXIF user comment, replacing the comment already there."
+            : "Kept in the EXIF user comment."
     }
 
     /// The policy with this section set to each of its options in turn.
