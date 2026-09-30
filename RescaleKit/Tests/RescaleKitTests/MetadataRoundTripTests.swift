@@ -22,11 +22,9 @@ struct FixtureDetectionTests {
         #expect(m.provenance.isEmpty)
         #expect(m.badges.contains { $0.label == "GPS" && $0.tone == .warning })
         #expect(FixtureProbe.hasEXIFThumbnail(jpeg: Fixture.camera.data))
-        // The file has no XMP packet, but ImageIO derives `xmp:` / `photoshop:`
-        // date tags from the TIFF ones and the detector counts them.
-        withKnownIssue("XMP reported for a file without a packet", isIntermittent: true) {
-            #expect(!m.hasXMP)
-        }
+        // No XMP packet: the `xmp:` / `photoshop:` date tags ImageIO derives
+        // from the TIFF ones do not count.
+        #expect(!m.hasXMP)
     }
 
     @Test func iptcXMPJPEGCarriesBoth() throws {

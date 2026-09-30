@@ -43,9 +43,9 @@ PNG chunks are spliced in after `IHDR` with valid CRCs.
 - **`camera-exif-gps-thumbnail.jpg`**: the thumbnail is the one ImageIO embeds
   (`kCGImageDestinationEmbedThumbnail`), a JPEG of the same 64 × 48 card, so it
   cannot show a thumbnail that differs from the main image. The file has no XMP
-  packet, but the detector reports XMP anyway: ImageIO synthesises
-  `xmp:CreateDate`, `xmp:ModifyDate`, `xmp:CreatorTool` and
-  `photoshop:DateCreated` from the TIFF tags.
+  packet; ImageIO still synthesises `xmp:CreateDate`, `xmp:ModifyDate`,
+  `xmp:CreatorTool` and `photoshop:DateCreated` from the TIFF tags, which the
+  detector ignores because it looks for the packet itself (issue #22).
 - **sRGB JPEGs and PNGs** carry no ICC profile bytes (the PNGs have an `sRGB`
   chunk, the JPEGs EXIF ColorSpace = 1); ImageIO still names the profile
   "sRGB IEC61966-2.1", so they show the `ICC` badge.
