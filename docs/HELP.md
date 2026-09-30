@@ -15,8 +15,8 @@ The same text as the in-app help (⌘?). Deliberately brief; the
 
 - Pick an **aspect ratio** — Original keeps the image's own — and **one number**:
   width, height, megapixels or scale. The other three follow.
-- **Multiple of 8 or 16** rounds the result onto a lattice, as diffusion models
-  and video encoders want. The number you typed is kept; the derived side moves,
+- **Multiple of 8, 16 or 32** rounds the result onto a lattice, as diffusion
+  models, image-editing models and video encoders want. The number you typed is kept; the derived side moves,
   and the panel says by how much.
 - The **ladder** under the field jumps to the usual sizes. Edit it in Settings.
 
@@ -33,6 +33,8 @@ The same text as the in-app help (⌘?). Deliberately brief; the
 
 - **Keep original** writes the same format as the source when possible;
   otherwise the app says which format it switched to.
+- Only the **first frame** of an animation is used, and a CMYK image is
+  converted to sRGB.
 - The **file size** shown is a real encode, not an estimate.
 - **⌘S** opens the save panel, pre-filled with *name_WxH*. In Settings you can
   make ⌘S save beside the original without asking; the first save into a folder
@@ -42,13 +44,39 @@ The same text as the in-app help (⌘?). Deliberately brief; the
 
 ## The badges
 
-Next to the file name: what the source carries — colour profile, EXIF, GPS,
-XMP, HDR, alpha — and where an AI image came from (ComfyUI, A1111, InvokeAI, …).
-Hover for details. Nothing is written back yet. Full list:
+Next to the file name: what the source carries — an embedded colour profile,
+EXIF, GPS, IPTC, XMP, HDR, alpha — and where an AI image came from (ComfyUI,
+A1111, InvokeAI, …). Hover for details; click one to open the metadata
+inspector at that section. Full list:
 [image-metadata.md](reference/image-metadata.md).
+
+## Metadata
+
+- The **metadata inspector** lists what the image carries, section by section.
+  Open it with a badge, the **Metadata** row in the sidebar, or **View ▸
+  Metadata Inspector** (**⌥⌘I**).
+- Each section has a switch, **Keep · Strip**; the colour profile has **Keep ·
+  sRGB · Strip**, where sRGB converts the colours. The menu at the top sets
+  them all — **Default · Keep all · Strip all** — and reads Custom for any
+  other mix.
+- **Default** strips EXIF, GPS, IPTC and XMP, and keeps the colour profile and
+  the AI workflow: a resized ComfyUI PNG still opens its workflow in ComfyUI.
+  Opening another image goes back to Default; a preset carries its own choice.
+- A switch is disabled, with a note, when the output format cannot carry the
+  section: a ComfyUI graph requires PNG output.
+- **Always:** the embedded EXIF thumbnail is dropped, orientation is baked into
+  the pixels, and C2PA content credentials are stripped, because the signature
+  binds the original pixels. Stripping IPTC also drops the EXIF artist and
+  copyright. An HDR gain map is not written.
+- **Copy** on every section, **Copy Prompt** and **Export…** on an AI workflow,
+  **Copy All** and **Export All…** (JSON) in the **…** menu. They work whatever
+  the switches say.
+- SnapRescale does not edit metadata. For that, use ExifTool, Photos or
+  Preview.
 
 ## Shortcuts
 
-**⌘O** open · **⌘S** save · **⇧⌘S** save as · **⌘,** settings · **⌘?** help
+**⌘O** open · **⌘S** save · **⇧⌘S** save as · **⌥⌘I** metadata inspector ·
+**⌘,** settings · **⌘?** help
 
 Problems or ideas: [github.com/phierru/SnapRescale/issues](https://github.com/phierru/SnapRescale/issues).

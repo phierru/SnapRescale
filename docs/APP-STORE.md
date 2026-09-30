@@ -36,9 +36,13 @@ usual sizes — 512 · 768 · 1024 · 1536 · 2048 — is one click away and edi
 • Real output file size, from a real encode, before you save.
 • Keep the original format, or write JPEG, PNG, HEIC or TIFF.
 • Badges show what the source carries: colour profile, EXIF, GPS, HDR, and
-  where an AI image came from (ComfyUI, Automatic1111, InvokeAI, …). This
-  release writes 8-bit sRGB without that metadata; preservation controls are
-  next on the roadmap.
+  where an AI image came from (ComfyUI, Automatic1111, InvokeAI, …). Click one
+  for the metadata inspector.
+• Keep or strip metadata section by section. By default EXIF, GPS, IPTC and
+  XMP are left out, and the colour profile and the AI workflow are kept: a
+  resized ComfyUI PNG still opens its workflow in ComfyUI.
+• Copy a prompt, or export a workflow or all metadata as a file. SnapRescale
+  does not edit metadata.
 • Composition grids: thirds, golden ratio, fifths, centre lines.
 • Presets save your size and export settings; the files are plain JSON you can edit and share.
 • No account, no network, no analytics. MIT-licensed; source on GitHub.
@@ -47,6 +51,22 @@ usual sizes — 512 · 768 · 1024 · 1536 · 2048 — is one click away and edi
 
 resize,image,crop,aspect ratio,megapixel,comfyui,stable diffusion,photo,
 scale,png,jpeg,heic
+
+## What's new (next version — not uploaded)
+
+The version number is set at upload. The Description above and the screenshot
+list below already describe this version; 1.1, the version on the store,
+writes 8-bit sRGB without metadata.
+
+• Metadata inspector: click a badge to see what the image carries.
+• Keep or strip EXIF, GPS, IPTC, XMP, the colour profile and the AI workflow,
+  section by section, or all at once.
+• New default: EXIF, GPS, IPTC and XMP are left out; the colour profile and
+  the AI workflow are kept.
+• A resized ComfyUI PNG still opens its workflow in ComfyUI.
+• Copy a section or the prompt; export a workflow or all metadata.
+• The embedded thumbnail, which still showed the uncropped original, is never
+  written.
 
 ## What's new (1.1)
 
@@ -80,6 +100,8 @@ Open any image with Open With → SnapRescale, or drop one on the window. The
 app is sandboxed; saving goes through the save panel by default. The
 "save next to the original without asking" setting asks for folder access
 once per folder via the standard open panel (security-scoped bookmark).
+Next version: the metadata inspector's Export… and Export All… also write
+only through the save panel.
 
 ## Screenshots
 
@@ -89,6 +111,7 @@ Recipe (Retina display, so 1440×900 points capture at 2880×1800 pixels):
 ```sh
 open -n -a build/xcode/SnapRescale.app --args --window 1440x900 --preset "Social 16:9"
 sleep 4; open -a build/xcode/SnapRescale.app photo.jpg      # opened after launch → stays open, plain "Save"
+# add --inspector to the first line for the shots with the metadata inspector open
 screencapture -l<window id> -x -o raw.png                    # window id from CGWindowList (owner SnapRescale)
 swiftc -O -o flatten Scripts/flatten-screenshot.swift && ./flatten raw.png shot.png 2880 1800   # opaque, centred
 ```
@@ -97,15 +120,17 @@ Suggested set:
 
 1. 16:9 crop preview with the frame and thirds grid.
 2. Pad mode with a coloured canvas.
-3. The badges row on a phone photo (GPS, HDR, EXIF).
-4. Presets menu open.
-5. Settings window.
+3. The metadata inspector on a phone photo (GPS, HDR, EXIF), Default policy.
+4. The inspector on a ComfyUI PNG: AI workflow summary, PNG output.
+5. Presets menu open.
+6. Settings window.
 
 ## Status
 
 1.0 (1) submitted 2026-09-06; 1.0 (2) uploaded 2026-09-14 (post-review fixes from
 commit 110e688); 1.0 approved, Ready for Distribution. 1.1 (3) uploaded 2026-09-28
-(tag v1.1-build3). This document is the
+(tag v1.1-build3). The Description, review notes and screenshot list have since
+been updated for the metadata version, which is not uploaded. This document is the
 listing draft that was pasted in; it is not a live view of App Store Connect.
 
 ## Checklist for the next build
