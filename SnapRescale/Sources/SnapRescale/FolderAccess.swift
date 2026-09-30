@@ -86,7 +86,7 @@ enum FolderAccess {
     }
 
     private static func isPermissionDenied(_ error: NSError) -> Bool {
-        (error.domain == NSCocoaErrorDomain && (error.code == NSFileWriteNoPermissionError || error.code == NSFileWriteVolumeReadOnlyError))
+        (error.domain == NSCocoaErrorDomain && [NSFileWriteNoPermissionError, NSFileReadNoPermissionError, NSFileWriteVolumeReadOnlyError].contains(error.code))
             || (error.domain == NSPOSIXErrorDomain && (error.code == Int(EPERM) || error.code == Int(EACCES)))
             || ((error.userInfo[NSUnderlyingErrorKey] as? NSError).map(isPermissionDenied) ?? false)
     }
