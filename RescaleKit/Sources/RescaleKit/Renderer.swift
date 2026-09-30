@@ -14,6 +14,9 @@ public struct RenderSpec: Hashable, Sendable {
     public var format: OutputFormat
     /// 0…1, used by lossy encoders only.
     public var quality: Double
+    /// What to keep of the source's metadata (PRD §10.2). Carried only: the
+    /// writer does not consult it yet.
+    public var metadata: MetadataPolicy
 
     /// Whether the padding in this spec needs an alpha channel and the format
     /// can carry one. When false, translucent padding is composited over white.
@@ -25,13 +28,15 @@ public struct RenderSpec: Hashable, Sendable {
     }
 
     public init(target: PixelSize, fit: FitPolicy = .crop, anchor: CropAnchor = .center,
-                padColor: PadColor? = nil, format: OutputFormat = .keepOriginal, quality: Double = 0.95) {
+                padColor: PadColor? = nil, format: OutputFormat = .keepOriginal, quality: Double = 0.95,
+                metadata: MetadataPolicy = .default) {
         self.target = target
         self.fit = fit
         self.anchor = anchor
         self.padColor = padColor
         self.format = format
         self.quality = quality
+        self.metadata = metadata
     }
 }
 

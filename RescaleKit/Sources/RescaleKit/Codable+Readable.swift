@@ -72,6 +72,56 @@ extension OutputFormat {
     }
 }
 
+extension MetadataPolicy {
+    /// `{"exif": "keep", "gps": "strip", "iptc": "keep", "xmp": "keep", "icc": "preserve", "aiWorkflow": "keep"}`.
+    /// A section left out takes its default, so a hand-written file can name
+    /// only the ones it changes.
+    private enum Key: String, CodingKey { case exif, gps, iptc, xmp, icc, aiWorkflow }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Key.self)
+        self.init()
+        if let v = try c.decodeIfPresent(Action.self, forKey: .exif) { exif = v }
+        if let v = try c.decodeIfPresent(Action.self, forKey: .gps) { gps = v }
+        if let v = try c.decodeIfPresent(Action.self, forKey: .iptc) { iptc = v }
+        if let v = try c.decodeIfPresent(Action.self, forKey: .xmp) { xmp = v }
+        if let v = try c.decodeIfPresent(ICC.self, forKey: .icc) { icc = v }
+        if let v = try c.decodeIfPresent(Action.self, forKey: .aiWorkflow) { aiWorkflow = v }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: Key.self)
+        try c.encode(exif, forKey: .exif)
+        try c.encode(gps, forKey: .gps)
+        try c.encode(iptc, forKey: .iptc)
+        try c.encode(xmp, forKey: .xmp)
+        try c.encode(icc, forKey: .icc)
+        try c.encode(aiWorkflow, forKey: .aiWorkflow)
+    }
+}
+
+extension MetadataPolicy.ICC {
+    /// "preserve", "srgb", "strip".
+    public init(from decoder: Decoder) throws {
+        let s = try decoder.singleValueContainer().decode(String.self).lowercased()
+        switch s {
+        case "preserve", "keep": self = .preserve
+        case "srgb", "converttosrgb": self = .convertToSRGB
+        case "strip": self = .strip
+        default: throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "icc must be \"preserve\", \"srgb\" or \"strip\", got \"\(s)\""))
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .preserve: try c.encode("preserve")
+        case .convertToSRGB: try c.encode("srgb")
+        case .strip: try c.encode("strip")
+        }
+    }
+}
+
 extension PadColor {
     /// "#rrggbb" or "#rrggbbaa".
     public init(from decoder: Decoder) throws {

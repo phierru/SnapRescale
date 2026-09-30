@@ -38,10 +38,11 @@ where two items of a wave meet in one file are listed under the table.
 | 1 | Writer: keep / strip EXIF, GPS, IPTC; drop thumbnail, fix dimensions | #13 | `RescaleKit/Renderer.swift` (`encode`) | #9 |
 | 1 | Writer: keep AI workflow — splice PNG text chunks before `IEND` | #14 | `RescaleKit`: new `PNGSplicer.swift` | #8, #9 |
 | 1 | ICC: preserve · convert to sRGB · strip; renderer off fixed 8-bit sRGB | #15 | `RescaleKit/Renderer.swift` (`render`), `SnapRescale/Session.swift` | #9 |
+| 1 | Fix: XMP badge shown for files with no XMP packet | #22 | `RescaleKit/ImageMetadata.swift`, `MetadataSection.swift` | — |
 | 1 | Sidebar summary line; policy in shipped presets (Web strips GPS) | #16 | `SnapRescale/ControlsPanel.swift`, `PresetStore.swift` | #9 |
 | 2 | Inspector: Copy, Copy All, Copy Prompt, Export…, Export All… buttons | #17 | `SnapRescale/MetadataInspector.swift` | #11, #12 |
 | 2 | Writer: keep / strip XMP; remove mirrored copies of stripped sections | #18 | `RescaleKit/Renderer.swift` (`encode`) | #13 |
-| 2 | Inspector switches: per section, master Keep all / Strip all / Custom, disabled-with-reason | #19 | `SnapRescale/MetadataInspector.swift` | #9, #11, #16 |
+| 2 | Inspector switches: per section, master Default / Keep all / Strip all / Custom, disabled with a note ("Requires PNG output") when the output format cannot carry the section | #19 | `SnapRescale/MetadataInspector.swift` | #9, #11, #16 |
 | 3 | Help, in-app help text, changelog, App Store copy | #20 | `docs/`, `AboutAndHelp.swift` | all |
 
 #13 and #15 both edit `Renderer.swift` but different functions (`encode` vs
