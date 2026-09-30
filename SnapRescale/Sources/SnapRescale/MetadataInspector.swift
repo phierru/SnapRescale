@@ -360,11 +360,15 @@ struct MetadataInspector: View {
         var primaryExport: MetadataExport?
     }
 
+    /// The exports are named after the file, so the cache is for one file: a
+    /// renamed copy with the same metadata is another image (review 2026-09-30, G5).
+    private var url: URL?
     private var metadata: ImageMetadata?
     private var value = Value()
 
     func of(_ source: SourceImage) -> Value {
-        if metadata != source.metadata {
+        if url != source.url || metadata != source.metadata {
+            url = source.url
             metadata = source.metadata
             value = Value(summary: source.metadata.aiSummary, prompt: source.metadata.positivePrompt,
                           exports: source.aiExports, primaryExport: source.primaryAIExport)
