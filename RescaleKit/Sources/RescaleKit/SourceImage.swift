@@ -12,6 +12,9 @@ public struct SourceImage: @unchecked Sendable {
     public let fileSize: Int
     public let type: UTType
     public let metadata: ImageMetadata
+    /// ImageIO's property dictionary of the file, as captured at load: what the
+    /// encoder filters by the metadata policy (PRD §10.2). Read-only by convention.
+    public let properties: [CFString: Any]
 
     public var hasAlpha: Bool {
         switch image.alphaInfo {
@@ -59,6 +62,6 @@ public struct SourceImage: @unchecked Sendable {
         let metadata = ImageMetadata.inspect(source: source, data: bytes, type: type)
         return SourceImage(url: url, image: image,
                            size: PixelSize(image.width, image.height),
-                           fileSize: fileSize, type: type, metadata: metadata)
+                           fileSize: fileSize, type: type, metadata: metadata, properties: props)
     }
 }
