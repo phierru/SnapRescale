@@ -87,9 +87,11 @@ public struct Preset: Hashable, Sendable, Codable, Identifiable {
     }
 
     /// The presets that ship (PRD §12). Email and Discord/Slack wait for the
-    /// target-file-size search (roadmap v1.2).
+    /// target-file-size search (roadmap v1.2). Web states its policy — keep all,
+    /// strip GPS — although that is also the default the others take.
     public static let shipped: [Preset] = [
-        Preset(name: "Web", aspect: .original, size: .megapixels(1.5), multiple: .one, format: .jpeg, quality: 0.8),
+        Preset(name: "Web", aspect: .original, size: .megapixels(1.5), multiple: .one, format: .jpeg, quality: 0.8,
+               metadata: MetadataPolicy(exif: .keep, gps: .strip, iptc: .keep, xmp: .keep, icc: .preserve, aiWorkflow: .keep)),
         Preset(name: "Thumbnail", aspect: .fixed(width: 1, height: 1), size: .width(320), multiple: .one, fit: .crop),
         Preset(name: "Social 16:9", aspect: .fixed(width: 16, height: 9), size: .width(1920), multiple: .eight, fit: .crop),
         Preset(name: "SDXL 1024", aspect: .fixed(width: 1, height: 1), size: .width(1024), multiple: .sixteen, fit: .crop, format: .png),
