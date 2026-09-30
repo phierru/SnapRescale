@@ -21,6 +21,12 @@ struct SnapRescaleApp: App {
                     .keyboardShortcut("?", modifiers: .command)
                 Button("Report an Issue…") { NSWorkspace.shared.open(Links.issues) }
             }
+            CommandGroup(before: .toolbar) {
+                let inspector = InspectorState.shared
+                Toggle("Metadata Inspector", isOn: Binding(get: { inspector.isPresented }, set: { _ in inspector.toggle() }))
+                    .keyboardShortcut("i", modifiers: [.command, .option])
+                Divider()
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Open…") { Session.shared.chooseImage() }
                     .keyboardShortcut("o")
