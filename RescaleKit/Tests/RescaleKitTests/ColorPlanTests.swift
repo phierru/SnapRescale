@@ -135,7 +135,7 @@ struct ColorPlanTests {
         for fixture in [Fixture.displayP3, .sixteenBit] {
             for icc in ICC.allCases {
                 let o = try fixture.roundTrip(spec: RenderSpec(target: PixelSize(64, 96), fit: .pad, padColor: pad,
-                                                               format: format, metadata: MetadataPolicy(icc: icc)))
+                                                               format: format, metadata: .keepMost(icc: icc)))
                 let lossy = format == .jpeg || format == .heic
                 #expect(ColorProbe.close(ColorProbe.pixel(of: o.image, in: Self.sRGB, 32, 6), [204, 51, 102], lossy ? 6 : 1),
                         "\(fixture.rawValue) \(icc)")
@@ -158,13 +158,13 @@ struct ColorPlanTests {
         // Colour type 2 is RGB without alpha.
         #expect(ColorProbe.pngColourType(try Self.out(.camera, .png, .preserve).data) == 2)
         // Opaque padding does not need one either.
-        let padded = try Fixture.camera.roundTrip(spec: RenderSpec(target: PixelSize(64, 96), fit: .pad, padColor: .black, format: .png))
+        let padded = try Fixture.camera.roundTrip(spec: RenderSpec(target: PixelSize(64, 96), fit: .pad, padColor: .black, format: .png, metadata: .keepMost))
         #expect(!padded.metadata.hasAlpha)
     }
 
     @Test func alphaIsKeptWhereItIsNeeded() throws {
         // Transparent padding.
-        let padded = try Fixture.camera.roundTrip(spec: RenderSpec(target: PixelSize(64, 96), fit: .pad, padColor: nil, format: .png))
+        let padded = try Fixture.camera.roundTrip(spec: RenderSpec(target: PixelSize(64, 96), fit: .pad, padColor: nil, format: .png, metadata: .keepMost))
         #expect(padded.metadata.hasAlpha)
         #expect(ColorProbe.pixel(of: padded.image, in: Self.sRGB, 32, 4)[3] == 0)
         // A source with alpha of its own, at both depths.
@@ -277,7 +277,7 @@ struct ColorPlanTests {
     func renderSizeLimitsStillHold(_ icc: ICC) throws {
         for fixture in [Fixture.displayP3, .sixteenBit] {
             let source = try Fixture.load(fixture)
-            let policy = MetadataPolicy(icc: icc)
+            let policy = MetadataPolicy.keepMost(icc: icc)
             for target in [PixelSize(Limits.maxDimension + 1, 8), PixelSize(8, Limits.maxDimension + 1), PixelSize(0, 8),
                            PixelSize(Limits.maxDimension, Limits.maxDimension)] {
                 #expect(throws: Renderer.RenderError.self) {
@@ -292,7 +292,7 @@ struct ColorPlanTests {
     /// The preview asks the plan which of its two copies to show.
     @Test func planSaysWhetherTheSourceSpaceIsKept() throws {
         let p3 = try Fixture.load(.displayP3)
-        func plan(_ icc: ICC) -> ColorPlan { ColorPlan(source: p3, spec: RenderSpec(target: p3.size, metadata: MetadataPolicy(icc: icc))) }
+        func plan(_ icc: ICC) -> ColorPlan { ColorPlan(source: p3, spec: RenderSpec(target: p3.size, metadata: .keepMost(icc: icc))) }
         #expect(plan(.preserve).keepsSourceSpace && plan(.preserve).embedsProfile)
         #expect(!plan(.convertToSRGB).keepsSourceSpace && plan(.convertToSRGB).embedsProfile)
         #expect(!plan(.strip).keepsSourceSpace && !plan(.strip).embedsProfile)

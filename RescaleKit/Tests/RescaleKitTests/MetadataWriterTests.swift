@@ -44,10 +44,10 @@ extension Fixture.Output {
 struct MetadataWriterTests {
     static let formats: [OutputFormat] = [.jpeg, .heic, .tiff, .png]
 
-    /// XMP is kept throughout, as in the default policy; `XMPWriterTests` has the switch itself.
+    /// XMP is kept throughout; `XMPWriterTests` has the switch itself.
     static func policy(exif: MetadataPolicy.Action = .strip, gps: MetadataPolicy.Action = .strip,
                        iptc: MetadataPolicy.Action = .strip) -> MetadataPolicy {
-        MetadataPolicy(exif: exif, gps: gps, iptc: iptc)
+        MetadataPolicy(exif: exif, gps: gps, iptc: iptc, xmp: .keep)
     }
 
     static func render(_ fixture: Fixture, _ format: OutputFormat, _ policy: MetadataPolicy) throws -> Fixture.Output {
@@ -120,7 +120,7 @@ struct MetadataWriterTests {
     func strippingGPSLeavesNoCoordinates(_ format: OutputFormat) throws {
         for fixture in [Fixture.camera, .iptcXMP] {
             #expect(try Fixture.load(fixture).metadata.hasGPS)
-            let out = try Self.render(fixture, format, .default)
+            let out = try Self.render(fixture, format, .keepMost)
             #expect(!out.metadata.hasGPS && !out.showsLocation, "\(fixture.rawValue)")
             #expect(out.data.range(of: Data("GPSLatitude".utf8)) == nil, "\(fixture.rawValue)")
             #expect(out.metadata.xmpPacket?.contains("GPS") != true, "\(fixture.rawValue)")
@@ -217,7 +217,7 @@ struct MetadataWriterTests {
             kCGImagePropertyExifAuxDictionary: ["LensID": 7],
             kCGImagePropertyGPSDictionary: ["Latitude": 1.5],
         ]
-        let out = MetadataWriter.properties(from: source, policy: .default, type: .jpeg, size: PixelSize(300, 400))
+        let out = MetadataWriter.properties(from: source, policy: .keepMost, type: .jpeg, size: PixelSize(300, 400))
         #expect(out[kCGImagePropertyOrientation] as? Int == 1)
         let tiff = out[kCGImagePropertyTIFFDictionary] as? [String: Any] ?? [:]
         #expect(tiff["Orientation"] as? Int == 1 && tiff["Make"] as? String == "Synthetic")
@@ -230,7 +230,7 @@ struct MetadataWriterTests {
         #expect(out[kCGImagePropertyPixelWidth] == nil && out.keys.allSatisfy { !($0 as String).contains("Thumbnail") })
 
         // Stripping IPTC takes the caption mirror out of the kept TIFF tags.
-        let noIPTC = MetadataWriter.properties(from: source, policy: MetadataPolicy(iptc: .strip), type: .jpeg,
+        let noIPTC = MetadataWriter.properties(from: source, policy: MetadataPolicy(exif: .keep, xmp: .keep), type: .jpeg,
                                                size: PixelSize(300, 400))
         #expect((noIPTC[kCGImagePropertyTIFFDictionary] as? [String: Any])?["ImageDescription"] == nil)
     }

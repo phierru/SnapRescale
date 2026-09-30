@@ -21,7 +21,8 @@ milestone below; what remains here is still open.
 
 PRD §10: a metadata inspector in the window's trailing panel, opened from the
 badges. Keep / strip per section, copy / export, **no editing**. Default policy:
-keep everything except GPS. Output today is still 8-bit sRGB with everything
+strip EXIF, GPS, IPTC and XMP, preserve ICC, keep the AI workflow (changed from
+"keep everything except GPS" after trying the app). Output today is still 8-bit sRGB with everything
 stripped.
 
 GitHub milestone **Metadata**, tracking issue #21. The items are cut so

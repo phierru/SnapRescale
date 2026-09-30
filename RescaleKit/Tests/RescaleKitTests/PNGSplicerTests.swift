@@ -54,7 +54,7 @@ struct PNGSplicerTests {
 
     @Test func resizedComfyUIKeepsItsGraphsByteForByte() throws {
         let original = PNGScanner.textChunks(in: Fixture.comfyUI.data)
-        let out = try Fixture.comfyUI.roundTrip(spec: RenderSpec(target: Self.half))
+        let out = try Fixture.comfyUI.roundTrip(spec: RenderSpec(target: Self.half, metadata: .keepMost))
         #expect(out.type == .png && out.size == Self.half)
         #expect(out.metadata.provenance == [.comfyUI])
         let kept = out.metadata.pngTextChunks
@@ -66,7 +66,7 @@ struct PNGSplicerTests {
 
     @Test func compressedChunksSurviveAndStillInflate() throws {
         let original = PNGScanner.textChunks(in: Fixture.compressedText.data)
-        let out = try Fixture.compressedText.roundTrip(spec: RenderSpec(target: Self.half))
+        let out = try Fixture.compressedText.roundTrip(spec: RenderSpec(target: Self.half, metadata: .keepMost))
         let kept = out.metadata.pngTextChunks
         #expect(kept.map(\.raw) == original.map(\.raw))
         #expect(kept.map(\.type) == original.map(\.type))
@@ -77,7 +77,7 @@ struct PNGSplicerTests {
 
     @Test func a1111ParametersSurvive() throws {
         let original = PNGScanner.textChunks(in: Fixture.a1111PNG.data)
-        let out = try Fixture.a1111PNG.roundTrip(spec: RenderSpec(target: Self.half))
+        let out = try Fixture.a1111PNG.roundTrip(spec: RenderSpec(target: Self.half, metadata: .keepMost))
         #expect(out.metadata.provenance == [.a1111])
         #expect(out.metadata.pngTextChunks.map(\.raw) == original.map(\.raw))
         #expect(out.metadata.pngTextChunks.first?.keyword == "parameters")
@@ -85,7 +85,7 @@ struct PNGSplicerTests {
 
     @Test(arguments: [Fixture.comfyUI, .a1111PNG, .compressedText])
     func outputIsAValidPNG(_ fixture: Fixture) throws {
-        let out = try fixture.roundTrip(spec: RenderSpec(target: Self.half))
+        let out = try fixture.roundTrip(spec: RenderSpec(target: Self.half, metadata: .keepMost))
         let chunks = try #require(Self.walk(out.data))
         #expect(chunks.allSatisfy { $0.crcValid })
         #expect(chunks.first?.type == "IHDR" && chunks.last?.type == "IEND")

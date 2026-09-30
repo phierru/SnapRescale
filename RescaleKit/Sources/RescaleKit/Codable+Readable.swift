@@ -73,7 +73,7 @@ extension OutputFormat {
 }
 
 extension MetadataPolicy {
-    /// `{"exif": "keep", "gps": "strip", "iptc": "keep", "xmp": "keep", "icc": "preserve", "aiWorkflow": "keep"}`.
+    /// `{"exif": "strip", "gps": "strip", "iptc": "strip", "xmp": "strip", "icc": "preserve", "aiWorkflow": "keep"}`.
     /// A section left out takes its default, so a hand-written file can name
     /// only the ones it changes.
     private enum Key: String, CodingKey { case exif, gps, iptc, xmp, icc, aiWorkflow }

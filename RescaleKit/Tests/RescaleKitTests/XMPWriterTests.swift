@@ -257,7 +257,7 @@ struct XMPWriterTests {
             """
         let source = try Self.source(packet: main, extended: extended)
         #expect(source.metadata.xmpExtendedPacket == extended)
-        let out = try Self.render(source, format, .default)
+        let out = try Self.render(source, format, .keepMost)
         #expect(out.xmp("xmp:Rating") == "4" && out.xmp("xmp:Label") == "Blue")
         #expect(out.xmp("dc:subject") == "alps, lake")
         #expect(out.metadata.xmpExtendedPacket == nil && !out.contains("HasExtendedXMP"))
@@ -272,7 +272,7 @@ struct XMPWriterTests {
         let long = String(repeating: "lorem ipsum ", count: 9000)   // 108 KB
         let packet = XMPDetectionTests.packet.replacingOccurrences(of: "xmp:Rating=\"4\"", with: "xmp:Rating=\"4\" xmp:Nickname=\"\(long)\"")
         let source = try Self.source(packet: XMPDetectionTests.packet, extended: packet)
-        let out = try Self.render(source, format, .default)
+        let out = try Self.render(source, format, .keepMost)
         #expect(out.xmp("xmp:Rating") == "4" && out.xmp("xmp:Nickname") == long)
         #expect((out.metadata.xmpExtendedPacket != nil) == (format == .jpeg))
         #expect(!out.showsLocation && !out.contains("GPSLatitude"))
@@ -290,7 +290,7 @@ struct XMPWriterTests {
         let source = try PNGSplicerTests.source(fromPNG: png)
         #expect(source.metadata.pngTextKeywords == ["prompt", "workflow", "XML:com.adobe.xmp"])
 
-        let out = try FixtureProbe.inspect(try Renderer.produce(source, spec: RenderSpec(target: PNGSplicerTests.half)))
+        let out = try FixtureProbe.inspect(try Renderer.produce(source, spec: RenderSpec(target: PNGSplicerTests.half, metadata: .keepMost)))
         #expect(out.metadata.pngTextKeywords.sorted() == ["XML:com.adobe.xmp", "prompt", "workflow"])
         #expect(out.metadata.provenance == [.comfyUI])
         #expect(out.xmp("xmp:Rating") == "4" && out.xmp("xmp:Label") == "Placeholder label")
@@ -300,7 +300,7 @@ struct XMPWriterTests {
         #expect(out.metadata.pngTextChunks.filter { $0.keyword != "XML:com.adobe.xmp" }.map(\.raw) == graphs)
 
         // Each switch on its own.
-        var spec = RenderSpec(target: PNGSplicerTests.half)
+        var spec = RenderSpec(target: PNGSplicerTests.half, metadata: .keepMost)
         spec.metadata.aiWorkflow = .strip
         #expect(try FixtureProbe.inspect(try Renderer.produce(source, spec: spec)).metadata.pngTextKeywords == ["XML:com.adobe.xmp"])
         spec.metadata = Self.only(aiWorkflow: .keep)
@@ -309,7 +309,7 @@ struct XMPWriterTests {
 
     @Test(arguments: [Fixture.iptcXMP, .camera])
     func pngNeverHoldsTwoPackets(_ fixture: Fixture) throws {
-        for policy in [MetadataPolicy.keepAll, .default, Self.only(iptc: .keep), Self.only(xmp: .keep)] {
+        for policy in [MetadataPolicy.keepAll, .keepMost, Self.only(iptc: .keep), Self.only(xmp: .keep)] {
             let out = try MetadataWriterTests.render(fixture, .png, policy)
             #expect(out.metadata.pngTextKeywords.filter { $0 == "XML:com.adobe.xmp" }.count <= 1)
         }
