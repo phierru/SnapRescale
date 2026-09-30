@@ -265,49 +265,65 @@ final class Session {
     var canSave: Bool { source != nil && !isLoading && !isSaving }
 
     /// Decodes off the main actor so a large file does not freeze the window.
+    /// At most one decode runs; a load requested meanwhile waits as the single
+    /// pending one, and a newer request takes its place. A decode cannot be
+    /// interrupted, so starting one per request would let a burst of drops
+    /// hold that many full-size images at once (review 2026-09-30).
     func load(_ url: URL) {
         loadGeneration += 1
-        let generation = loadGeneration
+        pendingLoad = url
         isLoading = true
+        guard !decodeRunning else { return }
+        decodeRunning = true
         Task {
-            defer { if generation == loadGeneration { isLoading = false } }
-            do {
-                let (loaded, preview, converted) = try await Task.detached(priority: .userInitiated) {
-                    let loaded = try SourceImage.load(url)
-                    let preview = Self.makePreview(loaded.image, maxPixels: 2048)
-                    return (loaded, preview, Self.convertedToSRGB(preview))
-                }.value
-                // A newer load was requested while this one decoded: drop it.
-                guard generation == loadGeneration else { return }
-                source = loaded
-                sourcePreview = preview
-                sRGBPreview = converted
-                anchor = .center
-                // Defaults for a new image (review C7); launch overrides win.
-                aspect = launchAspect ?? .original
-                launchAspect = nil
-                multiple = launchMultiple ?? AppSettings.shared.defaultMultiple
-                launchMultiple = nil
-                quality = AppSettings.shared.defaultQuality
-                metadataPolicy = .default
-                if let v = launchSizeValue {
-                    sizeValue = v
-                    launchSizeValue = nil
-                } else {
-                    sizeKind = .width
-                    sizeValue = Double(min(loaded.size.width, 2048))
-                }
-                if let name = launchPreset, let p = presets.presets.first(where: { $0.name == name }) {
-                    apply(p)
-                    launchPreset = nil
-                }
-                lastSaved = nil
-                resolveFormat()
-                scheduleEncode()
-                if saveOnLoad { saveOnLoad = false; isLoading = false; saveNextToOriginal() }
-            } catch {
-                if generation == loadGeneration { errorMessage = error.localizedDescription }
+            while let url = pendingLoad {
+                pendingLoad = nil
+                await decode(url, generation: loadGeneration)
             }
+            decodeRunning = false
+        }
+    }
+    private var pendingLoad: URL?
+    private var decodeRunning = false
+
+    private func decode(_ url: URL, generation: Int) async {
+        defer { if generation == loadGeneration { isLoading = false } }
+        do {
+            let (loaded, preview, converted) = try await Task.detached(priority: .userInitiated) {
+                let loaded = try SourceImage.load(url)
+                let preview = Self.makePreview(loaded.image, maxPixels: 2048)
+                return (loaded, preview, Self.convertedToSRGB(preview))
+            }.value
+            // A newer load was requested while this one decoded: drop it.
+            guard generation == loadGeneration else { return }
+            source = loaded
+            sourcePreview = preview
+            sRGBPreview = converted
+            anchor = .center
+            // Defaults for a new image (review C7); launch overrides win.
+            aspect = launchAspect ?? .original
+            launchAspect = nil
+            multiple = launchMultiple ?? AppSettings.shared.defaultMultiple
+            launchMultiple = nil
+            quality = AppSettings.shared.defaultQuality
+            metadataPolicy = .default
+            if let v = launchSizeValue {
+                sizeValue = v
+                launchSizeValue = nil
+            } else {
+                sizeKind = .width
+                sizeValue = Double(min(loaded.size.width, 2048))
+            }
+            if let name = launchPreset, let p = presets.presets.first(where: { $0.name == name }) {
+                apply(p)
+                launchPreset = nil
+            }
+            lastSaved = nil
+            resolveFormat()
+            scheduleEncode()
+            if saveOnLoad { saveOnLoad = false; isLoading = false; saveNextToOriginal() }
+        } catch {
+            if generation == loadGeneration { errorMessage = error.localizedDescription }
         }
     }
 
