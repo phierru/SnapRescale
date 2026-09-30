@@ -96,12 +96,13 @@ struct FixtureDetectionTests {
 
 /// BASELINE, not a specification. These pin what `Renderer.produce` writes
 /// today with the default policy — EXIF and IPTC kept, GPS stripped (#13); the
-/// AI workflow of a PNG written as PNG kept (#14); colour and depth following
-/// the ICC policy (#15, detail in `ColorPlanTests`); orientation baked in — so
-/// the remaining writer issue (#18 XMP) has to change an expectation here
-/// deliberately, in the commit that changes the behaviour. The two orientation
-/// tests are the exception: PRD §10.3 keeps them true for good. The switches
-/// themselves are specified in `MetadataWriterTests`.
+/// AI workflow kept, as PNG chunks (#14) or in EXIF (#18); colour and depth
+/// following the ICC policy (#15, detail in `ColorPlanTests`); the source's XMP
+/// packet kept, less its GPS mirror (#18); orientation baked in — so a writer
+/// change has to change an expectation here deliberately, in the commit that
+/// changes the behaviour. The two orientation tests are the exception: PRD
+/// §10.3 keeps them true for good. The switches themselves are specified in
+/// `MetadataWriterTests` and `XMPWriterTests`.
 struct MetadataRoundTripBaselineTests {
     /// Default policy: keep everything except GPS (PRD §10.2).
     @Test(arguments: Fixture.allCases)
@@ -114,13 +115,18 @@ struct MetadataRoundTripBaselineTests {
         #expect(!m.hasGPS)
         #expect(!out.hasEXIFThumbnail)
         // #14: PNG output keeps the source's AI workflow chunks. A1111
-        // parameters in EXIF UserComment ride along with EXIF (#13).
+        // parameters in EXIF UserComment follow the AI workflow switch (#18).
         let keepsWorkflow = [Fixture.comfyUI, .a1111PNG, .compressedText].contains(fixture)
         #expect(m.pngTextKeywords == (keepsWorkflow ? source.pngTextKeywords : []))
         #expect(m.provenance == (keepsWorkflow || fixture == .a1111JPEG ? source.provenance : []))
-        // The source's XMP packet is not written (#18). What is reported is
-        // the packet ImageIO derives from the IPTC fields.
-        #expect(m.hasXMP == (fixture == .iptcXMP))
+        // #18: the source's own packet is written, without its GPS mirror; a
+        // source without a packet gets none.
+        #expect(m.hasXMP == source.hasXMP)
+        let xmp = m.section(.xmp), sourceXMP = source.section(.xmp)
+        for path in ["xmp:Rating", "xmp:Label", "xmp:CreatorTool", "dc:description", "dc:subject", "photoshop:City"] {
+            #expect(xmp?[path] == sourceXMP?[path], "\(path)")
+        }
+        #expect(xmp?.fields.contains { $0.key.contains("GPS") } != true)
         let gone: Set = ["GPS", "Rotated", "CMYK"]
         #expect(m.badges.allSatisfy { !gone.contains($0.label) })
     }

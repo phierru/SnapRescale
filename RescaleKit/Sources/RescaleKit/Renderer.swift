@@ -14,8 +14,7 @@ public struct RenderSpec: Hashable, Sendable {
     public var format: OutputFormat
     /// 0…1, used by lossy encoders only.
     public var quality: Double
-    /// What to keep of the source's metadata (PRD §10.2). The encoder honours
-    /// EXIF, GPS and IPTC; the other sections are carried only, for now.
+    /// What to keep of the source's metadata (PRD §10.2).
     public var metadata: MetadataPolicy
 
     /// Whether the padding in this spec needs an alpha channel and the format
@@ -120,18 +119,24 @@ public enum Renderer {
 
     /// Encodes without a source, so without metadata: nothing is there to keep.
     public static func encode(_ image: CGImage, spec: RenderSpec, sourceType: UTType) throws -> Data {
-        try encode(image, spec: spec, sourceType: sourceType, sourceProperties: [:])
+        try encode(image, spec: spec, sourceType: sourceType, sourceProperties: [:], sourceMetadata: nil)
     }
 
-    /// Encodes keeping what `spec.metadata` says of the source's EXIF, GPS and
-    /// IPTC (PRD §10.2), with the fixes of §10.4: no embedded thumbnail, EXIF
-    /// pixel dimensions of the output, orientation 1.
+    /// Encodes keeping what `spec.metadata` says of the source's EXIF, GPS,
+    /// IPTC and XMP packet (PRD §10.2), with the fixes of §10.4: no embedded
+    /// thumbnail, pixel dimensions of the output, orientation 1.
+    ///
+    /// The XMP switch governs the source's own packet only. ImageIO derives a
+    /// packet by itself from kept EXIF / TIFF / IPTC (always on PNG and HEIC,
+    /// where IPTC can live only as XMP); that one belongs to those sections, so
+    /// "strip XMP, keep IPTC" still writes it (issue #18).
     public static func encode(_ image: CGImage, spec: RenderSpec, source: SourceImage) throws -> Data {
-        try encode(image, spec: spec, sourceType: source.type, sourceProperties: source.properties)
+        try encode(image, spec: spec, sourceType: source.type, sourceProperties: source.properties,
+                   sourceMetadata: source.metadata)
     }
 
     private static func encode(_ image: CGImage, spec: RenderSpec, sourceType: UTType,
-                               sourceProperties: [CFString: Any]) throws -> Data {
+                               sourceProperties: [CFString: Any], sourceMetadata: ImageMetadata?) throws -> Data {
         guard let type = spec.format.resolvedType(for: sourceType) else {
             throw RenderError.cannotKeepFormat(sourceType)
         }
@@ -144,7 +149,14 @@ public enum Renderer {
         if spec.format.isLossy(for: sourceType) {
             props[kCGImageDestinationLossyCompressionQuality] = spec.quality
         }
-        CGImageDestinationAddImage(dest, image, props as CFDictionary)
+        // The kept part of the source's packet; the dictionaries still say
+        // what goes into the EXIF, GPS and IPTC blocks.
+        if let xmp = sourceMetadata.flatMap({ XMPWriter.metadata(from: $0, policy: spec.metadata, type: type,
+                                                                 size: PixelSize(image.width, image.height)) }) {
+            CGImageDestinationAddImageAndMetadata(dest, image, xmp, props as CFDictionary)
+        } else {
+            CGImageDestinationAddImage(dest, image, props as CFDictionary)
+        }
         guard CGImageDestinationFinalize(dest) else { throw RenderError.encodeFailed(type) }
         return MetadataWriter.finish(data as Data, type: type, written: kept)
     }

@@ -44,6 +44,7 @@ extension Fixture.Output {
 struct MetadataWriterTests {
     static let formats: [OutputFormat] = [.jpeg, .heic, .tiff, .png]
 
+    /// XMP is kept throughout, as in the default policy; `XMPWriterTests` has the switch itself.
     static func policy(exif: MetadataPolicy.Action = .strip, gps: MetadataPolicy.Action = .strip,
                        iptc: MetadataPolicy.Action = .strip) -> MetadataPolicy {
         MetadataPolicy(exif: exif, gps: gps, iptc: iptc)
@@ -113,9 +114,8 @@ struct MetadataWriterTests {
     }
 
     /// Nothing ImageIO reports about the output mentions a location, with every
-    /// other switch on. `iptc-xmp.jpg` has its GPS only as an XMP mirror: it
-    /// passes here because no XMP packet of the source is written yet; once #18
-    /// keeps XMP, that issue has to drop the `exif:GPS*` properties itself.
+    /// other switch on. `iptc-xmp.jpg` has its GPS only as an XMP mirror, which
+    /// the kept packet loses (PRD §10.3, #18).
     @Test(arguments: formats)
     func strippingGPSLeavesNoCoordinates(_ format: OutputFormat) throws {
         for fixture in [Fixture.camera, .iptcXMP] {
@@ -123,6 +123,7 @@ struct MetadataWriterTests {
             let out = try Self.render(fixture, format, .default)
             #expect(!out.metadata.hasGPS && !out.showsLocation, "\(fixture.rawValue)")
             #expect(out.data.range(of: Data("GPSLatitude".utf8)) == nil, "\(fixture.rawValue)")
+            #expect(out.metadata.xmpPacket?.contains("GPS") != true, "\(fixture.rawValue)")
         }
     }
 
@@ -140,11 +141,16 @@ struct MetadataWriterTests {
     }
 
     /// The caption, byline and copyright mirrors in the TIFF tags go too (PRD §10.3).
-    @Test(arguments: formats)
-    func stripIPTC(_ format: OutputFormat) throws {
-        let out = try Self.render(.iptcXMP, format, Self.policy(exif: .keep, gps: .keep, iptc: .strip))
-        #expect(!out.metadata.hasIPTC)
-        #expect(out.properties[kCGImagePropertyIPTCDictionary as String] == nil)
+    /// With the packet kept, its `xmp:Rating` remains, which ImageIO reports as an
+    /// IPTC star rating; nothing else of IPTC does.
+    @Test(arguments: formats, [MetadataPolicy.Action.keep, .strip])
+    func stripIPTC(_ format: OutputFormat, _ xmp: MetadataPolicy.Action) throws {
+        var policy = Self.policy(exif: .keep, gps: .keep, iptc: .strip)
+        policy.xmp = xmp
+        let out = try Self.render(.iptcXMP, format, policy)
+        let iptc = out.dictionary(kCGImagePropertyIPTCDictionary)
+        #expect(Set(iptc.keys) == (xmp == .keep ? ["StarRating"] : []))
+        #expect(out.metadata.hasIPTC == (xmp == .keep))
         let tiff = out.dictionary(kCGImagePropertyTIFFDictionary)
         #expect(tiff["ImageDescription"] == nil && tiff["Artist"] == nil && tiff["Copyright"] == nil)
         for text in ["Synthetic test caption", "Placeholder Author", "Placeholder copyright", "Placeholder Agency"] {

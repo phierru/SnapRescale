@@ -9,7 +9,11 @@ public struct ImageMetadata: Hashable, Sendable {
     public var hasGPS = false
     public var hasIPTC = false
     public var hasXMP = false
+    /// The profile ImageIO names for the image. It names one even when the file
+    /// carries none (sRGB by default): see `iccOrigin`.
     public var iccProfileName: String?
+    /// Whether that profile is really in the file, only tagged, or assumed by macOS.
+    public var iccOrigin: ICCOrigin = .assumed
     public var colorModel: String?
     public var bitDepth = 8
     public var hasAlpha = false
@@ -73,7 +77,8 @@ public struct ImageMetadata: Hashable, Sendable {
     /// The badge row, in a stable order: structure, then blocks, then provenance.
     public var badges: [Badge] {
         var out: [Badge] = []
-        if let icc = iccProfileName { out.append(Badge(label: "ICC", detail: "Colour profile: \(icc)", tone: .neutral)) }
+        // Only for a profile the file really embeds; an assumed sRGB is not something it carries.
+        if iccIsEmbedded { out.append(Badge(label: "ICC", detail: "Colour profile: \(iccProfileName ?? "embedded")", tone: .neutral)) }
         if let model = colorModel, model != "RGB" { out.append(Badge(label: model, detail: "Colour model \(model)", tone: .neutral)) }
         if bitDepth > 8 { out.append(Badge(label: "\(bitDepth)-bit", detail: "\(bitDepth) bits per channel", tone: .neutral)) }
         if hasAlpha { out.append(Badge(label: "Alpha", detail: "Has an alpha channel", tone: .neutral)) }
@@ -204,11 +209,18 @@ public struct ImageMetadata: Hashable, Sendable {
 
         // The colour space is read off a lazily decoded image; no pixels are touched.
         let profile = CGImageSourceCreateImageAtIndex(source, 0, nil)?.colorSpace?.copyICCData() as Data?
-        let icc = MetadataSection(kind: .icc, fields: m.iccProfileName == nil && profile == nil ? []
+        var icc = MetadataSection(kind: .icc, fields: m.iccProfileName == nil && profile == nil ? []
             : ICCReader.fields(name: m.iccProfileName, colorModel: m.colorModel, profile: profile))
+        // Embedded or assumed is read off the container; ImageIO answers for the ones not walked.
+        m.iccOrigin = data.flatMap { ICCScanner.origin(in: $0, type: type) }
+            ?? (m.iccProfileName != nil ? .embedded : .assumed)
+        if !icc.fields.isEmpty {
+            icc.fields.insert(MetadataField(key: "Embedded", value: m.iccEmbeddedValue), at: 0)
+            icc.note = m.iccNote
+        }
 
-        m.sections = [exif, gps, iptc, xmp, icc, m.aiWorkflowSection, m.c2paSection].filter { !$0.fields.isEmpty }
-            + [m.structureSection]
+        m.sections = ([exif, gps, iptc, xmp, icc, m.aiWorkflowSection, m.c2paSection].filter { !$0.fields.isEmpty }
+            + [m.structureSection]).map(MetadataLabels.decorated)
         return m
     }
 
@@ -239,12 +251,19 @@ public struct ImageMetadata: Hashable, Sendable {
         return s
     }
 
+    /// Shown with the Structure section when the source has an HDR gain map: the writer does not carry it.
+    public static let hdrGainMapNote = "The HDR gain map is not carried into the saved file."
+
+    /// `hdrGainMapNote` when the source has a gain map that Save will drop, else nil.
+    public var hdrNote: String? { hasHDR ? Self.hdrGainMapNote : nil }
+
     /// Read-only facts about the pixels.
-    private var structureSection: MetadataSection {
-        var s = MetadataSection(kind: .structure)
+    var structureSection: MetadataSection {
+        var s = MetadataSection(kind: .structure, note: hdrNote)
         s.add("Alpha", hasAlpha ? "Yes" : "No")
         s.add("Bit depth", "\(bitDepth) bits per channel")
-        s.add("HDR gain map", hasHDR ? "Yes" : "No")
+        s.fields.append(MetadataField(key: "HDR gain map", value: hasHDR ? "Yes" : "No",
+                                      readableValue: hasHDR ? "Yes, not carried into the saved file" : nil))
         s.add("Depth map", hasDepth ? "Yes" : "No")
         s.add("Frames", "\(frameCount)")
         s.add("Orientation", MetadataFormat.orientation(orientation))
