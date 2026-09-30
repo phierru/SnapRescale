@@ -271,6 +271,29 @@ struct MetadataReadableTests {
                 == ["Steps": "2", "Lora hashes": "a: 1, b: 2", "Seed": "3"])
     }
 
+    /// Review 2026-09-30, G7: quoted settings are JSON strings, escapes included.
+    @Test func a1111QuotedSettingsRespectEscapes() {
+        // An escaped quote does not end the value, so its comma does not split it.
+        #expect(WorkflowReader.settings(#"Steps: 2, Model: "my \"best\", final model", Seed: 3"#)
+                == ["Steps": "2", "Model": #"my "best", final model"#, "Seed": "3"])
+        // Backslashes and escaped newlines are decoded; a backslash before the closing quote is not an escape of it.
+        #expect(WorkflowReader.settings(#"Steps: 2, Path: "C:\\models\\", Note: "one\ntwo, three", Seed: 3"#)
+                == ["Steps": "2", "Path": #"C:\models\"#, "Note": "one\ntwo, three", "Seed": "3"])
+        #expect(WorkflowReader.settings(#"Name: "caf\u00e9, \/ tab\there""#) == ["Name": "café, / tab\there"])
+        // Unquoted values are taken as written, backslashes and all.
+        #expect(WorkflowReader.settings(#"Steps: 2, Path: C:\models, Sampler: Euler a"#)
+                == ["Steps": "2", "Path": #"C:\models"#, "Sampler": "Euler a"])
+        // Not a valid string: the quotes come off and the rest stays as written.
+        #expect(WorkflowReader.settings(#"Steps: 2, Odd: "a \q b", Seed: 3"#) == ["Steps": "2", "Odd": #"a \q b"#, "Seed": "3"])
+        // Duplicate keys: the same value is kept, different values are dropped, quoted or not.
+        #expect(WorkflowReader.settings(#"Model: "a, b", Model: "a, b", Seed: 1, Seed: 2, Tag: "x\"y", Tag: "x, y""#)
+                == ["Model": "a, b"])
+
+        let m = Self.a1111("a cat\nSteps: 20, Sampler: Euler a, Model: \"sdxl \\\"turbo\\\", v2\", Seed: 7")
+        #expect(m.aiSummaryValue(.model) == #"sdxl "turbo", v2"#)
+        #expect(m.aiSummaryValue(.seed) == "7")
+    }
+
     @Test func a1111MissingNegativeAndOddLines() {
         #expect(Self.pairs(Self.a1111("a cat\nSteps: 20, Sampler: Euler a, CFG scale: 7"))
                 == ["Prompt=a cat", "Steps=20", "CFG=7", "Sampler=Euler a"])
