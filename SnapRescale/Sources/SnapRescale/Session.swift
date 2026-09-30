@@ -39,6 +39,17 @@ final class Session {
     }
     var quality: Double = AppSettings.shared.defaultQuality
 
+    // Metadata (PRD §10.2). An output setting like the format: a new image does not reset it.
+    var metadataPolicy: MetadataPolicy = .default
+    /// The hook between the sidebar's Metadata row and the inspector (GitHub
+    /// #16, #19): the row sets it through `requestMetadataInspector()`. Whoever
+    /// presents the inspector either binds `isPresented` to it, or observes it
+    /// and sets it back to false once the inspector is open.
+    var metadataInspectorRequested = false
+
+    /// Call through `deferred` when it starts in a click (GitHub #2).
+    func requestMetadataInspector() { metadataInspectorRequested = true }
+
     // Presets (PRD §12)
     let presets = PresetStore()
     /// Name of the preset the current settings came from; nil once anything changed.
@@ -51,6 +62,7 @@ final class Session {
         padColor = preset.padColor
         format = preset.format
         quality = Double(Preset.percent(preset.quality)) / 100
+        metadataPolicy = preset.metadata
         resolveFormat()   // a preset may ask for "keep" on a source that cannot be kept (review C5)
         switch preset.size {
         case .width(let w): sizeKind = .width; sizeValue = Double(w)
@@ -64,7 +76,7 @@ final class Session {
     /// The current settings as a preset.
     func currentPreset(named name: String) -> Preset {
         Preset(name: name, aspect: aspect, size: sizeParameter, multiple: multiple, fit: fit,
-               padColor: padColor, format: format, quality: quality)
+               padColor: padColor, format: format, quality: quality, metadata: metadataPolicy)
     }
 
     /// Called from the view when any setting changes: the settings no longer match a preset by name.
@@ -158,7 +170,7 @@ final class Session {
     var spec: RenderSpec? {
         guard let solution else { return nil }
         return RenderSpec(target: solution.size, fit: fit, anchor: anchor,
-                          padColor: padColor, format: format, quality: quality)
+                          padColor: padColor, format: format, quality: quality, metadata: metadataPolicy)
     }
 
     /// True when the solved size has a different ratio from the source, so the

@@ -46,11 +46,22 @@ public struct MetadataPolicy: Hashable, Sendable, Codable {
         }
     }
 
-    /// State of the master control: it reads `custom` as soon as sections differ.
-    public enum Summary: Hashable, Sendable {
+    /// State of the master control: it reads `custom` as soon as sections differ
+    /// from all three named policies. A fresh install reads `default` (GitHub #19).
+    public enum Summary: Hashable, Sendable, CaseIterable {
+        case `default`
         case keepAll
         case stripAll
         case custom
+
+        public var label: String {
+            switch self {
+            case .default: return "Default"
+            case .keepAll: return "Keep all"
+            case .stripAll: return "Strip all"
+            case .custom: return "Custom"
+            }
+        }
     }
 
     /// Camera, lens, exposure, date; includes the TIFF tags.
@@ -83,9 +94,45 @@ public struct MetadataPolicy: Hashable, Sendable, Codable {
 
     /// Converting to sRGB is neither keeping nor stripping, so it reads `custom`.
     public var summary: Summary {
+        if self == .default { return .default }
         if self == .keepAll { return .keepAll }
         if self == .stripAll { return .stripAll }
         return .custom
+    }
+
+    /// One line for the sidebar row: "Default · GPS stripped", "Keep all",
+    /// "Strip all", or "Custom" with what is stripped — or, once most of it is,
+    /// with what is left: "Custom · EXIF, GPS stripped", "Custom · only XMP kept".
+    /// A conversion to sRGB is named, since it is neither.
+    public var summaryLine: String {
+        let state = summary
+        switch state {
+        case .default: return "\(state.label) · GPS stripped"
+        case .keepAll, .stripAll: return state.label
+        case .custom: break
+        }
+        let stripped = Section.allCases.filter { !keeps($0) }
+        let detail: String
+        if stripped.isEmpty {
+            detail = "converted to sRGB"   // the only custom policy that strips nothing
+        } else if stripped.count <= 3 {
+            detail = stripped.map(Self.shortLabel).joined(separator: ", ") + " stripped"
+                + (icc == .convertToSRGB ? ", sRGB" : "")
+        } else {
+            let kept = Section.allCases.filter(keeps)
+                .map { $0 == .icc && icc == .convertToSRGB ? "sRGB" : Self.shortLabel($0) }
+            detail = "only " + kept.joined(separator: ", ") + " kept"
+        }
+        return "\(state.label) · \(detail)"
+    }
+
+    /// `Section.label` cut down for a list in one row.
+    private static func shortLabel(_ section: Section) -> String {
+        switch section {
+        case .icc: return "ICC"
+        case .aiWorkflow: return "AI"
+        default: return section.label
+        }
     }
 
     /// Whether anything of the section is written. Converting to sRGB still
