@@ -249,7 +249,10 @@ struct MetadataWriterTests {
         var policy = MetadataPolicy.keepAll
         policy.aiWorkflow = .strip
         let kept = try Self.render(.comfyUI, format, policy)
-        let stripped = try Self.render(.comfyUI, format, .stripAll)
+        // Colour handling is its own switch (#15); hold it equal.
+        var bare = MetadataPolicy.stripAll
+        bare.icc = policy.icc
+        let stripped = try Self.render(.comfyUI, format, bare)
         #expect(kept.data == stripped.data)
     }
 

@@ -100,7 +100,9 @@ struct MetadataPolicyTests {
         for s in Section.allCases { #expect(cap(s, .png).canCarry, Comment(rawValue: s.rawValue)) }
         #expect(cap(.aiWorkflow, .png) == .full)   // the only home of a ComfyUI graph
         #expect(cap(.iptc, .png).note?.contains("XMP") == true)
-        for s in [Section.exif, .gps, .xmp, .icc] { #expect(cap(s, .png) == .full) }
+        for s in [Section.exif, .gps, .xmp] { #expect(cap(s, .png) == .full) }
+        // Strip cannot remove ImageIO's `sRGB` chunk (issue #15).
+        #expect(cap(.icc, .png).note?.contains("sRGB marker") == true)
     }
 
     @Test func jpegCarriesPhotoMetadataButNoGraph() {
@@ -111,7 +113,9 @@ struct MetadataPolicyTests {
     }
 
     @Test func heicCarriesPhotoMetadataButNoGraph() {
-        for s in [Section.exif, .gps, .xmp, .icc] { #expect(cap(s, .heic) == .full) }
+        for s in [Section.exif, .gps, .xmp] { #expect(cap(s, .heic) == .full) }
+        // An sRGB HEIC has no profile to strip (issue #15).
+        #expect(cap(.icc, .heic).note?.contains("Strip and Convert") == true)
         #expect(cap(.iptc, .heic).canCarry && cap(.iptc, .heic).note?.contains("XMP") == true)
         #expect(cap(.aiWorkflow, .heic).canCarry && cap(.aiWorkflow, .heic).note?.hasPrefix("HEIC") == true)
     }
