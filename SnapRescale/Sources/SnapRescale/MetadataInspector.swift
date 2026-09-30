@@ -244,7 +244,8 @@ struct MetadataInspector: View {
     }
 
     /// Asks where, then writes there and nowhere else: under the sandbox the
-    /// panel's URL is the only place the app may write to. The panel opens a
+    /// panel's URL is the only place the app may write to, and a file already
+    /// there survives a failed write (`SafeWrite`). The panel opens a
     /// run-loop turn after the click (GitHub #2, see Deferred.swift).
     private func save(_ export: MetadataExport) {
         let folder = session.source?.url.deletingLastPathComponent()
@@ -255,7 +256,7 @@ struct MetadataInspector: View {
             panel.allowedContentTypes = [export.type]
             guard panel.runModal() == .OK, let url = panel.url else { return }
             do {
-                try export.data.write(to: url)
+                try SafeWrite.write(export.data, to: url)
             } catch {
                 session.errorMessage = error.localizedDescription
             }

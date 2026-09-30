@@ -465,6 +465,7 @@ final class Session {
     /// `viaFolderAccess` is the silent path: it may ask for the folder once under
     /// the sandbox. The save panel path already carries its own grant. The
     /// encode runs off the main actor; the window shows a saving state meanwhile.
+    /// Both paths replace an existing file as a whole, or not at all (`SafeWrite`).
     private func write(to url: URL, source: SourceImage, spec: RenderSpec, viaFolderAccess: Bool = false) {
         isSaving = true
         Task {
@@ -480,8 +481,9 @@ final class Session {
                     case .failed(let error): throw error
                     }
                 } else {
-                    try data.write(to: url)
+                    try SafeWrite.write(data, to: url)
                 }
+                // Only a committed file is reported as saved (review 2026-09-30, G1).
                 lastSaved = url
                 if revealAfterSave { NSWorkspace.shared.activateFileViewerSelecting([url]) }
                 if quitsAfterSave {
