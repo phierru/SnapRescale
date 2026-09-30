@@ -18,9 +18,16 @@ final class InspectorState {
     var isPresented = CommandLine.arguments.contains("--inspector")
     /// Sections start expanded; the set holds the ones the user closed.
     private(set) var collapsed: Set<MetadataSection.Kind> = []
+    /// A section that starts folded (a colour profile that is not in the file) is
+    /// held here once the user opens it.
+    private(set) var opened: Set<MetadataSection.Kind> = []
+    /// Sections whose secondary fields are shown; they start behind the More row.
+    private(set) var showsMore: Set<MetadataSection.Kind> = []
     private(set) var scrollRequest: ScrollRequest?
 
-    func isExpanded(_ kind: MetadataSection.Kind) -> Bool { !collapsed.contains(kind) }
+    func isExpanded(_ kind: MetadataSection.Kind, startsCollapsed: Bool = false) -> Bool {
+        startsCollapsed ? opened.contains(kind) : !collapsed.contains(kind)
+    }
 
     // Everything below is called from a click or a menu command, so it writes a
     // run-loop turn later (GitHub #2, see Deferred.swift).
@@ -32,14 +39,25 @@ final class InspectorState {
         }
     }
 
-    func toggleSection(_ kind: MetadataSection.Kind) {
-        deferred { self.collapsed.formSymmetricDifference([kind]) }
+    func toggleSection(_ kind: MetadataSection.Kind, startsCollapsed: Bool = false) {
+        deferred {
+            if startsCollapsed {
+                self.opened.formSymmetricDifference([kind])
+            } else {
+                self.collapsed.formSymmetricDifference([kind])
+            }
+        }
+    }
+
+    func toggleMore(_ kind: MetadataSection.Kind) {
+        deferred { self.showsMore.formSymmetricDifference([kind]) }
     }
 
     /// Opens the inspector with `kind` expanded and scrolled to the top.
     func reveal(_ kind: MetadataSection.Kind) {
         deferred {
             self.collapsed.remove(kind)
+            self.opened.insert(kind)
             self.scrollRequest = ScrollRequest(kind: kind, serial: (self.scrollRequest?.serial ?? 0) + 1)
             self.isPresented = true
         }
@@ -83,6 +101,7 @@ extension MetadataSection.Kind {
 struct MetadataInspector: View {
     @Environment(Session.self) private var session
     @State private var state = InspectorState.shared
+    @State private var details = AIDetails()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -105,18 +124,22 @@ struct MetadataInspector: View {
     private var panelAccessory: some View {
         let current = session.metadataPolicy.summary
         return Menu {
-            ForEach([MetadataPolicy.Summary.default, .keepAll, .stripAll], id: \.self) { choice in
-                Button {
-                    // A run-loop turn later (GitHub #2, see Deferred.swift).
-                    deferred { session.metadataPolicy = choice.policy ?? session.metadataPolicy }
-                } label: {
-                    if choice == current { Label(choice.label, systemImage: "checkmark") } else { Text(choice.label) }
+            // A picker, so the menu ticks the current item itself. The write goes
+            // a run-loop turn later (GitHub #2, see Deferred.swift).
+            Picker("Metadata policy", selection: Binding(
+                get: { session.metadataPolicy.summary },
+                set: { choice in deferred { session.metadataPolicy = choice.policy ?? session.metadataPolicy } }
+            )) {
+                ForEach([MetadataPolicy.Summary.default, .keepAll, .stripAll], id: \.self) { choice in
+                    Text(choice.label).tag(choice)
+                }
+                if current == .custom {
+                    Divider()
+                    Text(current.label).tag(current).selectionDisabled()
                 }
             }
-            if current == .custom {
-                Divider()
-                Button {} label: { Label(current.label, systemImage: "checkmark") }.disabled(true)
-            }
+            .pickerStyle(.inline)
+            .labelsHidden()
         } label: {
             Text(current.label).foregroundStyle(current == .custom ? .secondary : .primary)
         }
@@ -127,14 +150,23 @@ struct MetadataInspector: View {
         .accessibilityLabel("Metadata policy")
     }
 
-    /// Trailing side of a section title, one fixed-size control after another:
-    /// the keep / strip switch first; Copy and Export (#17) are appended here.
-    private func sectionAccessory(_ section: MetadataSection, _ state: MetadataPolicy.SwitchState?) -> some View {
+    /// The row under a section title, one fixed-size control after another: the
+    /// keep / strip switch leads; the section's buttons (#17) trail. Its own row
+    /// because the three-way colour switch does not fit beside "ICC profile" at
+    /// the panel's minimum width.
+    private func sectionControls(_ section: MetadataSection, _ state: MetadataPolicy.SwitchState?) -> some View {
         HStack(spacing: 6) {
             if let policySection = section.kind.policySection {
                 SectionSwitch(section: policySection, isEnabled: state?.isEnabled ?? true)
             }
+            Spacer(minLength: 0)
         }
+    }
+
+    /// A colour profile that is not in the file has nothing to read: its section
+    /// starts folded, under the note that says so.
+    private func startsCollapsed(_ section: MetadataSection, _ source: SourceImage) -> Bool {
+        section.kind == .icc && !source.metadata.iccIsEmbedded
     }
 
     /// Whether the chosen output format can carry a section of this source, and
@@ -189,10 +221,15 @@ struct MetadataInspector: View {
                 VStack(spacing: 0) {
                     ForEach(sections) { section in
                         let switchState = switchState(section.kind, source)
-                        InspectorSection(section: section, isExpanded: state.isExpanded(section.kind),
+                        let startsCollapsed = startsCollapsed(section, source)
+                        InspectorSection(section: section,
+                                         summary: section.kind == .aiWorkflow ? details.of(source).summary : [],
+                                         isExpanded: state.isExpanded(section.kind, startsCollapsed: startsCollapsed),
+                                         showsMore: state.showsMore.contains(section.kind),
                                          switchState: switchState,
-                                         toggle: { state.toggleSection(section.kind) }) {
-                            sectionAccessory(section, switchState)
+                                         toggle: { state.toggleSection(section.kind, startsCollapsed: startsCollapsed) },
+                                         toggleMore: { state.toggleMore(section.kind) }) {
+                            sectionControls(section, switchState)
                         }
                         .id(section.kind)
                         Divider()
@@ -209,6 +246,25 @@ struct MetadataInspector: View {
                 }
             }
         }
+    }
+}
+
+/// What the AI workflow section reads off the payloads. Parsing a graph is not
+/// free, so it is done once per image and not on every redraw.
+@MainActor private final class AIDetails {
+    struct Value {
+        var summary: [MetadataField] = []
+    }
+
+    private var metadata: ImageMetadata?
+    private var value = Value()
+
+    func of(_ source: SourceImage) -> Value {
+        if metadata != source.metadata {
+            metadata = source.metadata
+            value = Value(summary: source.metadata.aiSummary)
+        }
+        return value
     }
 }
 
@@ -258,22 +314,26 @@ private struct SectionSwitch: View {
         }
         .labelsHidden()
         .pickerStyle(.segmented)
-        .controlSize(.mini)
+        .controlSize(.small)
         .fixedSize()
         .disabled(!isEnabled)
     }
 }
 
-/// A section: a title row that folds it, with the switch and the buttons of
-/// later issues on its trailing side, a line for the switch's note, then its
-/// key / value rows.
-private struct InspectorSection<Accessory: View>: View {
+/// A section: a title row that folds it, a row for its switch and buttons, the
+/// lines for the section's own note and the switch's, then its rows: the AI
+/// summary, the primary fields, and the rest behind a More row.
+private struct InspectorSection<Controls: View>: View {
     let section: MetadataSection
+    /// The AI workflow summary, shown above the fields; empty for the other sections.
+    let summary: [MetadataField]
     let isExpanded: Bool
+    let showsMore: Bool
     /// `nil` for the sections without a switch.
     let switchState: MetadataPolicy.SwitchState?
     let toggle: () -> Void
-    @ViewBuilder let accessory: Accessory
+    let toggleMore: () -> Void
+    @ViewBuilder let controls: Controls
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -295,11 +355,19 @@ private struct InspectorSection<Accessory: View>: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                accessory
             }
             .padding(.horizontal, 12)
             .frame(height: 30)
 
+            // A fixed height, for every section that has a switch: nothing in it moves the rows.
+            if switchState != nil {
+                controls
+                    .padding(.leading, 28).padding(.trailing, 12)
+                    .frame(height: 22)
+                    .padding(.bottom, 6)
+            }
+
+            sectionNote
             switchNote
 
             if isExpanded {
@@ -311,11 +379,55 @@ private struct InspectorSection<Accessory: View>: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.bottom, 2)
                     }
-                    ForEach(section.fields) { InspectorRow(field: $0) }
+                    ForEach(summary) { InspectorRow(field: $0, isProse: true) }
+                    ForEach(section.primaryFields) { InspectorRow(field: $0) }
+                    if !secondary.isEmpty {
+                        moreRow
+                        if showsMore {
+                            ForEach(secondary) { InspectorRow(field: $0) }
+                        }
+                    }
                 }
                 .padding(.leading, 28).padding(.trailing, 12)
                 .padding(.bottom, 10)
             }
+        }
+    }
+
+    private var secondary: [MetadataField] { section.secondaryFields }
+
+    /// Last of the primary rows: unfolds the secondary fields below it.
+    private var moreRow: some View {
+        Button(action: toggleMore) {
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .bold))
+                    .rotationEffect(.degrees(showsMore ? 90 : 0))
+                    .frame(width: 8)
+                Text("More (\(secondary.count))")
+                Spacer(minLength: 0)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(height: 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(showsMore ? "Hide the other fields" : "Show the other \(secondary.count) fields")
+    }
+
+    /// The kit's remark on the section, folded or not: an assumed colour
+    /// profile, a gain map that is not saved. It depends on the image alone, so
+    /// it sits above the switch's note and never moves with a toggle.
+    @ViewBuilder private var sectionNote: some View {
+        if let text = section.note {
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 28).padding(.trailing, 12)
+                .padding(.bottom, 6)
         }
     }
 
@@ -351,53 +463,64 @@ private struct InspectorSection<Accessory: View>: View {
     }
 }
 
-/// Key beside value; a long value (workflow JSON, a prompt) goes under its key,
-/// cut to a few lines until expanded.
+/// Label beside value, as a person reads them; the raw key and the stored value
+/// are in the tooltips. A long value (workflow JSON, a prompt) goes under its
+/// label, cut to a few lines until expanded.
 private struct InspectorRow: View {
     let field: MetadataField
+    /// Prose (a prompt) is set like the other values; a raw payload in monospace.
+    var isProse = false
     @State private var showsAll = false
 
     private static let foldedLines = 4
     /// Text handed to the folded view: enough for four lines, without laying out a whole workflow.
     private static let foldedCharacters = 600
+    private static let labelWidth: CGFloat = 104
+
+    private var value: String { field.readableValue }
 
     private var isLong: Bool {
-        field.value.count > 90 || field.value.contains("\n")
+        value.count > 90 || value.contains("\n")
     }
 
     var body: some View {
         if isLong {
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    key
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    label
                     Spacer(minLength: 0)
                     Button(showsAll ? "Less" : "More") { deferred { showsAll.toggle() } }
                         .buttonStyle(.link)
                         .font(.caption)
                 }
-                Text(showsAll ? field.value : String(field.value.prefix(Self.foldedCharacters)))
-                    .font(.caption.monospaced())
+                Text(showsAll ? value : String(value.prefix(Self.foldedCharacters)))
+                    .font(isProse ? .caption : .caption.monospaced())
                     .lineLimit(showsAll ? nil : Self.foldedLines)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                key.frame(width: 104, alignment: .leading)
-                Text(field.value)
+                label.frame(width: Self.labelWidth, alignment: .leading)
+                Text(value)
                     .font(.caption)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .help(field.isTranslated ? "Stored as \(field.value)" : "")
             }
         }
     }
 
-    private var key: some View {
-        Text(field.key)
+    /// A long label wraps to a second line rather than losing its middle; past
+    /// that its tail goes, and the tooltip has it in full with the raw key.
+    private var label: some View {
+        Text(field.label)
             .font(.caption)
             .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .truncationMode(.middle)
-            .help(field.key)
+            .lineLimit(2)
+            .truncationMode(.tail)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .help(field.label == field.key ? field.key : "\(field.label) (\(field.key))")
     }
 }
