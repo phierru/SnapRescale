@@ -460,9 +460,9 @@ showing its fields as key / value rows:
 | **C2PA** | none — always stripped | Read-only. The signature binds the exact pixels, so a resized file would show as tampered; the section says so. |
 | **Structure** (alpha, bit depth, HDR, depth, frames, orientation) | none | Read-only. These describe the pixels, not metadata. |
 
-At the top, a master control **Keep all · Strip all · Custom**; it reads
-*Custom* (mixed state) as soon as sections differ, and choosing Keep all or
-Strip all sets every section that has a switch.
+At the top, a master control **Default · Keep all · Strip all · Custom**. It
+reads *Default* for the default policy below and *Custom* for any other mix;
+choosing Default, Keep all or Strip all sets every section that has a switch.
 
 **Default: keep everything except GPS.** It honours "never silently degrade"
 (§2) and still protects privacy.
@@ -479,7 +479,8 @@ is part of every preset (§12).
   (strip GPS with XMP kept ⇒ the `exif:GPS*` XMP properties go too). The
   inspector says so.
 - **Formats that cannot carry a section disable its switch and say why**,
-  rather than dropping it silently (the §9 "never convert silently" rule). A
+  rather than dropping it silently (the §9 "never convert silently" rule),
+  with a note such as *Requires PNG output*. This depends on the source too: a
   ComfyUI graph survives only in PNG; A1111 parameters can also ride in EXIF
   UserComment for JPEG / HEIC; GIF and BMP carry almost nothing.
 - **Orientation is always normalised**, whatever the metadata setting: the
