@@ -40,7 +40,8 @@ extension MetadataPolicy {
         /// option, or that stripping also removes the copies held in XMP.
         public var note: String?
         /// Every note any option of this switch can show for this source and
-        /// format, so a view can reserve their room and not reflow on a toggle.
+        /// format. The inspector shows `note` alone, and only while it applies;
+        /// this is for a view that would rather reserve their room.
         public var possibleNotes: [String]
     }
 

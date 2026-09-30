@@ -56,13 +56,16 @@ inspector offers per block:
 | Block | Inspector section | Control | Copy / export |
 |---|---|---|---|
 | EXIF + TIFF tags | EXIF | keep · strip | Copy |
-| GPS | GPS | keep · strip (default: strip) | Copy |
+| GPS | GPS | keep · strip | Copy |
 | IPTC | IPTC | keep · strip | Copy |
 | XMP | XMP | keep · strip | Copy |
-| ICC profile | ICC profile | preserve · convert to sRGB · strip | Copy (name, description) |
+| ICC profile | ICC profile | keep · sRGB (convert) · strip | Copy (name, description) |
 | AI provenance (§3, except C2PA) | AI workflow | keep · strip | Copy, Copy Prompt, Export… (`.json` / `.txt`) |
 | C2PA | C2PA | none, always stripped — the signature binds the original pixels | Copy |
 | Alpha, bit depth, HDR, depth, frames, orientation | Structure | none, read-only | Copy |
+
+Default: strip EXIF, GPS, IPTC and XMP; keep the ICC profile and the AI
+workflow (PRD §10.2).
 
 Writing notes:
 

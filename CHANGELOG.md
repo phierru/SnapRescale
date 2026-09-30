@@ -5,7 +5,62 @@ dates recorded in the repository, not dates of public availability.
 
 ## Unreleased
 
-No changes recorded yet.
+The Metadata milestone: implemented, not yet released.
+
+### Added
+
+- **Metadata inspector**, a panel on the trailing side of the window that lists
+  what the source carries, section by section: EXIF, GPS, IPTC, XMP, ICC
+  profile, AI workflow, C2PA and Structure. It opens from any badge (at that
+  badge's section), from the new **Metadata** row in the sidebar, or with
+  View ▸ Metadata Inspector (⌥⌘I). Values are shown with readable labels, the
+  main fields first and the rest behind **More**; an AI workflow shows a
+  summary (prompt, negative prompt, model, seed, steps, CFG, sampler,
+  scheduler) above its raw payloads.
+- **Keep or strip per section**: a Keep · Strip switch for EXIF, GPS, IPTC, XMP
+  and the AI workflow, and Keep · sRGB · Strip for the colour profile. A master
+  menu sets them all: Default · Keep all · Strip all, reading Custom for any
+  other mix. A switch is disabled, with a note, when the output format cannot
+  carry the section (a ComfyUI graph requires PNG output).
+- **AI workflow carried over**: a resized ComfyUI PNG still opens its workflow
+  in ComfyUI. A1111-style parameters also travel in the EXIF user comment of
+  JPEG, HEIC and TIFF.
+- **Copy and export**, whatever the switches say: Copy on every section, Copy
+  Prompt and Export… (`.json` / `.txt`) on an AI workflow, Copy All and
+  Export All… (one JSON file) in the inspector's menu.
+- Presets carry a metadata policy (`metadata` in the JSON; optional, so older
+  presets still load).
+
+### Changed
+
+- Output is no longer always 8-bit sRGB with all metadata stripped. **New
+  default:** strip EXIF, GPS, IPTC and XMP; keep the colour profile and the AI
+  workflow. The sidebar says so (*Default · only ICC, AI kept*). Opening
+  another image returns to the default; a preset applies its own policy.
+- Colour follows the ICC switch: the source's profile and, where the format
+  allows, its bit depth are kept. CMYK sources are still converted to sRGB.
+- The ICC badge appears only when the file embeds a profile; an assumed sRGB
+  is no longer shown as one.
+- Help describes the inspector and points to ExifTool, Photos and Preview for
+  editing metadata, which SnapRescale does not do.
+
+### Fixed
+
+- The XMP badge no longer appears for files that have no XMP packet.
+- What the writer fixes even when it keeps: the embedded EXIF thumbnail is
+  never written, EXIF pixel dimensions are those of the output, and
+  orientation is 1 because it is baked into the pixels.
+- Stripping a section also removes its copies elsewhere: GPS, EXIF and IPTC
+  fields mirrored in a kept XMP packet, the EXIF caption, artist and copyright
+  when IPTC is stripped, and the IPTC block ImageIO adds to a JPEG by itself.
+- C2PA content credentials are always stripped, and the inspector says why:
+  the signature binds the original pixels.
+
+### Known limits
+
+- Stripping the colour profile is fully clean only in TIFF and JPEG: a PNG
+  keeps a one-byte sRGB marker and HEIC tags sRGB.
+- HDR gain maps are not written. RAW, PSD and GIF sources carry no XMP over.
 
 ## 1.1 (build 3) — 2026-09-28
 
