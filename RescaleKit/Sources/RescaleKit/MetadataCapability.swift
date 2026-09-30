@@ -18,9 +18,11 @@ extension MetadataPolicy {
         let table = capability(of: section, in: type)
         guard section == .aiWorkflow, table.canCarry, !type.conforms(to: .png) else { return table }
         let payloads = metadata.aiPayloads
-        guard payloads.contains(where: isPNGOnly) else { return table }
+        guard isPartlyKept(metadata) else { return table }
         if payloads.allSatisfy(isPNGOnly) { return .none(requiresPNGNote) }
-        return .limited("Only the generation parameters are kept; the graph requires PNG output.")
+        // Unrecognised text under a tool keyword is carried as a PNG chunk only.
+        let lost = payloads.contains(where: isPNGOnly) ? "the graph" : "the unrecognised text"
+        return .limited("Only the generation parameters are kept; \(lost) requires PNG output.")
     }
 
     /// The same for a loaded source and a render spec. The ICC row goes through
@@ -73,7 +75,7 @@ extension MetadataPolicy {
                 if policy.iptc == .keep { return png || heic ? "\(format) has no IPTC block; kept as the XMP copies." : nil }
             case .aiWorkflow:
                 if policy.aiWorkflow == .keep {
-                    if cap.note != nil, source.metadata.aiPayloads.contains(where: isPNGOnly) { return cap.note }
+                    if cap.note != nil, isPartlyKept(source.metadata) { return cap.note }
                     let moved = !png && source.metadata.aiPayloads.contains { isPNGChunk($0) && !isPNGOnly($0) }
                     return moved ? "Kept in the EXIF user comment." : nil
                 }
@@ -120,6 +122,11 @@ extension MetadataPolicy {
     }
 
     // MARK: - Pieces
+
+    /// Whether something of the AI workflow lives in PNG text chunks alone.
+    private static func isPartlyKept(_ metadata: ImageMetadata) -> Bool {
+        metadata.aiPayloads.contains(where: isPNGOnly) || !metadata.unrecognisedAIChunks.isEmpty
+    }
 
     private static func isPNGChunk(_ payload: ImageMetadata.AIPayload) -> Bool {
         payload.location.hasPrefix("PNG ")

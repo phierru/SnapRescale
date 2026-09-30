@@ -175,6 +175,91 @@ struct PNGSplicerTests {
         #expect(PNGSplicer.aiWorkflowChunks(in: [Self.text("Description", "a holiday photo")]).isEmpty)
     }
 
+    // MARK: - Disclosure (review 2026-09-30, S3)
+
+    static let privateNote = "Placeholder private note, nothing to do with AI"
+
+    /// A plain PNG holding `chunks`, loaded as a source.
+    static func source(holding chunks: [PNGScanner.TextChunk]) throws -> SourceImage {
+        try source(fromPNG: PNGSplicer.splice(chunks, into: MetadataTests.encode(.png)))
+    }
+
+    /// Whatever Keep carries is listed in the AI workflow section, reachable
+    /// from a badge, and removed by Strip: ordinary text under a tool keyword too.
+    @Test(arguments: PNGSplicer.workflowKeywords.sorted())
+    func ordinaryTextUnderAToolKeywordIsShownAndFollowsTheSwitch(_ keyword: String) throws {
+        let source = try Self.source(holding: [Self.text(keyword, Self.privateNote)])
+        let section = try #require(source.metadata.section(.aiWorkflow))
+        #expect(section.fields.contains { $0.value == Self.privateNote })
+        #expect(section.text.contains(Self.privateNote))
+        #expect(source.metadata.badges.contains { $0.tone == .provenance })
+
+        // The default policy keeps the AI workflow, and with it this chunk.
+        let kept = try FixtureProbe.inspect(try Renderer.produce(source, spec: RenderSpec(target: source.size)))
+        #expect(kept.metadata.pngTextChunks.map(\.raw) == source.metadata.pngTextChunks.map(\.raw))
+        let state = MetadataPolicy.switchState(of: .aiWorkflow, for: source, spec: RenderSpec(target: source.size))
+        #expect(state.isEnabled)
+
+        var spec = RenderSpec(target: source.size)
+        spec.metadata.aiWorkflow = .strip
+        let stripped = try FixtureProbe.inspect(try Renderer.produce(source, spec: spec))
+        #expect(stripped.metadata.pngTextChunks.isEmpty && !stripped.contains(Self.privateNote))
+        #expect(stripped.metadata.section(.aiWorkflow) == nil)
+
+        // A text chunk has nowhere to go outside PNG, and the switch says so.
+        for format in [OutputFormat.jpeg, .heic, .tiff] {
+            let spec = RenderSpec(target: source.size, format: format)
+            let state = MetadataPolicy.switchState(of: .aiWorkflow, for: source, spec: spec)
+            #expect(!state.isEnabled && state.note == MetadataPolicy.requiresPNGNote, "\(format)")
+        }
+        #expect(!(try FixtureProbe.inspect(try Renderer.produce(source, spec: RenderSpec(target: source.size, format: .jpeg))))
+            .contains(Self.privateNote))
+    }
+
+    @Test(arguments: ["prompt", "parameters"])
+    func unrecognisedTextIsNamedAsSuch(_ keyword: String) throws {
+        let metadata = try Self.source(holding: [Self.text(keyword, Self.privateNote)]).metadata
+        #expect(metadata.provenance.isEmpty && metadata.aiPayloads.isEmpty)
+        #expect(metadata.unrecognisedAIChunks.map(\.keyword) == [keyword])
+        let section = try #require(metadata.section(.aiWorkflow))
+        #expect(section["Source"] == "Not recognised" && section[keyword] == Self.privateNote)
+        #expect(section.note?.contains("“\(keyword)”") == true && section.note?.contains("kept or stripped with the AI workflow") == true)
+        #expect(metadata.badges.filter { $0.tone == .provenance }.map(\.label) == ["AI text"])
+    }
+
+    /// Beside a detected source the text is listed after its payloads, under the same switch.
+    @Test func unrecognisedTextBesideADetectedSource() throws {
+        let graphs = PNGScanner.textChunks(in: Fixture.comfyUI.data)
+        let source = try Self.source(holding: graphs + [Self.text("parameters", Self.privateNote)])
+        #expect(source.metadata.provenance == [.comfyUI])
+        #expect(source.metadata.aiPayloads.map(\.name) == ["prompt", "workflow"])
+        let section = try #require(source.metadata.section(.aiWorkflow))
+        #expect(section.fields.map(\.key) == ["Source", "prompt", "workflow", "parameters"])
+        #expect(section["Source"] == "ComfyUI" && section["parameters"] == Self.privateNote)
+        #expect(section.note?.contains("“parameters”") == true)
+        #expect(source.metadata.badges.filter { $0.tone == .provenance }.map(\.label) == ["ComfyUI"])
+    }
+
+    /// Recognised payloads and plain files are as before: every carried chunk is a listed payload, with no remark.
+    @Test(arguments: [Fixture.comfyUI, .a1111PNG, .compressedText])
+    func everyCarriedChunkOfAFixtureIsAListedPayload(_ fixture: Fixture) throws {
+        let metadata = try Fixture.load(fixture).metadata
+        let carried = PNGSplicer.aiWorkflowChunks(in: metadata.pngTextChunks)
+        #expect(!carried.isEmpty && metadata.unrecognisedAIChunks.isEmpty)
+        let section = try #require(metadata.section(.aiWorkflow))
+        #expect(section.note == nil)
+        for chunk in carried { #expect(section[chunk.keyword] == chunk.text) }
+        #expect(carried.map(\.text) == metadata.aiPayloads.map(\.text))
+    }
+
+    @Test func textUnderOtherKeywordsIsNeitherCarriedNorShown() throws {
+        let source = try Self.source(holding: ["Comment", "Description", "Title", "Author"].map { Self.text($0, Self.privateNote) })
+        #expect(source.metadata.section(.aiWorkflow) == nil && source.metadata.unrecognisedAIChunks.isEmpty)
+        #expect(!source.metadata.badges.contains { $0.tone == .provenance })
+        let out = try FixtureProbe.inspect(try Renderer.produce(source, spec: RenderSpec(target: source.size)))
+        #expect(!out.contains(Self.privateNote))
+    }
+
     // MARK: - Splice
 
     @Test func spliceInsertsBeforeIENDAndTouchesNothingElse() throws {
