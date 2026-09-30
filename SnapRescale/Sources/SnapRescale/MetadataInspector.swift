@@ -184,31 +184,22 @@ struct MetadataInspector: View {
         .accessibilityLabel("Copy or export all metadata")
     }
 
-    /// The row under a section title, one fixed-size control after another: the
-    /// keep / strip switch leads; the AI workflow's Export… trails. Its own row
-    /// because the three-way colour switch does not fit beside "ICC profile" at
-    /// the panel's minimum width.
+    /// Trailing side of a section title, one fixed-size control after another:
+    /// the keep / strip switch, the AI workflow's Copy Prompt and Export…, then
+    /// Copy, which every section has. Icons, so that all of it fits on the
+    /// title's row at the panel's width.
     private func sectionControls(_ section: MetadataSection, _ state: MetadataPolicy.SwitchState?,
                                  _ source: SourceImage) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             if let policySection = section.kind.policySection {
                 SectionSwitch(section: policySection, isEnabled: state?.isEnabled ?? true)
             }
-            Spacer(minLength: 0)
             if section.kind == .aiWorkflow {
                 let ai = details.of(source)
+                if let prompt = ai.prompt {
+                    CopyButton(symbol: "text.quote", help: "Copy the positive prompt") { prompt }
+                }
                 exportControl(ai.exports, primary: ai.primaryExport)
-            }
-        }
-    }
-
-    /// Trailing side of a section title: what it copies. Copy Prompt for the AI
-    /// workflow, when a prompt can be read off, then Copy for every section —
-    /// in the title, so the sections without a switch row have it too.
-    private func sectionCopies(_ section: MetadataSection, _ source: SourceImage) -> some View {
-        HStack(spacing: 8) {
-            if section.kind == .aiWorkflow, let prompt = details.of(source).prompt {
-                CopyButton(title: "Copy Prompt", help: "Copy the positive prompt") { prompt }
             }
             CopyButton(help: "Copy \(section.title) as text") { copyText(section, source) }
         }
@@ -220,21 +211,28 @@ struct MetadataInspector: View {
         if let primary {
             Group {
                 if exports.count > 1 {
-                    Menu("Export…") {
+                    Menu {
                         ForEach([primary] + exports.filter { $0 != primary }) { export in
                             Button(export.filename) { save(export) }
                         }
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
                     }
                     .menuStyle(.button)
                     .menuIndicator(.hidden)
                 } else {
-                    Button("Export…") { save(primary) }
+                    Button { save(primary) } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .frame(minWidth: 18, minHeight: 18)
+                            .contentShape(Rectangle())
+                    }
                 }
             }
             .buttonStyle(.borderless)
             .controlSize(.small)
             .fixedSize()
-            .help(exports.count > 1 ? "Save a workflow payload as a file" : "Save \(primary.filename)")
+            .help(exports.count > 1 ? "Export… — save a workflow payload as a file" : "Export… — save \(primary.filename)")
+            .accessibilityLabel("Export…")
         }
     }
 
@@ -330,8 +328,7 @@ struct MetadataInspector: View {
                                          showsMore: state.showsMore.contains(section.kind),
                                          switchState: switchState,
                                          toggle: { state.toggleSection(section.kind, startsCollapsed: startsCollapsed) },
-                                         toggleMore: { state.toggleMore(section.kind) },
-                                         copies: { sectionCopies(section, source) }) {
+                                         toggleMore: { state.toggleMore(section.kind) }) {
                             sectionControls(section, switchState, source)
                         }
                         .id(section.kind)
@@ -383,13 +380,11 @@ enum Pasteboard {
     }
 }
 
-/// Copies text and says so: the icon (or the title) turns into a tick for a
-/// moment. Both states are laid out, so nothing moves.
+/// Copies text and says so: the icon turns into a tick for a moment. Both states are laid out, so nothing moves.
 private struct CopyButton: View {
     static let feedback = Duration.milliseconds(1200)
 
-    /// `nil` for the icon-only button of a section title.
-    var title: String?
+    var symbol = "doc.on.doc"
     let help: String
     /// Built on the click, not on every redraw: a section's text can be a whole workflow.
     let text: () -> String
@@ -406,10 +401,7 @@ private struct CopyButton: View {
             }
         } label: {
             ZStack {
-                Group {
-                    if let title { Text(title) } else { Image(systemName: "doc.on.doc") }
-                }
-                .opacity(copied ? 0 : 1)
+                Image(systemName: symbol).opacity(copied ? 0 : 1)
                 Image(systemName: "checkmark").opacity(copied ? 1 : 0)
             }
             .frame(minWidth: 18, minHeight: 18)
@@ -419,7 +411,7 @@ private struct CopyButton: View {
         .controlSize(.small)
         .fixedSize()
         .help(help)
-        .accessibilityLabel(title ?? help)
+        .accessibilityLabel(help)
     }
 }
 
@@ -435,7 +427,7 @@ extension MetadataPolicy.Summary {
     }
 }
 
-/// The switch in a section title: keep · strip, or preserve · sRGB · strip for
+/// The switch in a section title: keep · strip, or keep · sRGB · strip for
 /// the colour profile. The app's segmented control, one size down. It reads and
 /// writes the session's policy, which a new image does not reset.
 private struct SectionSwitch: View {
@@ -451,7 +443,7 @@ private struct SectionSwitch: View {
                     get: { session.metadataPolicy.icc },
                     set: { new in deferred { session.metadataPolicy.icc = new } }
                 )) {
-                    Text("Preserve").tag(MetadataPolicy.ICC.preserve)
+                    Text("Keep").tag(MetadataPolicy.ICC.preserve)
                     Text("sRGB").tag(MetadataPolicy.ICC.convertToSRGB)
                     Text("Strip").tag(MetadataPolicy.ICC.strip)
                 }
@@ -475,10 +467,10 @@ private struct SectionSwitch: View {
     }
 }
 
-/// A section: a title row that folds it and copies it, a row for its switch and buttons, the
+/// A section: a title row that folds it, with its switch and buttons trailing, the
 /// lines for the section's own note and the switch's, then its rows: the AI
 /// summary, the primary fields, and the rest behind a More row.
-private struct InspectorSection<Copies: View, Controls: View>: View {
+private struct InspectorSection<Controls: View>: View {
     let section: MetadataSection
     /// The AI workflow summary, shown above the fields; empty for the other sections.
     let summary: [MetadataField]
@@ -488,7 +480,6 @@ private struct InspectorSection<Copies: View, Controls: View>: View {
     let switchState: MetadataPolicy.SwitchState?
     let toggle: () -> Void
     let toggleMore: () -> Void
-    @ViewBuilder let copies: Copies
     @ViewBuilder let controls: Controls
 
     var body: some View {
@@ -511,18 +502,10 @@ private struct InspectorSection<Copies: View, Controls: View>: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                copies
+                controls
             }
             .padding(.horizontal, 12)
             .frame(height: 30)
-
-            // A fixed height, for every section that has a switch: nothing in it moves the rows.
-            if switchState != nil {
-                controls
-                    .padding(.leading, 28).padding(.trailing, 12)
-                    .frame(height: 22)
-                    .padding(.bottom, 6)
-            }
 
             sectionNote
             switchNote
