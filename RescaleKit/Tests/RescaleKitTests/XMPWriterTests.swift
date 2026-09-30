@@ -242,6 +242,102 @@ struct XMPWriterTests {
         #expect(XMPWriter.metadata(packet: "not xml", extended: nil, kept: XMPWriter.Kept(), size: PixelSize(6, 4)) == nil)
     }
 
+    // MARK: Structures and arrays (review 2026-09-30, S2)
+
+    /// Mirrors, a thumbnail, a sideways orientation and the original's
+    /// dimensions again, this time inside a structure, a structure in a
+    /// structure and the items of an array, next to fields of the tool's own.
+    static let nestedPacket = """
+        <x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\
+        <rdf:Description rdf:about="" xmlns:xmp="http://ns.adobe.com/xap/1.0/" \
+        xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:exif="http://ns.adobe.com/exif/1.0/" \
+        xmlns:tiff="http://ns.adobe.com/tiff/1.0/" xmlns:xmpGImg="http://ns.adobe.com/xap/1.0/g/img/" \
+        xmlns:acme="http://example.com/acme/1.0/" xmp:Rating="5">\
+        <dc:title><rdf:Alt><rdf:li xml:lang="x-default">Packet title</rdf:li></rdf:Alt></dc:title>\
+        <acme:Place rdf:parseType="Resource"><acme:Name>Nested name</acme:Name>\
+        <exif:GPSLatitude>0,0.0N</exif:GPSLatitude><tiff:Orientation>6</tiff:Orientation>\
+        <exif:PixelXDimension>4000</exif:PixelXDimension><exif:PixelYDimension>3000</exif:PixelYDimension>\
+        <acme:Inner rdf:parseType="Resource"><exif:GPSLongitude>0,0.0E</exif:GPSLongitude>\
+        <acme:Deep>Deep note</acme:Deep></acme:Inner>\
+        <acme:Preview rdf:parseType="Resource"><xmpGImg:format>JPEG</xmpGImg:format>\
+        <xmpGImg:image>NESTEDTHUMBNAILBASE64</xmpGImg:image></acme:Preview>\
+        <acme:Hidden rdf:parseType="Resource"><exif:GPSAltitude>0/1</exif:GPSAltitude></acme:Hidden>\
+        </acme:Place>\
+        <acme:Items><rdf:Seq>\
+        <rdf:li rdf:parseType="Resource"><exif:GPSAltitude>0/1</exif:GPSAltitude><acme:Label>First item</acme:Label></rdf:li>\
+        <rdf:li>Plain item</rdf:li>\
+        <rdf:li rdf:parseType="Resource"><tiff:ImageWidth>4000</tiff:ImageWidth><tiff:ImageLength>3000</tiff:ImageLength>\
+        <acme:Label>Third item</acme:Label></rdf:li>\
+        </rdf:Seq></acme:Items>\
+        </rdf:Description></rdf:RDF></x:xmpmeta>
+        """
+
+    /// Every tag of a tree at any depth as `namespace name value`, containers without a value.
+    static func leaves(_ tree: CGImageMetadata) -> [String] {
+        var out: [String] = []
+        CGImageMetadataEnumerateTagsUsingBlock(tree, nil, [kCGImageMetadataEnumerateRecursively: true] as CFDictionary) { _, tag in
+            let value = CGImageMetadataTagCopyValue(tag) as? String ?? ""
+            out.append("\(CGImageMetadataTagCopyNamespace(tag) as String? ?? "") \(CGImageMetadataTagCopyName(tag) as String? ?? "") \(value)")
+            return true
+        }
+        return out
+    }
+
+    @Test func filterReachesEveryDescendant() throws {
+        let kept = XMPWriter.Kept(exif: true, gps: false, iptc: true, aiWorkflow: true)
+        let tree = try #require(XMPWriter.metadata(packet: Self.nestedPacket, extended: nil, kept: kept, size: PixelSize(6, 4)))
+        let leaves = Self.leaves(tree)
+        #expect(!leaves.contains { $0.contains(" GPS") })
+        #expect(!leaves.contains { $0.hasPrefix(XMPWriter.thumbnailImage) })
+        // A structure left with nothing goes with its contents.
+        #expect(!leaves.contains { $0.contains(" Hidden") || $0.contains(" Preview") })
+        // PRD §10.4 at every depth.
+        let acme = "http://example.com/acme/1.0/"
+        #expect(leaves.contains("\(XMPWriter.tiff) Orientation 1"))
+        #expect(leaves.contains("\(XMPWriter.exif) PixelXDimension 6") && leaves.contains("\(XMPWriter.exif) PixelYDimension 4"))
+        #expect(leaves.contains("\(XMPWriter.tiff) ImageWidth 6") && leaves.contains("\(XMPWriter.tiff) ImageLength 4"))
+        // The tool's own fields are untouched, in order.
+        for own in ["Name Nested name", "Deep Deep note", "Label First item", "[1] Plain item", "Label Third item"] {
+            #expect(leaves.contains("\(acme) \(own)"), "\(own)")
+        }
+        #expect(leaves.contains("\(XMPWriter.xmp) Rating 5"))
+        // An untouched property keeps its qualifiers.
+        let title = try #require(CGImageMetadataCopyTagWithPath(tree, nil, "dc:title" as CFString))
+        let item = try #require((CGImageMetadataTagCopyValue(title) as? [CGImageMetadataTag])?.first)
+        #expect((CGImageMetadataTagCopyQualifiers(item) as? [CGImageMetadataTag])?.count == 1)
+
+        // Kept GPS stays where it was; stripped EXIF goes at every depth.
+        let noEXIF = try #require(XMPWriter.metadata(packet: Self.nestedPacket, extended: nil,
+                                                     kept: XMPWriter.Kept(exif: false), size: PixelSize(6, 4)))
+        let rest = Self.leaves(noEXIF)
+        #expect(rest.filter { $0.contains(" GPS") }.count == 4)
+        #expect(!rest.contains { $0.hasPrefix(XMPWriter.tiff) || $0.contains("PixelXDimension") })
+        #expect(rest.contains("\(acme) Label Third item"))
+    }
+
+    @Test(arguments: formats)
+    func nestedMirrorsFollowTheirSwitchInTheSavedFile(_ format: OutputFormat) throws {
+        let source = try Self.source(packet: Self.nestedPacket)
+        var policy = MetadataPolicy.keepAll
+        policy.gps = .strip
+        let out = try FixtureProbe.inspect(try Renderer.produce(source, spec: RenderSpec(target: PixelSize(6, 4), format: format,
+                                                                                         metadata: policy)))
+        #expect(out.xmp("xmp:Rating") == "5")
+        for text in ["GPSLatitude", "GPSLongitude", "GPSAltitude", "0,0.0N", "0,0.0E", "NESTEDTHUMBNAILBASE64", "xmpGImg",
+                     "4000", "3000", "<tiff:Orientation>6"] {
+            #expect(!out.contains(text), "\(text)")
+        }
+        for text in ["Nested name", "Deep note", "First item", "Plain item", "Third item", "Packet title"] {
+            #expect(out.packet.contains(text), "\(text)")
+        }
+        #expect(!out.metadata.hasGPS && !out.showsLocation)
+        // Default and Strip all write nothing of the packet at all.
+        for policy in [MetadataPolicy.default, .stripAll] {
+            let bare = try Self.render(source, format, policy)
+            #expect(!bare.contains("Nested name") && !bare.contains("GPS"))
+        }
+    }
+
     // MARK: Extended XMP
 
     /// A JPEG's extended packet is folded into the one packet that is written,
