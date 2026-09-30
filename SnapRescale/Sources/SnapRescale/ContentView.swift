@@ -22,8 +22,9 @@ struct ContentView: View {
         .overlay { FileDropTarget { session.accept($0) } }
         // Outside the minimum-size frame, so the editor keeps its 960 pt with the panel open.
         .inspector(isPresented: $inspector.isPresented.deferred) {
+            // As wide as the sidebar and, like it, not resizable.
             MetadataInspector()
-                .inspectorColumnWidth(min: 260, ideal: 300, max: 420)
+                .inspectorColumnWidth(EditorView.sidebarWidth)
         }
         .alert("SnapRescale", isPresented: Binding(
             get: { session.errorMessage != nil },
@@ -120,9 +121,12 @@ struct EditorView: View {
             .padding(.bottom, 12)
             Divider()
             ControlsPanel()
-                .frame(width: 340)
+                .frame(width: Self.sidebarWidth)
         }
     }
+
+    /// The sidebar's fixed width; the metadata inspector takes the same.
+    static let sidebarWidth: CGFloat = 340
 }
 
 struct SourceHeader: View {
