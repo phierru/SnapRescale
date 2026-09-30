@@ -14,8 +14,8 @@ public struct RenderSpec: Hashable, Sendable {
     public var format: OutputFormat
     /// 0…1, used by lossy encoders only.
     public var quality: Double
-    /// What to keep of the source's metadata (PRD §10.2). Carried only: the
-    /// writer does not consult it yet.
+    /// What to keep of the source's metadata (PRD §10.2). The encoder honours
+    /// EXIF, GPS and IPTC; the other sections are carried only, for now.
     public var metadata: MetadataPolicy
 
     /// Whether the padding in this spec needs an alpha channel and the format
@@ -54,8 +54,8 @@ public struct PadColor: Hashable, Sendable, Codable {
     public var isTranslucent: Bool { alpha < 1 }
 }
 
-/// decode → resize → crop/pad → encode, for one image. M1 slice: sRGB output,
-/// CoreGraphics resampling, metadata stripped. §10 rules come later.
+/// decode → resize → crop/pad → encode, for one image. CoreGraphics
+/// resampling; colour space and depth follow the ICC policy (`ColorPlan`).
 public enum Renderer {
     public enum RenderError: Error, LocalizedError {
         case contextFailed
@@ -78,11 +78,9 @@ public enum Renderer {
         guard t.width >= 1, t.height >= 1, t.width <= Limits.maxDimension, t.height <= Limits.maxDimension,
               t.pixelCount <= Limits.maxPixels else { throw RenderError.targetTooLarge(t) }
         let wantsAlpha = spec.padNeedsAlpha(sourceType: source.type)
-        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
-              let ctx = CGContext(data: nil, width: t.width, height: t.height,
-                                  bitsPerComponent: 8, bytesPerRow: 0, space: space,
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else { throw RenderError.contextFailed }
+        // Colour space, depth and alpha follow the ICC policy (PRD §10.2).
+        let plan = ColorPlan(source: source, spec: spec)
+        guard let ctx = plan.makeContext(width: t.width, height: t.height) else { throw RenderError.contextFailed }
         ctx.interpolationQuality = .high
 
         let canvas = CGRect(x: 0, y: 0, width: t.width, height: t.height)
@@ -99,6 +97,8 @@ public enum Renderer {
         case .pad:
             let r = Geometry.padRect(source: source.size, target: t, anchor: spec.anchor)
             drawRect = CGRect(x: r.minX, y: Double(t.height) - r.minY - r.height, width: r.width, height: r.height)
+            // Pad colours are sRGB values; CoreGraphics matches them into the
+            // working space, so padding looks the same whatever the ICC policy.
             if !wantsAlpha {
                 ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
                 ctx.fill(canvas)
@@ -112,28 +112,47 @@ public enum Renderer {
         }
         ctx.draw(source.image, in: drawRect)
         guard let out = ctx.makeImage() else { throw RenderError.contextFailed }
+        // Strip: the same sRGB pixels, retagged as device RGB, which ImageIO
+        // writes without a profile.
+        if !plan.embedsProfile { return out.copy(colorSpace: CGColorSpaceCreateDeviceRGB()) ?? out }
         return out
     }
 
+    /// Encodes without a source, so without metadata: nothing is there to keep.
     public static func encode(_ image: CGImage, spec: RenderSpec, sourceType: UTType) throws -> Data {
+        try encode(image, spec: spec, sourceType: sourceType, sourceProperties: [:])
+    }
+
+    /// Encodes keeping what `spec.metadata` says of the source's EXIF, GPS and
+    /// IPTC (PRD §10.2), with the fixes of §10.4: no embedded thumbnail, EXIF
+    /// pixel dimensions of the output, orientation 1.
+    public static func encode(_ image: CGImage, spec: RenderSpec, source: SourceImage) throws -> Data {
+        try encode(image, spec: spec, sourceType: source.type, sourceProperties: source.properties)
+    }
+
+    private static func encode(_ image: CGImage, spec: RenderSpec, sourceType: UTType,
+                               sourceProperties: [CFString: Any]) throws -> Data {
         guard let type = spec.format.resolvedType(for: sourceType) else {
             throw RenderError.cannotKeepFormat(sourceType)
         }
         let data = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(data, type.identifier as CFString, 1, nil)
         else { throw RenderError.encodeFailed(type) }
-        var props: [CFString: Any] = [:]
+        let kept = MetadataWriter.properties(from: sourceProperties, policy: spec.metadata, type: type,
+                                             size: PixelSize(image.width, image.height))
+        var props = kept
         if spec.format.isLossy(for: sourceType) {
             props[kCGImageDestinationLossyCompressionQuality] = spec.quality
         }
         CGImageDestinationAddImage(dest, image, props as CFDictionary)
         guard CGImageDestinationFinalize(dest) else { throw RenderError.encodeFailed(type) }
-        return data as Data
+        return MetadataWriter.finish(data as Data, type: type, written: kept)
     }
 
     /// Render and encode in one go; the byte count is what the UI shows (PRD §8).
     public static func produce(_ source: SourceImage, spec: RenderSpec) throws -> Data {
-        try encode(try render(source, spec: spec), spec: spec, sourceType: source.type)
+        let encoded = try encode(try render(source, spec: spec), spec: spec, source: source)
+        return PNGSplicer.keepingAIWorkflow(encoded, from: source, spec: spec)
     }
 }
 

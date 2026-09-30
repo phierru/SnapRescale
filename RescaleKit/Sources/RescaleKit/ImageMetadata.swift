@@ -31,6 +31,12 @@ public struct ImageMetadata: Hashable, Sendable {
     public var aiPayloads: [AIPayload] = []
     /// Where the C2PA manifest was found, e.g. "JPEG APP11 segment (JUMBF)".
     public var c2paLocation: String?
+    /// The XMP packet as stored in the file (JPEG APP1, PNG `iTXt`, TIFF tag 700,
+    /// WebP `XMP ` chunk, HEIC `mime` item). Nil when the file has none, and for
+    /// containers `XMPScanner` does not walk, where `hasXMP` comes from ImageIO.
+    public var xmpPacket: String?
+    /// A JPEG's extended XMP (the part over 64 KB), reassembled. A second RDF document.
+    public var xmpExtendedPacket: String?
 
     public enum Provenance: String, CaseIterable, Hashable, Sendable {
         case comfyUI = "ComfyUI"
@@ -91,6 +97,7 @@ public struct ImageMetadata: Hashable, Sendable {
         var exif = MetadataSection(kind: .exif)
         var gps = MetadataSection(kind: .gps)
         var iptc = MetadataSection(kind: .iptc)
+        var hasMirrorSources = false
 
         if let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
             m.hasEXIF = hasRealEXIF(props)
@@ -104,6 +111,8 @@ public struct ImageMetadata: Hashable, Sendable {
 
             let tiffDict = props[kCGImagePropertyTIFFDictionary] as? [String: Any] ?? [:]
             let exifDict = props[kCGImagePropertyExifDictionary] as? [String: Any] ?? [:]
+            hasMirrorSources = m.hasIPTC || [kCGImagePropertyTIFFImageDescription, kCGImagePropertyTIFFArtist,
+                                             kCGImagePropertyTIFFCopyright].contains { tiffDict[$0 as String] != nil }
             let pngDict = props[kCGImagePropertyPNGDictionary] as? [String: Any] ?? [:]
             let iptcDict = props[kCGImagePropertyIPTCDictionary] as? [String: Any] ?? [:]
             let tiffDescription = tiffDict[kCGImagePropertyTIFFImageDescription as String] as? String
@@ -144,8 +153,6 @@ public struct ImageMetadata: Hashable, Sendable {
             iptc.fields = MetadataFormat.fields(iptcDict, first: iptcOrder)
         }
 
-        let xmp = MetadataSection(kind: .xmp, fields: XMPReader.fields(source))
-        m.hasXMP = !xmp.fields.isEmpty
         m.hasHDR = hasAuxiliary(source, [kCGImageAuxiliaryDataTypeHDRGainMap, kCGImageAuxiliaryDataTypeISOGainMap])
         m.hasDepth = hasAuxiliary(source, [kCGImageAuxiliaryDataTypeDepth, kCGImageAuxiliaryDataTypeDisparity,
                                            kCGImageAuxiliaryDataTypePortraitEffectsMatte])
@@ -169,6 +176,24 @@ public struct ImageMetadata: Hashable, Sendable {
                 }
             }
         }
+
+        // XMP is what the file holds, not what ImageIO derives from EXIF / TIFF / IPTC.
+        var xmp = MetadataSection(kind: .xmp)
+        switch data.map({ XMPScanner.packet(in: $0, type: type, pngChunks: type.conforms(to: .png) ? m.pngTextChunks : nil) })
+            ?? .notScanned {
+        case .found(let packet, let extended):
+            m.xmpPacket = packet
+            m.xmpExtendedPacket = extended
+            xmp.fields = XMPReader.fields(packet: packet) ?? []
+            if let extended { xmp.addMissing(XMPReader.fields(packet: extended) ?? []) }
+            // A packet that does not parse, or is empty, is still a packet.
+            if xmp.fields.isEmpty { xmp.add("Packet", MetadataFormat.bytes(packet.utf8.count)) }
+        case .absent:
+            break
+        case .notScanned:
+            xmp.fields = XMPReader.fields(source, hasMirrorSources: hasMirrorSources)
+        }
+        m.hasXMP = !xmp.fields.isEmpty
 
         // Dedupe, keep first-seen order.
         var seen = Set<Provenance>()

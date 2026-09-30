@@ -11,7 +11,16 @@ final class Session {
     // Source
     private(set) var source: SourceImage?
     /// A ≤2048 px copy for the preview, so a 36 MP source does not go through the GPU on every frame.
-    private(set) var previewImage: CGImage?
+    /// It shows the colours Save will write (PRD §7, §10.2): the source's own
+    /// when the ICC policy keeps its colour space, the sRGB conversion otherwise.
+    var previewImage: CGImage? {
+        guard let source, let spec else { return sourcePreview }
+        return ColorPlan(source: source, spec: spec).keepsSourceSpace ? sourcePreview : sRGBPreview
+    }
+    /// The preview in the source's colour space, and converted to sRGB (the
+    /// same image when the source is sRGB already).
+    private var sourcePreview: CGImage?
+    private var sRGBPreview: CGImage?
 
     // Request (PRD §5): aspect + one number, plus the quantiser.
     var aspect: AspectRatio = .original
@@ -30,6 +39,9 @@ final class Session {
     }
     var quality: Double = AppSettings.shared.defaultQuality
 
+    // Metadata (PRD §10.2). An output setting like the format: a new image does not reset it.
+    var metadataPolicy: MetadataPolicy = .default
+
     // Presets (PRD §12)
     let presets = PresetStore()
     /// Name of the preset the current settings came from; nil once anything changed.
@@ -42,6 +54,7 @@ final class Session {
         padColor = preset.padColor
         format = preset.format
         quality = Double(Preset.percent(preset.quality)) / 100
+        metadataPolicy = preset.metadata
         resolveFormat()   // a preset may ask for "keep" on a source that cannot be kept (review C5)
         switch preset.size {
         case .width(let w): sizeKind = .width; sizeValue = Double(w)
@@ -55,7 +68,7 @@ final class Session {
     /// The current settings as a preset.
     func currentPreset(named name: String) -> Preset {
         Preset(name: name, aspect: aspect, size: sizeParameter, multiple: multiple, fit: fit,
-               padColor: padColor, format: format, quality: quality)
+               padColor: padColor, format: format, quality: quality, metadata: metadataPolicy)
     }
 
     /// Called from the view when any setting changes: the settings no longer match a preset by name.
@@ -149,7 +162,7 @@ final class Session {
     var spec: RenderSpec? {
         guard let solution else { return nil }
         return RenderSpec(target: solution.size, fit: fit, anchor: anchor,
-                          padColor: padColor, format: format, quality: quality)
+                          padColor: padColor, format: format, quality: quality, metadata: metadataPolicy)
     }
 
     /// True when the solved size has a different ratio from the source, so the
@@ -258,14 +271,16 @@ final class Session {
         Task {
             defer { if generation == loadGeneration { isLoading = false } }
             do {
-                let (loaded, preview) = try await Task.detached(priority: .userInitiated) {
+                let (loaded, preview, converted) = try await Task.detached(priority: .userInitiated) {
                     let loaded = try SourceImage.load(url)
-                    return (loaded, Self.makePreview(loaded.image, maxPixels: 2048))
+                    let preview = Self.makePreview(loaded.image, maxPixels: 2048)
+                    return (loaded, preview, Self.convertedToSRGB(preview))
                 }.value
                 // A newer load was requested while this one decoded: drop it.
                 guard generation == loadGeneration else { return }
                 source = loaded
-                previewImage = preview
+                sourcePreview = preview
+                sRGBPreview = converted
                 anchor = .center
                 // Defaults for a new image (review C7); launch overrides win.
                 aspect = launchAspect ?? .original
@@ -318,18 +333,33 @@ final class Session {
         if panel.runModal() == .OK, let url = panel.url { deferred { self.load(url) } }
     }
 
+    /// Downsampled in the source's own colour space, so a wide-gamut source is
+    /// not squeezed into sRGB before the ICC policy has a say (PRD §10.2).
     nonisolated private static func makePreview(_ image: CGImage, maxPixels: Int) -> CGImage {
         let longest = max(image.width, image.height)
-        guard longest > maxPixels,
-              let space = CGColorSpace(name: CGColorSpace.sRGB) else { return image }
+        guard longest > maxPixels else { return image }
         let scale = Double(maxPixels) / Double(longest)
         let w = Int(Double(image.width) * scale), h = Int(Double(image.height) * scale)
-        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+        // Only RGB spaces take this pixel format; anything else previews in sRGB.
+        let own = image.colorSpace.flatMap { $0.model == .rgb && $0.supportsOutput ? $0 : nil }
+        return draw(image, width: w, height: h, space: own) ?? draw(image, width: w, height: h, space: nil) ?? image
+    }
+
+    /// What `convertToSRGB` and `strip` write: the same picture in sRGB.
+    nonisolated private static func convertedToSRGB(_ image: CGImage) -> CGImage {
+        if image.colorSpace?.name == CGColorSpace.sRGB { return image }
+        return draw(image, width: image.width, height: image.height, space: nil) ?? image
+    }
+
+    /// `space` nil means sRGB.
+    nonisolated private static func draw(_ image: CGImage, width: Int, height: Int, space: CGColorSpace?) -> CGImage? {
+        guard let space = space ?? CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
                                   space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else { return image }
+        else { return nil }
         ctx.interpolationQuality = .high
-        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
-        return ctx.makeImage() ?? image
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return ctx.makeImage()
     }
 
     // MARK: Size editing — four views of one number (PRD §5)

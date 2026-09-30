@@ -6,9 +6,11 @@ struct ContentView: View {
     @Environment(Session.self) private var session
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
+    @State private var inspector = InspectorState.shared
 
     var body: some View {
         @Bindable var session = session
+        @Bindable var inspector = inspector
         Group {
             if session.source == nil {
                 EmptyStateView()
@@ -18,6 +20,11 @@ struct ContentView: View {
         }
         .frame(minWidth: 960, minHeight: 640)
         .overlay { FileDropTarget { session.accept($0) } }
+        // Outside the minimum-size frame, so the editor keeps its 960 pt with the panel open.
+        .inspector(isPresented: $inspector.isPresented.deferred) {
+            MetadataInspector()
+                .inspectorColumnWidth(min: 260, ideal: 300, max: 420)
+        }
         .alert("SnapRescale", isPresented: Binding(
             get: { session.errorMessage != nil },
             set: { if !$0 { session.errorMessage = nil } }
@@ -145,21 +152,26 @@ struct SourceHeader: View {
     }
 }
 
-/// One capsule per metadata block the source carries (PRD §10). Hover for detail.
+/// One capsule per metadata block the source carries (PRD §10). Hover for detail;
+/// a click opens the inspector at the badge's section.
 struct MetadataBadges: View {
     let badges: [ImageMetadata.Badge]
 
     var body: some View {
         HStack(spacing: 5) {
             ForEach(badges) { b in
-                Text(b.label)
-                    .font(.caption2.weight(.semibold))
-                    .lineLimit(1)
-                    .fixedSize()
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(background(for: b.tone), in: Capsule())
-                    .foregroundStyle(foreground(for: b.tone))
-                    .help(b.detail)
+                Button { InspectorState.shared.reveal(b.section) } label: {
+                    Text(b.label)
+                        .font(.caption2.weight(.semibold))
+                        .lineLimit(1)
+                        .fixedSize()
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(background(for: b.tone), in: Capsule())
+                        .foregroundStyle(foreground(for: b.tone))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help(b.detail)
             }
         }
     }

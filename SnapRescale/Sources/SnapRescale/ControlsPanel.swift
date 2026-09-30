@@ -88,6 +88,7 @@ struct ControlsPanel: View {
                         }
                     }
                 }
+                metadataRow
             }
 
             Section("Output") {
@@ -168,6 +169,31 @@ struct ControlsPanel: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
+    }
+
+    /// What Save keeps of the metadata, on one line; the switches are in the
+    /// inspector, which a click toggles (GitHub #16). A plain HStack at a fixed
+    /// height, like `readouts`: the text truncates rather than moving the rows.
+    private var metadataRow: some View {
+        Button {
+            InspectorState.shared.toggle()
+        } label: {
+            HStack(spacing: 6) {
+                Text("Metadata")
+                Spacer(minLength: 8)
+                Text(session.metadataPolicy.summaryLine)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(height: 20)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("\(session.metadataPolicy.summaryLine). Click to show the metadata inspector.")
     }
 
     private var saveTitle: String {

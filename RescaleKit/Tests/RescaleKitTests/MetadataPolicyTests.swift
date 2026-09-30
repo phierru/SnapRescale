@@ -19,7 +19,8 @@ struct MetadataPolicyTests {
     @Test func summaryDrivesTheMasterControl() {
         #expect(MetadataPolicy.keepAll.summary == .keepAll)
         #expect(MetadataPolicy.stripAll.summary == .stripAll)
-        #expect(MetadataPolicy.default.summary == .custom)
+        #expect(MetadataPolicy.default.summary == .default)
+        #expect(MetadataPolicy().summary == .default)
         #expect(Section.allCases.allSatisfy { MetadataPolicy.keepAll.keeps($0) })
         #expect(Section.allCases.allSatisfy { !MetadataPolicy.stripAll.keeps($0) })
 
@@ -28,9 +29,56 @@ struct MetadataPolicyTests {
         #expect(p.summary == .keepAll)
         p.icc = .convertToSRGB   // neither kept nor stripped
         #expect(p.summary == .custom && p.keeps(.icc))
+        p = .default
+        p.iptc = .strip
+        #expect(p.summary == .custom)
+        p.iptc = .keep
+        #expect(p.summary == .default)
         p = .stripAll
         p.xmp = .keep
         #expect(p.summary == .custom)
+    }
+
+    @Test func summaryLabels() {
+        typealias Summary = MetadataPolicy.Summary
+        #expect(Summary.allCases == [.default, .keepAll, .stripAll, .custom])
+        #expect(Summary.allCases.map(\.label) == ["Default", "Keep all", "Strip all", "Custom"])
+    }
+
+    /// The sidebar row (GitHub #16): the label, and for anything that is not
+    /// all-or-nothing, what is stripped or what is left.
+    @Test func summaryLineReadsWellForEveryCombination() {
+        typealias P = MetadataPolicy
+        #expect(P.default.summaryLine == "Default · GPS stripped")
+        #expect(P.keepAll.summaryLine == "Keep all")
+        #expect(P.stripAll.summaryLine == "Strip all")
+        #expect(Preset.shipped[0].metadata.summaryLine == "Default · GPS stripped")
+
+        #expect(P(gps: .keep, icc: .convertToSRGB).summaryLine == "Custom · converted to sRGB")
+        #expect(P(icc: .convertToSRGB).summaryLine == "Custom · GPS stripped, sRGB")
+        #expect(P(exif: .strip).summaryLine == "Custom · EXIF, GPS stripped")
+        #expect(P(gps: .keep, icc: .strip).summaryLine == "Custom · ICC stripped")
+        #expect(P(gps: .keep, aiWorkflow: .strip).summaryLine == "Custom · AI stripped")
+        #expect(P(exif: .strip, iptc: .strip).summaryLine == "Custom · EXIF, GPS, IPTC stripped")
+        // Past three, what is left is the shorter list.
+        #expect(P(exif: .strip, iptc: .strip, xmp: .strip).summaryLine == "Custom · only ICC, AI kept")
+        #expect(P(exif: .strip, iptc: .strip, xmp: .strip, aiWorkflow: .strip).summaryLine == "Custom · only ICC kept")
+        #expect(P(exif: .strip, iptc: .strip, xmp: .strip, icc: .convertToSRGB, aiWorkflow: .strip).summaryLine
+                == "Custom · only sRGB kept")
+        #expect(P(exif: .strip, gps: .keep, iptc: .strip, xmp: .strip, icc: .strip, aiWorkflow: .strip).summaryLine
+                == "Custom · only GPS kept")
+
+        // Every one of the 96 policies gets a short single line that starts with its label.
+        let actions = P.Action.allCases
+        for exif in actions { for gps in actions { for iptc in actions { for xmp in actions {
+            for icc in P.ICC.allCases { for ai in actions {
+                let p = P(exif: exif, gps: gps, iptc: iptc, xmp: xmp, icc: icc, aiWorkflow: ai)
+                let line = p.summaryLine
+                #expect(line.hasPrefix(p.summary.label), Comment(rawValue: line))
+                #expect(line.count <= 40 && !line.contains("\n"), Comment(rawValue: line))
+                #expect((p.summary == .custom) == line.hasPrefix("Custom · "), Comment(rawValue: line))
+            } }
+        } } } }
     }
 
     @Test func sectionsAreTheSixWithASwitch() {
@@ -89,6 +137,7 @@ struct MetadataPolicyTests {
         #expect(RenderSpec(target: PixelSize(10, 10)).metadata == .default)
         #expect(RenderSpec(target: PixelSize(10, 10), metadata: .stripAll).metadata == .stripAll)
         #expect(Preset.shipped.allSatisfy { $0.metadata == .default })
+        #expect(Preset.shipped[0].name == "Web" && Preset.shipped[0].metadata.gps == .strip)
         #expect(RenderSpec(target: PixelSize(10, 10)) != RenderSpec(target: PixelSize(10, 10), metadata: .keepAll))
     }
 
@@ -100,7 +149,9 @@ struct MetadataPolicyTests {
         for s in Section.allCases { #expect(cap(s, .png).canCarry, Comment(rawValue: s.rawValue)) }
         #expect(cap(.aiWorkflow, .png) == .full)   // the only home of a ComfyUI graph
         #expect(cap(.iptc, .png).note?.contains("XMP") == true)
-        for s in [Section.exif, .gps, .xmp, .icc] { #expect(cap(s, .png) == .full) }
+        for s in [Section.exif, .gps, .xmp] { #expect(cap(s, .png) == .full) }
+        // Strip cannot remove ImageIO's `sRGB` chunk (issue #15).
+        #expect(cap(.icc, .png).note?.contains("sRGB marker") == true)
     }
 
     @Test func jpegCarriesPhotoMetadataButNoGraph() {
@@ -111,7 +162,9 @@ struct MetadataPolicyTests {
     }
 
     @Test func heicCarriesPhotoMetadataButNoGraph() {
-        for s in [Section.exif, .gps, .xmp, .icc] { #expect(cap(s, .heic) == .full) }
+        for s in [Section.exif, .gps, .xmp] { #expect(cap(s, .heic) == .full) }
+        // An sRGB HEIC has no profile to strip (issue #15).
+        #expect(cap(.icc, .heic).note?.contains("Strip and Convert") == true)
         #expect(cap(.iptc, .heic).canCarry && cap(.iptc, .heic).note?.contains("XMP") == true)
         #expect(cap(.aiWorkflow, .heic).canCarry && cap(.aiWorkflow, .heic).note?.hasPrefix("HEIC") == true)
     }

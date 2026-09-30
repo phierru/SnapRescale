@@ -22,11 +22,9 @@ struct FixtureDetectionTests {
         #expect(m.provenance.isEmpty)
         #expect(m.badges.contains { $0.label == "GPS" && $0.tone == .warning })
         #expect(FixtureProbe.hasEXIFThumbnail(jpeg: Fixture.camera.data))
-        // The file has no XMP packet, but ImageIO derives `xmp:` / `photoshop:`
-        // date tags from the TIFF ones and the detector counts them.
-        withKnownIssue("XMP reported for a file without a packet", isIntermittent: true) {
-            #expect(!m.hasXMP)
-        }
+        // No XMP packet: the `xmp:` / `photoshop:` date tags ImageIO derives
+        // from the TIFF ones do not count.
+        #expect(!m.hasXMP)
     }
 
     @Test func iptcXMPJPEGCarriesBoth() throws {
@@ -97,30 +95,68 @@ struct FixtureDetectionTests {
 }
 
 /// BASELINE, not a specification. These pin what `Renderer.produce` writes
-/// today — every metadata block stripped, 8-bit sRGB, orientation baked in —
-/// so the writer issues (#13 EXIF/GPS/IPTC, #18 XMP, #14 AI workflow, #15 ICC)
-/// have to change an expectation here deliberately, in the commit that changes
-/// the behaviour. The two orientation tests are the exception: PRD §10.3 keeps
-/// them true for good.
+/// today with the default policy — EXIF and IPTC kept, GPS stripped (#13); the
+/// AI workflow of a PNG written as PNG kept (#14); colour and depth following
+/// the ICC policy (#15, detail in `ColorPlanTests`); orientation baked in — so
+/// the remaining writer issue (#18 XMP) has to change an expectation here
+/// deliberately, in the commit that changes the behaviour. The two orientation
+/// tests are the exception: PRD §10.3 keeps them true for good. The switches
+/// themselves are specified in `MetadataWriterTests`.
 struct MetadataRoundTripBaselineTests {
+    /// Default policy: keep everything except GPS (PRD §10.2).
     @Test(arguments: Fixture.allCases)
-    func everythingIsStripped(_ fixture: Fixture) throws {
+    func defaultKeepsEXIFAndIPTCAndStripsGPS(_ fixture: Fixture) throws {
+        let source = try Fixture.load(fixture).metadata
         let out = try fixture.roundTrip()
+        let m = out.metadata
+        #expect(m.hasEXIF == source.hasEXIF)
+        #expect(m.hasIPTC == source.hasIPTC)
+        #expect(!m.hasGPS)
+        #expect(!out.hasEXIFThumbnail)
+        // #14: PNG output keeps the source's AI workflow chunks. A1111
+        // parameters in EXIF UserComment ride along with EXIF (#13).
+        let keepsWorkflow = [Fixture.comfyUI, .a1111PNG, .compressedText].contains(fixture)
+        #expect(m.pngTextKeywords == (keepsWorkflow ? source.pngTextKeywords : []))
+        #expect(m.provenance == (keepsWorkflow || fixture == .a1111JPEG ? source.provenance : []))
+        // The source's XMP packet is not written (#18). What is reported is
+        // the packet ImageIO derives from the IPTC fields.
+        #expect(m.hasXMP == (fixture == .iptcXMP))
+        let gone: Set = ["GPS", "Rotated", "CMYK"]
+        #expect(m.badges.allSatisfy { !gone.contains($0.label) })
+    }
+
+    /// Strip all still leaves nothing, as before #13.
+    @Test(arguments: Fixture.allCases)
+    func stripAllStripsEverything(_ fixture: Fixture) throws {
+        let out = try fixture.roundTrip { $0.metadata = .stripAll }
         let m = out.metadata
         #expect(!m.hasEXIF && !m.hasGPS && !m.hasIPTC && !m.hasXMP)
         #expect(m.provenance.isEmpty)
         #expect(m.pngTextKeywords.isEmpty)
         #expect(!out.hasEXIFThumbnail)
-        let blocks: Set = ["EXIF", "GPS", "IPTC", "XMP", "Rotated", "CMYK", "16-bit"]
+        // "16-bit" is not in this list since #15: depth is kept, not stripped.
+        let blocks: Set = ["EXIF", "GPS", "IPTC", "XMP", "Rotated", "CMYK"]
         #expect(m.badges.allSatisfy { !blocks.contains($0.label) && $0.tone != .provenance })
     }
 
+    /// The default policy preserves the profile and the depth (#15). CMYK is
+    /// the exception: the loader hands it over as sRGB, so it is written as sRGB.
     @Test(arguments: Fixture.allCases)
-    func outputIsEightBitSRGB(_ fixture: Fixture) throws {
+    func defaultOutputKeepsProfileAndDepth(_ fixture: Fixture) throws {
         let m = try fixture.roundTrip().metadata
+        #expect(m.iccProfileName == (fixture == .displayP3 ? "Display P3" : "sRGB IEC61966-2.1"))
+        #expect(m.colorModel == "RGB")
+        #expect(m.bitDepth == (fixture == .sixteenBit ? 16 : 8))
+        #expect(m.badges.contains { $0.label == "16-bit" } == (fixture == .sixteenBit))
+    }
+
+    /// Convert to sRGB is what every file got before #15, bar the depth.
+    @Test(arguments: Fixture.allCases)
+    func convertedOutputIsSRGB(_ fixture: Fixture) throws {
+        let m = try fixture.roundTrip { $0.metadata.icc = .convertToSRGB }.metadata
         #expect(m.iccProfileName == "sRGB IEC61966-2.1")
         #expect(m.colorModel == "RGB")
-        #expect(m.bitDepth == 8)
+        #expect(m.bitDepth == (fixture == .sixteenBit ? 16 : 8))
     }
 
     @Test(arguments: Fixture.allCases)
@@ -147,16 +183,19 @@ struct MetadataRoundTripBaselineTests {
         #expect(topLeft[2] > 200 && topLeft[0] < 60 && topLeft[1] < 60)
     }
 
-    @Test func strippingHoldsAcrossFormats() throws {
+    @Test func defaultHoldsAcrossFormats() throws {
         // The adjust closure is where a writer test sets its policy.
         let jpeg = try Fixture.comfyUI.roundTrip { $0.format = .jpeg }
         #expect(jpeg.type == .jpeg)
         #expect(jpeg.metadata.provenance.isEmpty && !jpeg.metadata.hasEXIF)
         let png = try Fixture.camera.roundTrip { $0.format = .png }
         #expect(png.type == .png)
-        #expect(!png.metadata.hasEXIF && !png.metadata.hasGPS)
+        #expect(png.metadata.hasEXIF && !png.metadata.hasGPS)
         let half = try Fixture.camera.roundTrip(spec: RenderSpec(target: PixelSize(32, 24), format: .heic))
         #expect(half.type == .heic && half.size == PixelSize(32, 24))
-        #expect(!half.metadata.hasEXIF && !half.metadata.hasGPS)
+        #expect(half.metadata.hasEXIF && !half.metadata.hasGPS)
+        let bare = try Fixture.camera.roundTrip(spec: RenderSpec(target: PixelSize(32, 24), format: .heic,
+                                                                 metadata: .stripAll))
+        #expect(!bare.metadata.hasEXIF && !bare.metadata.hasGPS)
     }
 }
