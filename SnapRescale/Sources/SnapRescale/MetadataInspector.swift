@@ -100,6 +100,17 @@ struct MetadataInspector: View {
             Text("Metadata").font(.headline)
             Spacer()
             panelAccessory
+            // `toggle()` writes a run-loop turn later (GitHub #2).
+            Button { state.toggle() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Close the metadata inspector (⌥⌘I)")
+            .accessibilityLabel("Close metadata inspector")
         }
         .padding(.horizontal, 12)
         .frame(height: 36)
