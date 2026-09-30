@@ -245,7 +245,10 @@ struct MetadataWriterTests {
     /// Keeping what is not there writes nothing: the bytes match a strip-all output.
     @Test(arguments: formats)
     func sourceWithoutMetadataIsWrittenBare(_ format: OutputFormat) throws {
-        let kept = try Self.render(.comfyUI, format, .keepAll)
+        // The AI workflow is spliced into PNG output (#14); leave it out here.
+        var policy = MetadataPolicy.keepAll
+        policy.aiWorkflow = .strip
+        let kept = try Self.render(.comfyUI, format, policy)
         let stripped = try Self.render(.comfyUI, format, .stripAll)
         #expect(kept.data == stripped.data)
     }

@@ -95,12 +95,12 @@ struct FixtureDetectionTests {
 }
 
 /// BASELINE, not a specification. These pin what `Renderer.produce` writes
-/// today with the default policy — EXIF and IPTC kept, GPS stripped (#13); no
-/// PNG text chunks, 8-bit sRGB, orientation baked in — so the remaining writer
-/// issues (#18 XMP, #14 AI workflow, #15 ICC) have to change an expectation
-/// here deliberately, in the commit that changes the behaviour. The two
-/// orientation tests are the exception: PRD §10.3 keeps them true for good.
-/// The switches themselves are specified in `MetadataWriterTests`.
+/// today with the default policy — EXIF and IPTC kept, GPS stripped (#13); the
+/// AI workflow of a PNG written as PNG kept (#14); 8-bit sRGB, orientation
+/// baked in — so the remaining writer issues (#18 XMP, #15 ICC) have to change
+/// an expectation here deliberately, in the commit that changes the behaviour.
+/// The two orientation tests are the exception: PRD §10.3 keeps them true for
+/// good. The switches themselves are specified in `MetadataWriterTests`.
 struct MetadataRoundTripBaselineTests {
     /// Default policy: keep everything except GPS (PRD §10.2).
     @Test(arguments: Fixture.allCases)
@@ -112,14 +112,14 @@ struct MetadataRoundTripBaselineTests {
         #expect(m.hasIPTC == source.hasIPTC)
         #expect(!m.hasGPS)
         #expect(!out.hasEXIFThumbnail)
-        // PNG text chunks are not written (#14). A1111 parameters in EXIF
-        // UserComment now ride along with EXIF, whatever the AI workflow switch says.
-        #expect(m.pngTextKeywords.isEmpty)
-        #expect(m.provenance == (fixture == .a1111JPEG ? [.a1111] : []))
+        // #14: PNG output keeps the source's AI workflow chunks. A1111
+        // parameters in EXIF UserComment ride along with EXIF (#13).
+        let keepsWorkflow = [Fixture.comfyUI, .a1111PNG, .compressedText].contains(fixture)
+        #expect(m.pngTextKeywords == (keepsWorkflow ? source.pngTextKeywords : []))
+        #expect(m.provenance == (keepsWorkflow || fixture == .a1111JPEG ? source.provenance : []))
         // The source's XMP packet is not written (#18). What is reported is
-        // derived by ImageIO: a packet it writes from the IPTC fields, and
-        // `xmp:` / `photoshop:` date tags it surfaces from the TIFF ones.
-        #expect(m.hasXMP == (fixture == .camera || fixture == .iptcXMP))
+        // the packet ImageIO derives from the IPTC fields.
+        #expect(m.hasXMP == (fixture == .iptcXMP))
         let gone: Set = ["GPS", "Rotated", "CMYK", "16-bit"]
         #expect(m.badges.allSatisfy { !gone.contains($0.label) })
     }
