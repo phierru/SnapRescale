@@ -45,9 +45,10 @@ public enum PNGSplicer {
     /// The post-encode step of `Renderer.produce`: carries the source's AI
     /// workflow into `encoded` when the policy keeps it, the output is PNG and
     /// the source is a PNG holding such chunks; otherwise `encoded` as it came.
-    /// A keyword ImageIO already wrote is not written twice. Other formats get
-    /// nothing here: A1111 parameters in the EXIF user comment ride with the
-    /// EXIF writer.
+    /// A keyword ImageIO already wrote is not written twice, and the XMP packet
+    /// is never among the chunks taken: ImageIO writes the kept one as its own
+    /// `iTXt` (`XMPWriter`). Other formats get nothing here: A1111 parameters in
+    /// the EXIF user comment are `MetadataWriter`'s.
     public static func keepingAIWorkflow(_ encoded: Data, from source: SourceImage, spec: RenderSpec) -> Data {
         guard spec.metadata.aiWorkflow == .keep,
               spec.format.resolvedType(for: source.type)?.conforms(to: .png) == true else { return encoded }
