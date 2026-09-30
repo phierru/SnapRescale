@@ -41,14 +41,6 @@ final class Session {
 
     // Metadata (PRD §10.2). An output setting like the format: a new image does not reset it.
     var metadataPolicy: MetadataPolicy = .default
-    /// The hook between the sidebar's Metadata row and the inspector (GitHub
-    /// #16, #19): the row sets it through `requestMetadataInspector()`. Whoever
-    /// presents the inspector either binds `isPresented` to it, or observes it
-    /// and sets it back to false once the inspector is open.
-    var metadataInspectorRequested = false
-
-    /// Call through `deferred` when it starts in a click (GitHub #2).
-    func requestMetadataInspector() { metadataInspectorRequested = true }
 
     // Presets (PRD §12)
     let presets = PresetStore()

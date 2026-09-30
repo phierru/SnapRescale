@@ -172,11 +172,11 @@ struct ControlsPanel: View {
     }
 
     /// What Save keeps of the metadata, on one line; the switches are in the
-    /// inspector, which a click asks for (GitHub #16). A plain HStack at a fixed
+    /// inspector, which a click toggles (GitHub #16). A plain HStack at a fixed
     /// height, like `readouts`: the text truncates rather than moving the rows.
     private var metadataRow: some View {
         Button {
-            deferred { session.requestMetadataInspector() }
+            InspectorState.shared.toggle()
         } label: {
             HStack(spacing: 6) {
                 Text("Metadata")

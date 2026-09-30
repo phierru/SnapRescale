@@ -12,7 +12,7 @@ hands it over as a dictionary; "scan" means we parse the container ourselves.
 | **GPS** | Latitude, longitude, altitude, timestamp | EXIF GPS IFD | ImageIO `{GPS}` | `GPS` (warning colour: the privacy one) |
 | **TIFF tags** | Make, model, software, orientation, resolution | IFD0 | ImageIO `{TIFF}` | none — always alongside EXIF |
 | **IPTC** | Caption, keywords, credit, copyright, city | JPEG APP13 / Photoshop IRB, XMP mirror | ImageIO `{IPTC}` | `IPTC` |
-| **XMP** | Ratings, labels, edit history, face regions, rights, mirrors of the above | JPEG APP1 (`http://ns.adobe.com/xap/1.0/`), PNG `iTXt XML:com.adobe.xmp`, HEIC `mime` box | `CGImageSourceCopyMetadataAtIndex`, non-EXIF namespaces | `XMP` |
+| **XMP** | Ratings, labels, edit history, face regions, rights, mirrors of the above | JPEG APP1 (`http://ns.adobe.com/xap/1.0/`), PNG `iTXt XML:com.adobe.xmp`, HEIC `mime` box | The packet itself, found by scanning the container (JPEG, PNG, TIFF, HEIC/AVIF, WebP); ImageIO's tag tree minus what it derives, for the rest | `XMP` |
 | **Apple MakerNote** | Live Photo pairing, capture settings | EXIF MakerNote | ImageIO `{MakerApple}` | none |
 | **RAW** | Sensor and processing data | Proprietary | ImageIO `{Raw}`; read-only | none (format is shown already) |
 
