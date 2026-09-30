@@ -97,7 +97,8 @@ struct FixtureDetectionTests {
 }
 
 /// BASELINE, not a specification. These pin what `Renderer.produce` writes
-/// today — every metadata block stripped, 8-bit sRGB, orientation baked in —
+/// today — every metadata block stripped except the AI workflow of a PNG
+/// written as PNG (#14), 8-bit sRGB, orientation baked in —
 /// so the writer issues (#13 EXIF/GPS/IPTC, #18 XMP, #14 AI workflow, #15 ICC)
 /// have to change an expectation here deliberately, in the commit that changes
 /// the behaviour. The two orientation tests are the exception: PRD §10.3 keeps
@@ -108,11 +109,15 @@ struct MetadataRoundTripBaselineTests {
         let out = try fixture.roundTrip()
         let m = out.metadata
         #expect(!m.hasEXIF && !m.hasGPS && !m.hasIPTC && !m.hasXMP)
-        #expect(m.provenance.isEmpty)
-        #expect(m.pngTextKeywords.isEmpty)
+        // #14: PNG output keeps the source's AI workflow chunks (the default
+        // policy); no other format carries a workflow yet.
+        let keepsWorkflow = [Fixture.comfyUI, .a1111PNG, .compressedText].contains(fixture)
+        let source = try Fixture.load(fixture).metadata
+        #expect(m.provenance == (keepsWorkflow ? source.provenance : []))
+        #expect(m.pngTextKeywords == (keepsWorkflow ? source.pngTextKeywords : []))
         #expect(!out.hasEXIFThumbnail)
         let blocks: Set = ["EXIF", "GPS", "IPTC", "XMP", "Rotated", "CMYK", "16-bit"]
-        #expect(m.badges.allSatisfy { !blocks.contains($0.label) && $0.tone != .provenance })
+        #expect(m.badges.allSatisfy { !blocks.contains($0.label) && (keepsWorkflow || $0.tone != .provenance) })
     }
 
     @Test(arguments: Fixture.allCases)

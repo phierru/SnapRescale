@@ -133,7 +133,8 @@ public enum Renderer {
 
     /// Render and encode in one go; the byte count is what the UI shows (PRD §8).
     public static func produce(_ source: SourceImage, spec: RenderSpec) throws -> Data {
-        try encode(try render(source, spec: spec), spec: spec, sourceType: source.type)
+        let encoded = try encode(try render(source, spec: spec), spec: spec, sourceType: source.type)
+        return PNGSplicer.keepingAIWorkflow(encoded, from: source, spec: spec)
     }
 }
 
