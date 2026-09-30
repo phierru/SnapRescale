@@ -417,12 +417,15 @@ says so — it never converts silently.
 
 ## 10. Metadata and colour
 
-Not a checkbox. Three independent switches, because "keep metadata" conflates
-things that people want separately:
+Not a checkbox, and not an editor. SnapRescale **keeps or strips** what the
+source carries, block by block, and lets the user **copy or export** it. It
+never edits a field: that is a mature niche of its own (ExifTool, Photos,
+Lightroom, Photo Mechanic, Metapho), and the Help page points there.
+*(Design decided 2026-09-30; it replaces the three-switch sketch, and the
+"keep camera & date, drop the rest" option is dropped in favour of per-section
+switches.)*
 
-- **EXIF / IPTC / XMP** — keep all · keep camera & date, drop the rest · drop all
-- **GPS location** — keep · drop *(separate: this is the one people strip for privacy)*
-- **ICC profile** — preserve · convert to sRGB · strip
+### 10.1 Badges
 
 **What the source carries is shown up front.** The header row above the
 preview — name, dimensions, file size, format — ends with one badge per
@@ -432,13 +435,86 @@ warning colour), **IPTC**, **XMP**, **Alpha**, **16-bit**, **HDR**, **Depth**,
 **ComfyUI**, **A1111**, **InvokeAI**, **NovelAI**, **Fooocus**, **SwarmUI**,
 **Midjourney**, **C2PA**. The full catalogue, where each lives and how it is
 detected, is in [`reference/image-metadata.md`](reference/image-metadata.md).
-The badges are the hooks the switches below attach to; a **keep AI workflow**
-switch (carry the PNG text chunks into the output) joins them in M4.
 
-**Orientation is always normalised**, whatever the metadata setting: the EXIF
-orientation flag is baked into the pixels and reset to 1. Stripping metadata
-without doing this is how naive resizers deliver sideways photos, and it is the
-most common defect in tools of this class.
+Clicking a badge opens the metadata inspector at that badge's section.
+
+### 10.2 The metadata inspector
+
+A panel on the trailing side of the **same window** (SwiftUI `.inspector()`),
+not a separate window: with one session per window (roadmap) it must belong to
+its document, follow it when the image is replaced, and close with it — and
+its switches change what Save writes, so they must not hide in a secondary
+window. Toggled by a badge click or **⌥⌘I** (View ▸ Metadata Inspector).
+
+It lists everything the source carries in **collapsible sections**, each
+showing its fields as key / value rows:
+
+| Section | Control | Notes |
+|---|---|---|
+| **EXIF** (camera, lens, exposure, date; includes the TIFF tags) | keep · strip | |
+| **GPS** | keep · strip | Its own switch although it is stored inside EXIF: this is the one people strip for privacy. |
+| **IPTC** | keep · strip | |
+| **XMP** | keep · strip | |
+| **ICC profile** | preserve · convert to sRGB · strip | Three options, not two. |
+| **AI workflow** (ComfyUI, A1111, InvokeAI, NovelAI, Fooocus, SwarmUI, Midjourney) | keep · strip | Plus **Export…** and **Copy Prompt** (§10.5). |
+| **C2PA** | none — always stripped | Read-only. The signature binds the exact pixels, so a resized file would show as tampered; the section says so. |
+| **Structure** (alpha, bit depth, HDR, depth, frames, orientation) | none | Read-only. These describe the pixels, not metadata. |
+
+At the top, a master control **Keep all · Strip all · Custom**; it reads
+*Custom* (mixed state) as soon as sections differ, and choosing Keep all or
+Strip all sets every section that has a switch.
+
+**Default: keep everything except GPS.** It honours "never silently degrade"
+(§2) and still protects privacy.
+
+The sidebar carries a one-line summary of the policy — e.g. *Metadata: Keep
+all · GPS stripped* — so it is visible with the inspector closed. The policy
+is part of every preset (§12).
+
+### 10.3 Rules the switches obey
+
+- **Mirrored data follows its switch.** XMP often repeats IPTC, EXIF and GPS
+  fields, and a JPEG's ImageDescription surfaces as the IPTC caption. Stripping
+  a section also removes its mirrored copies from the sections that are kept
+  (strip GPS with XMP kept ⇒ the `exif:GPS*` XMP properties go too). The
+  inspector says so.
+- **Formats that cannot carry a section disable its switch and say why**,
+  rather than dropping it silently (the §9 "never convert silently" rule). A
+  ComfyUI graph survives only in PNG; A1111 parameters can also ride in EXIF
+  UserComment for JPEG / HEIC; GIF and BMP carry almost nothing.
+- **Orientation is always normalised**, whatever the metadata setting: the
+  EXIF orientation flag is baked into the pixels and reset to 1. Stripping
+  metadata without doing this is how naive resizers deliver sideways photos,
+  and it is the most common defect in tools of this class.
+
+### 10.4 What the writer fixes even when it keeps
+
+- **The embedded EXIF thumbnail is always dropped.** Otherwise it still shows
+  the uncropped original — a real privacy leak, since Finder and some viewers
+  display it.
+- EXIF pixel dimensions are set to the output size; orientation is set to 1.
+
+### 10.5 Copy and export
+
+Read-only, and available whatever the switches say:
+
+- **Copy** on every section: readable `Key: value` lines. **Copy All** at the
+  top.
+- **AI workflow ▸ Export…** writes the ComfyUI / InvokeAI graph as `.json`
+  (droppable straight into ComfyUI) and A1111-style parameters as `.txt`.
+  **Copy Prompt** puts the positive prompt on the clipboard.
+- **Export All…** writes every section as one JSON file, for archiving before
+  stripping.
+
+### 10.6 Build order
+
+1. Read-only inspector with copy / export — useful at once, no writer change.
+2. Keep / strip for EXIF, GPS, IPTC and XMP.
+3. Keep AI workflow (ImageIO will not write custom PNG text chunks; the
+   encoder splices them back in before `IEND`).
+4. ICC — needs the renderer to stop being fixed at 8-bit sRGB.
+
+The work items and their parallel tracks are in [`ROADMAP.md`](ROADMAP.md).
 
 ## 11. Output
 
@@ -468,7 +544,7 @@ Shipped defaults: **Web (Original ratio, 1.5 MP, JPEG q80)** · **Thumbnail
 (1:1, 320 px, crop)** · **Social 16:9 (1920 px, ×8, crop)** · **SDXL 1024 (1:1,
 1024 px, ×16, PNG)**. **Email (≤ 1 MB)** and **Discord/Slack (≤ 8 MB)** follow
 with the target-file-size search (roadmap v1.2); "strip GPS" joins Web with the
-§10 switches (v1.1).
+§10 switches: its policy is *keep all, strip GPS* — which is also the default.
 
 The picker sits at the top of the panel: choose one, *Save Current as
 Preset…*, delete the active one, or reveal the folder. Any edit after applying
@@ -533,6 +609,10 @@ the product, and it is testable without a single pixel being decoded.
 **On 2026-09-06 the still-open parts of v1 (§10 switches, workflow carry-over,
 resampling choice) were deferred to v1.1 in [`ROADMAP.md`](ROADMAP.md) so M5
 could start.**
+
+**On 2026-09-30, with 1.0 and 1.1 shipped without them, §10 was redesigned
+around a metadata inspector (keep / strip per section, copy / export, no
+editing) and became the next milestone; see [`ROADMAP.md`](ROADMAP.md).**
 
 **v2**, once v1 has been lived with: batch, the headless preset Quick Action, a
 shipped CLI, and the Shortcuts action (§13).

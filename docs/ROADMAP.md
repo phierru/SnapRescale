@@ -8,16 +8,49 @@ under MIT. See §14 of the PRD and the M5 section below.
 
 ## Deferred from v1 (2026-09-06)
 
-These were in the v1 cut and are moved out so M5 can start. They come back
-first, as **v1.1**.
+These were in the v1 cut and were moved out so M5 could start. 1.1 shipped
+(2026-09-28) without them. The two metadata items — the §10 switches and
+"keep AI workflow" — were redesigned on 2026-09-30 and are now the **Metadata**
+milestone below; what remains here is still open.
 
 | Item | PRD | Notes |
 |---|---|---|
-| Metadata switches: EXIF keep all / camera & date / drop; GPS keep / drop; ICC preserve / convert to sRGB / strip | §10 | Output is currently sRGB with everything stripped and orientation normalised. The badges are the hooks. |
-| Keep AI workflow: carry ComfyUI / A1111 PNG text chunks into the written PNG | §10 | ImageIO won't; splice the chunks before `IEND`. |
 | Resampling choice: area for downscale, Lanczos for upscale, nearest for pixel art | §1, ComfyUI review | CoreGraphics high-quality interpolation today; Core Image filters are the likely route. |
 
-## v1.1 also — multiple windows (decided 2026-09-06)
+## Next — Metadata (decided 2026-09-30)
+
+PRD §10: a metadata inspector in the window's trailing panel, opened from the
+badges. Keep / strip per section, copy / export, **no editing**. Default policy:
+keep everything except GPS. Output today is still 8-bit sRGB with everything
+stripped.
+
+GitHub milestone **Metadata**, tracking issue #21. The items are cut so
+that each wave can be worked by separate agents in parallel; the few places
+where two items of a wave meet in one file are listed under the table.
+
+| Wave | Item | Issue | Touches | Needs |
+|---|---|---|---|---|
+| 0 | Capture metadata values, not just presence (fields per section, full PNG chunk text incl. compressed, raw chunks) | #8 | `RescaleKit/ImageMetadata.swift` | — |
+| 0 | `MetadataPolicy` on `RenderSpec` and in presets; per-format capability table | #9 | `RescaleKit`: new `MetadataPolicy.swift`, `Renderer.swift` (`RenderSpec`), `Preset.swift` | — |
+| 0 | Real-file fixture corpus and round-trip test harness | #10 | `RescaleKit/Tests` | — |
+| 1 | Inspector panel, read-only: collapsible sections, badge click, ⌥⌘I | #11 | `SnapRescale`: new `MetadataInspector.swift`, `ContentView.swift` | #8 |
+| 1 | Copy / export serialisation: section text, Export All JSON, workflow `.json` / `.txt`, prompt extraction | #12 | `RescaleKit`: new `MetadataExport.swift` | #8 |
+| 1 | Writer: keep / strip EXIF, GPS, IPTC; drop thumbnail, fix dimensions | #13 | `RescaleKit/Renderer.swift` (`encode`) | #9 |
+| 1 | Writer: keep AI workflow — splice PNG text chunks before `IEND` | #14 | `RescaleKit`: new `PNGSplicer.swift` | #8, #9 |
+| 1 | ICC: preserve · convert to sRGB · strip; renderer off fixed 8-bit sRGB | #15 | `RescaleKit/Renderer.swift` (`render`), `SnapRescale/Session.swift` | #9 |
+| 1 | Sidebar summary line; policy in shipped presets (Web strips GPS) | #16 | `SnapRescale/ControlsPanel.swift`, `PresetStore.swift` | #9 |
+| 2 | Inspector: Copy, Copy All, Copy Prompt, Export…, Export All… buttons | #17 | `SnapRescale/MetadataInspector.swift` | #11, #12 |
+| 2 | Writer: keep / strip XMP; remove mirrored copies of stripped sections | #18 | `RescaleKit/Renderer.swift` (`encode`) | #13 |
+| 2 | Inspector switches: per section, master Keep all / Strip all / Custom, disabled-with-reason | #19 | `SnapRescale/MetadataInspector.swift` | #9, #11, #16 |
+| 3 | Help, in-app help text, changelog, App Store copy | #20 | `docs/`, `AboutAndHelp.swift` | all |
+
+#13 and #15 both edit `Renderer.swift` but different functions (`encode` vs
+`render`); #17 and #19 both edit the inspector and should land one after the
+other; #15 and #16 both edit `Session.swift` (preview colour vs policy state).
+New sidebar and inspector controls must use `Binding.deferred` (the
+macOS 27 Form width bug, `docs/apple-feedback-macos27-form-width.md`).
+
+## Also next — multiple windows (decided 2026-09-06)
 
 One session per window instead of the single shared session. Open With,
 Services and Dock drops open a **new window per image** (two files selected in

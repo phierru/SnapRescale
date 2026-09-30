@@ -50,7 +50,24 @@ scanned for C2PA.
 
 ## 4. What the badges are for
 
-Each badge is a hook for a §10 switch: keep or strip per block on output, and
-a "keep AI workflow" option that carries the PNG text chunks into the written
-file — which ImageIO will not do by itself, so the encoder has to splice the
-chunks back in before `IEND`.
+Each badge opens the metadata inspector (PRD §10.2) at its section. What the
+inspector offers per block:
+
+| Block | Inspector section | Control | Copy / export |
+|---|---|---|---|
+| EXIF + TIFF tags | EXIF | keep · strip | Copy |
+| GPS | GPS | keep · strip (default: strip) | Copy |
+| IPTC | IPTC | keep · strip | Copy |
+| XMP | XMP | keep · strip | Copy |
+| ICC profile | ICC profile | preserve · convert to sRGB · strip | Copy (name, description) |
+| AI provenance (§3, except C2PA) | AI workflow | keep · strip | Copy, Copy Prompt, Export… (`.json` / `.txt`) |
+| C2PA | C2PA | none, always stripped — the signature binds the original pixels | Copy |
+| Alpha, bit depth, HDR, depth, frames, orientation | Structure | none, read-only | Copy |
+
+Writing notes:
+
+- ImageIO will not write custom PNG text chunks, so "keep AI workflow" splices
+  the source's `tEXt` / `iTXt` / `zTXt` chunks back in before `IEND`.
+- The embedded EXIF thumbnail is always dropped, EXIF pixel dimensions are
+  rewritten and orientation is reset to 1 (PRD §10.4).
+- A stripped section's mirrored copies in XMP are removed with it (PRD §10.3).
