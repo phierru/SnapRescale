@@ -429,7 +429,8 @@ switches.)*
 
 **What the source carries is shown up front.** The header row above the
 preview — name, dimensions, file size, format — ends with one badge per
-metadata block found: **ICC** (profile name on hover), **EXIF**, **GPS** (in a
+metadata block found: **ICC** (profile name on hover; only when the file
+embeds a profile — an sRGB that macOS merely assumes gets no badge), **EXIF**, **GPS** (in a
 warning colour), **IPTC**, **XMP**, **Alpha**, **16-bit**, **HDR**, **Depth**,
 **Rotated**, **Animated ·N**, and one per AI-generation source detected:
 **ComfyUI**, **A1111**, **InvokeAI**, **NovelAI**, **Fooocus**, **SwarmUI**,
@@ -444,10 +445,17 @@ A panel on the trailing side of the **same window** (SwiftUI `.inspector()`),
 not a separate window: with one session per window (roadmap) it must belong to
 its document, follow it when the image is replaced, and close with it — and
 its switches change what Save writes, so they must not hide in a secondary
-window. Toggled by a badge click or **⌥⌘I** (View ▸ Metadata Inspector).
+window. It has the same fixed width as the sidebar. Opened by a badge click,
+the sidebar's Metadata row or **⌥⌘I** (View ▸ Metadata Inspector); closed by
+the same, or by the close button in its header.
 
 It lists everything the source carries in **collapsible sections**, each
-showing its fields as key / value rows:
+showing its fields as label / value rows. A section's title row holds, right
+aligned, its switch and then icon buttons (§10.5). The main fields come first,
+the rest behind **More (N)**; the AI workflow shows a summary (prompt,
+negative prompt, model, seed, steps, CFG, sampler, scheduler) above the raw
+payloads; the ICC section of a file with no embedded profile is collapsed and
+reads *macOS default (sRGB assumed)*.
 
 | Section | Control | Notes |
 |---|---|---|
@@ -455,32 +463,43 @@ showing its fields as key / value rows:
 | **GPS** | keep · strip | Its own switch although it is stored inside EXIF: this is the one people strip for privacy. |
 | **IPTC** | keep · strip | |
 | **XMP** | keep · strip | |
-| **ICC profile** | preserve · convert to sRGB · strip | Three options, not two. |
+| **ICC profile** | keep · sRGB · strip | Three options, not two: preserve the profile, convert to sRGB, or write none. |
 | **AI workflow** (ComfyUI, A1111, InvokeAI, NovelAI, Fooocus, SwarmUI, Midjourney) | keep · strip | Plus **Export…** and **Copy Prompt** (§10.5). |
 | **C2PA** | none — always stripped | Read-only. The signature binds the exact pixels, so a resized file would show as tampered; the section says so. |
 | **Structure** (alpha, bit depth, HDR, depth, frames, orientation) | none | Read-only. These describe the pixels, not metadata. |
 
-At the top, a master control **Default · Keep all · Strip all · Custom**. It
-reads *Default* for the default policy below and *Custom* for any other mix;
-choosing Default, Keep all or Strip all sets every section that has a switch.
+In the header, a master menu **Default · Keep all · Strip all · Custom**, the
+current one ticked. It reads *Default* for the default policy below and
+*Custom* for any other mix; choosing Default, Keep all or Strip all sets every
+section that has a switch. Custom is a result and cannot be chosen.
 
-**Default: keep everything except GPS.** It honours "never silently degrade"
-(§2) and still protects privacy.
+**Default: strip EXIF, GPS, IPTC and XMP; preserve the ICC profile; keep the
+AI workflow.** A resized copy is usually made to be passed on, so what says
+who, where and with what is left out unless asked for. The colour profile
+stays, because without it a wide-gamut picture changes colour, and so does the
+AI workflow, because it is what lets the picture be reopened in its tool. This
+is the one place where "never silently degrade" (§2) gives way to privacy: the
+sidebar line and the master control say what is left out, and *Keep all* is one
+click away.
 
-The sidebar carries a one-line summary of the policy — e.g. *Metadata: Keep
-all · GPS stripped* — so it is visible with the inspector closed. The policy
-is part of every preset (§12).
+The sidebar carries a one-line summary of the policy — e.g. *Metadata:
+Default · only ICC, AI kept* — so it is visible with the inspector closed. The
+policy is part of every preset (§12). Opening another image sets it back to
+the default: what was kept for one picture is not kept for the next by accident.
 
 ### 10.3 Rules the switches obey
 
 - **Mirrored data follows its switch.** XMP often repeats IPTC, EXIF and GPS
-  fields, and a JPEG's ImageDescription surfaces as the IPTC caption. Stripping
+  fields, and a JPEG's ImageDescription, Artist and Copyright surface as the
+  IPTC caption, byline and copyright (so stripping IPTC drops those EXIF tags
+  too). Stripping
   a section also removes its mirrored copies from the sections that are kept
   (strip GPS with XMP kept ⇒ the `exif:GPS*` XMP properties go too). The
   inspector says so.
 - **Formats that cannot carry a section disable its switch and say why**,
   rather than dropping it silently (the §9 "never convert silently" rule),
-  with a note such as *Requires PNG output*. This depends on the source too: a
+  with a note such as *Requires PNG output*; a note is shown only while it
+  applies. This depends on the source too: a
   ComfyUI graph survives only in PNG; A1111 parameters can also ride in EXIF
   UserComment for JPEG / HEIC; GIF and BMP carry almost nothing.
 - **Orientation is always normalised**, whatever the metadata setting: the
@@ -499,13 +518,13 @@ is part of every preset (§12).
 
 Read-only, and available whatever the switches say:
 
-- **Copy** on every section: readable `Key: value` lines. **Copy All** at the
-  top.
+- **Copy** on every section: readable `Key: value` lines. **Copy All** in the
+  header's **…** menu.
 - **AI workflow ▸ Export…** writes the ComfyUI / InvokeAI graph as `.json`
   (droppable straight into ComfyUI) and A1111-style parameters as `.txt`.
   **Copy Prompt** puts the positive prompt on the clipboard.
-- **Export All…** writes every section as one JSON file, for archiving before
-  stripping.
+- **Export All…**, in the same menu, writes every section as one JSON file,
+  for archiving before stripping.
 
 ### 10.6 Build order
 
@@ -545,7 +564,7 @@ Shipped defaults: **Web (Original ratio, 1.5 MP, JPEG q80)** · **Thumbnail
 (1:1, 320 px, crop)** · **Social 16:9 (1920 px, ×8, crop)** · **SDXL 1024 (1:1,
 1024 px, ×16, PNG)**. **Email (≤ 1 MB)** and **Discord/Slack (≤ 8 MB)** follow
 with the target-file-size search (roadmap v1.2); "strip GPS" joins Web with the
-§10 switches: its policy is *keep all, strip GPS* — which is also the default.
+§10 switches: its policy is *strip EXIF, GPS, IPTC and XMP* — which is also the default.
 
 The picker sits at the top of the panel: choose one, *Save Current as
 Preset…*, delete the active one, or reveal the folder. Any edit after applying
@@ -574,7 +593,7 @@ hand:
 `metadata` is optional — a preset without it takes the default policy (§10.2):
 
 ```json
-"metadata": { "exif": "keep", "gps": "strip", "iptc": "keep", "xmp": "keep",
+"metadata": { "exif": "strip", "gps": "strip", "iptc": "strip", "xmp": "strip",
               "icc": "preserve", "aiWorkflow": "keep" }
 ```
 

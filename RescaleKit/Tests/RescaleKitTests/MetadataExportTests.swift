@@ -49,6 +49,15 @@ struct MetadataExportTests {
         }
     }
 
+    /// The AI workflow section leads with its summary, as its own Copy does.
+    @Test func copyAllLeadsTheWorkflowWithItsSummary() throws {
+        let m = try Fixture.load(.comfyUI).metadata
+        let summary = m.aiSummaryText
+        let section = try #require(m.sections.first { $0.kind == .aiWorkflow })
+        #expect(!summary.isEmpty)
+        #expect(m.copyAllText.contains("\(section.title)\n\(summary)\n\(section.text)"))
+    }
+
     // MARK: Export All
 
     @Test func exportAllKeepsSectionAndFieldOrder() throws {

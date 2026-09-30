@@ -95,7 +95,7 @@ struct FixtureDetectionTests {
 }
 
 /// BASELINE, not a specification. These pin what `Renderer.produce` writes
-/// today with the default policy — EXIF and IPTC kept, GPS stripped (#13); the
+/// today with `keepMost` — EXIF and IPTC kept, GPS stripped (#13); the
 /// AI workflow kept, as PNG chunks (#14) or in EXIF (#18); colour and depth
 /// following the ICC policy (#15, detail in `ColorPlanTests`); the source's XMP
 /// packet kept, less its GPS mirror (#18); orientation baked in — so a writer
@@ -104,9 +104,9 @@ struct FixtureDetectionTests {
 /// §10.3 keeps them true for good. The switches themselves are specified in
 /// `MetadataWriterTests` and `XMPWriterTests`.
 struct MetadataRoundTripBaselineTests {
-    /// Default policy: keep everything except GPS (PRD §10.2).
+    /// Everything kept except GPS.
     @Test(arguments: Fixture.allCases)
-    func defaultKeepsEXIFAndIPTCAndStripsGPS(_ fixture: Fixture) throws {
+    func keepMostKeepsEXIFAndIPTCAndStripsGPS(_ fixture: Fixture) throws {
         let source = try Fixture.load(fixture).metadata
         let out = try fixture.roundTrip()
         let m = out.metadata
@@ -197,7 +197,7 @@ struct MetadataRoundTripBaselineTests {
         let png = try Fixture.camera.roundTrip { $0.format = .png }
         #expect(png.type == .png)
         #expect(png.metadata.hasEXIF && !png.metadata.hasGPS)
-        let half = try Fixture.camera.roundTrip(spec: RenderSpec(target: PixelSize(32, 24), format: .heic))
+        let half = try Fixture.camera.roundTrip(spec: RenderSpec(target: PixelSize(32, 24), format: .heic, metadata: .keepMost))
         #expect(half.type == .heic && half.size == PixelSize(32, 24))
         #expect(half.metadata.hasEXIF && !half.metadata.hasGPS)
         let bare = try Fixture.camera.roundTrip(spec: RenderSpec(target: PixelSize(32, 24), format: .heic,

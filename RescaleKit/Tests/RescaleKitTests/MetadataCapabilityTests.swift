@@ -10,7 +10,7 @@ struct MetadataCapabilityTests {
     private func state(_ fixture: Fixture, _ section: Section, _ format: OutputFormat,
                        _ edit: (inout MetadataPolicy) -> Void = { _ in }) throws -> MetadataPolicy.SwitchState {
         let source = try Fixture.load(fixture)
-        var spec = RenderSpec(target: source.size, format: format)
+        var spec = RenderSpec(target: source.size, format: format, metadata: .keepMost)
         edit(&spec.metadata)
         return MetadataPolicy.switchState(of: section, for: source, spec: spec)
     }
@@ -122,8 +122,8 @@ struct MetadataCapabilityTests {
 
     @Test func sectionSubscript() {
         var p = MetadataPolicy.default
-        #expect(p[.gps] == .strip && p[.exif] == .keep && p[.icc] == .keep)
-        p[.gps] = .keep
+        #expect(p[.gps] == .strip && p[.exif] == .strip && p[.icc] == .keep && p[.aiWorkflow] == .keep)
+        for s in Section.allCases { p[s] = .keep }
         #expect(p == .keepAll)
         for s in Section.allCases { p[s] = .strip }
         #expect(p == .stripAll)

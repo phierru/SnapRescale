@@ -6,14 +6,14 @@ import UniformTypeIdentifiers
 struct MetadataPolicyTests {
     typealias Section = MetadataPolicy.Section
 
-    /// PRD §10.2: keep everything except GPS.
-    @Test func defaultKeepsEverythingExceptGPS() {
+    /// PRD §10.2: strip EXIF, GPS, IPTC and XMP; keep the colour profile and the AI workflow.
+    @Test func defaultKeepsOnlyTheProfileAndTheWorkflow() {
         let p = MetadataPolicy.default
         #expect(p == MetadataPolicy())
-        #expect(p.exif == .keep && p.iptc == .keep && p.xmp == .keep && p.aiWorkflow == .keep)
-        #expect(p.gps == .strip)
+        #expect(p.exif == .strip && p.gps == .strip && p.iptc == .strip && p.xmp == .strip)
+        #expect(p.aiWorkflow == .keep)
         #expect(p.icc == .preserve)
-        #expect(Section.allCases.filter { !p.keeps($0) } == [.gps])
+        #expect(Section.allCases.filter(p.keeps) == [.icc, .aiWorkflow])
     }
 
     @Test func summaryDrivesTheMasterControl() {
@@ -24,15 +24,16 @@ struct MetadataPolicyTests {
         #expect(Section.allCases.allSatisfy { MetadataPolicy.keepAll.keeps($0) })
         #expect(Section.allCases.allSatisfy { !MetadataPolicy.stripAll.keeps($0) })
 
-        var p = MetadataPolicy.default
+        var p = MetadataPolicy.keepMost
+        #expect(p.summary == .custom)
         p.gps = .keep
         #expect(p.summary == .keepAll)
         p.icc = .convertToSRGB   // neither kept nor stripped
         #expect(p.summary == .custom && p.keeps(.icc))
         p = .default
-        p.iptc = .strip
-        #expect(p.summary == .custom)
         p.iptc = .keep
+        #expect(p.summary == .custom)
+        p.iptc = .strip
         #expect(p.summary == .default)
         p = .stripAll
         p.xmp = .keep
@@ -49,24 +50,28 @@ struct MetadataPolicyTests {
     /// all-or-nothing, what is stripped or what is left.
     @Test func summaryLineReadsWellForEveryCombination() {
         typealias P = MetadataPolicy
-        #expect(P.default.summaryLine == "Default · GPS stripped")
+        #expect(P.default.summaryLine == "Default · only ICC, AI kept")
         #expect(P.keepAll.summaryLine == "Keep all")
         #expect(P.stripAll.summaryLine == "Strip all")
-        #expect(Preset.shipped[0].metadata.summaryLine == "Default · GPS stripped")
+        #expect(Preset.shipped[0].metadata.summaryLine == "Default · only ICC, AI kept")
 
-        #expect(P(gps: .keep, icc: .convertToSRGB).summaryLine == "Custom · converted to sRGB")
-        #expect(P(icc: .convertToSRGB).summaryLine == "Custom · GPS stripped, sRGB")
-        #expect(P(exif: .strip).summaryLine == "Custom · EXIF, GPS stripped")
-        #expect(P(gps: .keep, icc: .strip).summaryLine == "Custom · ICC stripped")
-        #expect(P(gps: .keep, aiWorkflow: .strip).summaryLine == "Custom · AI stripped")
-        #expect(P(exif: .strip, iptc: .strip).summaryLine == "Custom · EXIF, GPS, IPTC stripped")
+        func keeping(_ change: (inout P) -> Void) -> String {
+            var p = P.keepAll
+            change(&p)
+            return p.summaryLine
+        }
+        #expect(keeping { $0.icc = .convertToSRGB } == "Custom · converted to sRGB")
+        #expect(P.keepMost.summaryLine == "Custom · GPS stripped")
+        #expect(P.keepMost(icc: .convertToSRGB).summaryLine == "Custom · GPS stripped, sRGB")
+        #expect(keeping { $0.exif = .strip; $0.gps = .strip } == "Custom · EXIF, GPS stripped")
+        #expect(keeping { $0.icc = .strip } == "Custom · ICC stripped")
+        #expect(keeping { $0.aiWorkflow = .strip } == "Custom · AI stripped")
+        #expect(keeping { $0.exif = .strip; $0.gps = .strip; $0.iptc = .strip } == "Custom · EXIF, GPS, IPTC stripped")
         // Past three, what is left is the shorter list.
-        #expect(P(exif: .strip, iptc: .strip, xmp: .strip).summaryLine == "Custom · only ICC, AI kept")
-        #expect(P(exif: .strip, iptc: .strip, xmp: .strip, aiWorkflow: .strip).summaryLine == "Custom · only ICC kept")
-        #expect(P(exif: .strip, iptc: .strip, xmp: .strip, icc: .convertToSRGB, aiWorkflow: .strip).summaryLine
-                == "Custom · only sRGB kept")
-        #expect(P(exif: .strip, gps: .keep, iptc: .strip, xmp: .strip, icc: .strip, aiWorkflow: .strip).summaryLine
-                == "Custom · only GPS kept")
+        #expect(P(aiWorkflow: .strip).summaryLine == "Custom · only ICC kept")
+        #expect(P(icc: .convertToSRGB).summaryLine == "Custom · only sRGB, AI kept")
+        #expect(P(icc: .convertToSRGB, aiWorkflow: .strip).summaryLine == "Custom · only sRGB kept")
+        #expect(P(gps: .keep, icc: .strip, aiWorkflow: .strip).summaryLine == "Custom · only GPS kept")
 
         // Every one of the 96 policies gets a short single line that starts with its label.
         let actions = P.Action.allCases
@@ -103,8 +108,8 @@ struct MetadataPolicyTests {
         let preset = Preset(name: "P", size: .width(100), metadata: MetadataPolicy(icc: .convertToSRGB))
         let json = String(decoding: try preset.jsonData(), as: UTF8.self)
         #expect(json.contains(#""metadata" : {"#))
-        #expect(json.contains(#""exif" : "keep""#) && json.contains(#""gps" : "strip""#))
-        #expect(json.contains(#""iptc" : "keep""#) && json.contains(#""xmp" : "keep""#))
+        #expect(json.contains(#""exif" : "strip""#) && json.contains(#""gps" : "strip""#))
+        #expect(json.contains(#""iptc" : "strip""#) && json.contains(#""xmp" : "strip""#))
         #expect(json.contains(#""icc" : "srgb""#) && json.contains(#""aiWorkflow" : "keep""#))
         #expect(!json.contains("_0"))
 

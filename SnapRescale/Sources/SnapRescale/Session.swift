@@ -39,7 +39,8 @@ final class Session {
     }
     var quality: Double = AppSettings.shared.defaultQuality
 
-    // Metadata (PRD §10.2). An output setting like the format: a new image does not reset it.
+    // Metadata (PRD §10.2). A new image resets it to the default, so that nothing
+    // kept for one picture is kept for the next by accident; a preset sets it.
     var metadataPolicy: MetadataPolicy = .default
 
     // Presets (PRD §12)
@@ -288,6 +289,7 @@ final class Session {
                 multiple = launchMultiple ?? AppSettings.shared.defaultMultiple
                 launchMultiple = nil
                 quality = AppSettings.shared.defaultQuality
+                metadataPolicy = .default
                 if let v = launchSizeValue {
                     sizeValue = v
                     launchSizeValue = nil

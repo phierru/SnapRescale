@@ -11,21 +11,27 @@ under MIT. See §14 of the PRD and the M5 section below.
 These were in the v1 cut and were moved out so M5 could start. 1.1 shipped
 (2026-09-28) without them. The two metadata items — the §10 switches and
 "keep AI workflow" — were redesigned on 2026-09-30 and are now the **Metadata**
-milestone below; what remains here is still open.
+milestone below (implemented, in review); what remains here is still open.
 
 | Item | PRD | Notes |
 |---|---|---|
 | Resampling choice: area for downscale, Lanczos for upscale, nearest for pixel art | §1, ComfyUI review | CoreGraphics high-quality interpolation today; Core Image filters are the likely route. |
 
-## Next — Metadata (decided 2026-09-30)
+## Metadata — implemented, in review (decided 2026-09-30)
 
 PRD §10: a metadata inspector in the window's trailing panel, opened from the
 badges. Keep / strip per section, copy / export, **no editing**. Default policy:
-keep everything except GPS. Output today is still 8-bit sRGB with everything
-stripped.
+strip EXIF, GPS, IPTC and XMP, preserve ICC, keep the AI workflow (changed from
+"keep everything except GPS" after trying the app).
 
-GitHub milestone **Metadata**, tracking issue #21. The items are cut so
-that each wave can be worked by separate agents in parallel; the few places
+**Status: implemented, in review — not released.** Waves 0, 1 and 2 are done
+and merged (PRs #23, #24, #27); wave 3 is done and in review (PR #28). 1.1,
+the version on the store, still writes 8-bit sRGB with everything stripped.
+The owner has checked that a resized ComfyUI PNG dropped into ComfyUI opens
+its workflow; what has not been checked is under *Open verification*.
+
+GitHub milestone **Metadata**, tracking issue #21. The items were cut so
+that each wave could be worked by separate agents in parallel; the few places
 where two items of a wave meet in one file are listed under the table.
 
 | Wave | Item | Issue | Touches | Needs |
@@ -43,6 +49,9 @@ where two items of a wave meet in one file are listed under the table.
 | 2 | Inspector: Copy, Copy All, Copy Prompt, Export…, Export All… buttons | #17 | `SnapRescale/MetadataInspector.swift` | #11, #12 |
 | 2 | Writer: keep / strip XMP; remove mirrored copies of stripped sections | #18 | `RescaleKit/Renderer.swift` (`encode`) | #13 |
 | 2 | Inspector switches: per section, master Default / Keep all / Strip all / Custom, disabled with a note ("Requires PNG output") when the output format cannot carry the section | #19 | `SnapRescale/MetadataInspector.swift` | #9, #11, #16 |
+| 3 | Readable values: labels, decoded values, field priority, AI workflow summary, ICC origin | #25 | `RescaleKit`: `MetadataLabels.swift`, `AIWorkflowSummary.swift`, `ICCScanner.swift` | #8 |
+| 3 | Inspector: primary fields first and More (N), AI summary, "macOS default" ICC, HDR note; switch and buttons on the title row; same width as the sidebar | #26 | `SnapRescale/MetadataInspector.swift` | #25 |
+| 3 | Default policy changed to strip EXIF, GPS, IPTC and XMP; reset to the default when an image is loaded | — | `RescaleKit/MetadataPolicy.swift`, `SnapRescale/Session.swift` | #9 |
 | 3 | Help, in-app help text, changelog, App Store copy | #20 | `docs/`, `AboutAndHelp.swift` | all |
 
 #13 and #15 both edit `Renderer.swift` but different functions (`encode` vs
@@ -98,6 +107,23 @@ window. PRD §8 "v1 never holds two" is superseded by this.
   on real files.
 - PDF and SVG are in the §9 read list and untested through the loader.
 - No RAW / CMYK / wide-gamut / EXIF-orientation corpus has been run end to end.
+
+Metadata milestone — known gaps:
+
+- CMYK (and Lab) sources are converted to sRGB on load, so *Keep* cannot keep
+  their profile; the inspector says so.
+- Stripping the ICC profile is fully clean only in TIFF and JPEG: a PNG keeps
+  the one-byte `sRGB` marker and HEIC tags sRGB.
+- HDR gain maps are not written; the Structure section says so.
+- RAW, PSD and GIF sources carry no XMP over.
+- The metadata test fixtures are synthetic
+  (`Scripts/make-metadata-fixtures.swift`), not files from cameras or tools.
+
+Metadata milestone — not yet exercised by running the app:
+
+- The HDR note, on a real gain-map photo.
+- The C2PA section, with a really signed file.
+- Export… and Export All… in a sandboxed release build.
 
 ## M5 — ship it (current)
 
