@@ -464,12 +464,18 @@ At the top, a master control **Default · Keep all · Strip all · Custom**. It
 reads *Default* for the default policy below and *Custom* for any other mix;
 choosing Default, Keep all or Strip all sets every section that has a switch.
 
-**Default: keep everything except GPS.** It honours "never silently degrade"
-(§2) and still protects privacy.
+**Default: strip EXIF, GPS, IPTC and XMP; preserve the ICC profile; keep the
+AI workflow.** A resized copy is usually made to be passed on, so what says
+who, where and with what is left out unless asked for. The colour profile
+stays, because without it a wide-gamut picture changes colour, and so does the
+AI workflow, because it is what lets the picture be reopened in its tool. This
+is the one place where "never silently degrade" (§2) gives way to privacy: the
+sidebar line and the master control say what is left out, and *Keep all* is one
+click away.
 
-The sidebar carries a one-line summary of the policy — e.g. *Metadata: Keep
-all · GPS stripped* — so it is visible with the inspector closed. The policy
-is part of every preset (§12).
+The sidebar carries a one-line summary of the policy — e.g. *Metadata:
+Default · only ICC, AI kept* — so it is visible with the inspector closed. The
+policy is part of every preset (§12).
 
 ### 10.3 Rules the switches obey
 
@@ -545,7 +551,7 @@ Shipped defaults: **Web (Original ratio, 1.5 MP, JPEG q80)** · **Thumbnail
 (1:1, 320 px, crop)** · **Social 16:9 (1920 px, ×8, crop)** · **SDXL 1024 (1:1,
 1024 px, ×16, PNG)**. **Email (≤ 1 MB)** and **Discord/Slack (≤ 8 MB)** follow
 with the target-file-size search (roadmap v1.2); "strip GPS" joins Web with the
-§10 switches: its policy is *keep all, strip GPS* — which is also the default.
+§10 switches: its policy is *strip EXIF, GPS, IPTC and XMP* — which is also the default.
 
 The picker sits at the top of the panel: choose one, *Save Current as
 Preset…*, delete the active one, or reveal the folder. Any edit after applying

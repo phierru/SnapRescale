@@ -74,8 +74,9 @@ public struct MetadataPolicy: Hashable, Sendable, Codable {
     /// ComfyUI, A1111, InvokeAI, NovelAI, Fooocus, SwarmUI, Midjourney.
     public var aiWorkflow: Action
 
-    /// The defaults are the default policy: keep everything except GPS.
-    public init(exif: Action = .keep, gps: Action = .strip, iptc: Action = .keep, xmp: Action = .keep,
+    /// The defaults are the default policy: strip the descriptive metadata, keep
+    /// the colour profile and the AI workflow.
+    public init(exif: Action = .strip, gps: Action = .strip, iptc: Action = .strip, xmp: Action = .strip,
                 icc: ICC = .preserve, aiWorkflow: Action = .keep) {
         self.exif = exif
         self.gps = gps
@@ -85,10 +86,12 @@ public struct MetadataPolicy: Hashable, Sendable, Codable {
         self.aiWorkflow = aiWorkflow
     }
 
-    /// Keep everything except GPS: honours "never silently degrade" and still
-    /// protects privacy (PRD §10.2).
+    /// Strip EXIF, GPS, IPTC and XMP — what says who, where and with what — and
+    /// keep what the picture needs to look right and be reopened: the colour
+    /// profile and the AI workflow (PRD §10.2).
     public static let `default` = MetadataPolicy()
-    public static let keepAll = MetadataPolicy(gps: .keep)
+    public static let keepAll = MetadataPolicy(exif: .keep, gps: .keep, iptc: .keep, xmp: .keep,
+                                               icc: .preserve, aiWorkflow: .keep)
     public static let stripAll = MetadataPolicy(exif: .strip, gps: .strip, iptc: .strip, xmp: .strip,
                                                 icc: .strip, aiWorkflow: .strip)
 
@@ -100,17 +103,13 @@ public struct MetadataPolicy: Hashable, Sendable, Codable {
         return .custom
     }
 
-    /// One line for the sidebar row: "Default · GPS stripped", "Keep all",
+    /// One line for the sidebar row: "Default · only ICC, AI kept", "Keep all",
     /// "Strip all", or "Custom" with what is stripped — or, once most of it is,
     /// with what is left: "Custom · EXIF, GPS stripped", "Custom · only XMP kept".
     /// A conversion to sRGB is named, since it is neither.
     public var summaryLine: String {
         let state = summary
-        switch state {
-        case .default: return "\(state.label) · GPS stripped"
-        case .keepAll, .stripAll: return state.label
-        case .custom: break
-        }
+        if state == .keepAll || state == .stripAll { return state.label }
         let stripped = Section.allCases.filter { !keeps($0) }
         let detail: String
         if stripped.isEmpty {

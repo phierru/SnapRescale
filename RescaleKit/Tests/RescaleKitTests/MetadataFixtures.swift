@@ -63,8 +63,8 @@ enum Fixture: String, CaseIterable, Sendable {
         func pixel(_ x: Int, _ y: Int) -> [UInt8] { FixtureProbe.pixel(of: image, x, y) }
     }
 
-    /// Same size, keep original format, everything else default.
-    static func spec(for source: SourceImage) -> RenderSpec { RenderSpec(target: source.size) }
+    /// Same size, keep original format, `keepMost`; everything else default.
+    static func spec(for source: SourceImage) -> RenderSpec { RenderSpec(target: source.size, metadata: .keepMost) }
 
     /// Load → `Renderer.produce` → `ImageMetadata.inspect` on the output bytes.
     func roundTrip(spec: RenderSpec) throws -> Output {
@@ -78,6 +78,21 @@ enum Fixture: String, CaseIterable, Sendable {
         var spec = Fixture.spec(for: source)
         adjust(&spec)
         return try FixtureProbe.inspect(try Renderer.produce(source, spec: spec))
+    }
+}
+
+extension MetadataPolicy {
+    /// Everything kept except GPS: the policy most writer tests start from, so
+    /// that there is something to look at in the output. (It was the default
+    /// until the default became strip-most.)
+    static let keepMost = MetadataPolicy(exif: .keep, gps: .strip, iptc: .keep, xmp: .keep,
+                                         icc: .preserve, aiWorkflow: .keep)
+
+    /// `keepMost` with another ICC option.
+    static func keepMost(icc: ICC) -> MetadataPolicy {
+        var p = keepMost
+        p.icc = icc
+        return p
     }
 }
 
