@@ -7,20 +7,34 @@ import UniformTypeIdentifiers
 extension MetadataPolicy {
     /// The reason an AI workflow switch is disabled outside PNG.
     public static let requiresPNGNote = "Requires PNG output"
+    /// The reason the XMP switch is disabled for a source whose XMP was shown
+    /// from ImageIO's fields, with no packet the writer could copy.
+    public static let xmpNotCarriedNote = "This file's XMP can be shown but not carried over."
 
     /// Whether `type` can carry a section of this source. Differs from the
-    /// plain table for the AI workflow: a ComfyUI / InvokeAI graph lives in PNG
-    /// text chunks and survives only in PNG, while A1111-style parameters also
-    /// ride in the EXIF user comment. `type` is the resolved output type; `nil`
-    /// (a source "Keep original" cannot keep) carries nothing.
+    /// plain table for XMP read without its packet (GIF, RAW, PSD, …: only
+    /// ImageIO's display fields, which the writer cannot copy; review
+    /// 2026-09-30, G8), and for the AI workflow: a ComfyUI / InvokeAI graph
+    /// lives in PNG text chunks and survives only in PNG, while A1111-style
+    /// parameters also ride in the EXIF user comment, one text at a time.
+    /// `type` is the resolved output type; `nil` (a source "Keep original"
+    /// cannot keep) carries nothing.
     public static func capability(of section: Section, in type: UTType?, carrying metadata: ImageMetadata) -> Capability {
         guard let type else { return .none("This format cannot be written.") }
         let table = capability(of: section, in: type)
+        if section == .xmp, table.canCarry, metadata.hasXMP, metadata.xmpPacket == nil { return .none(xmpNotCarriedNote) }
         guard section == .aiWorkflow, table.canCarry, !type.conforms(to: .png) else { return table }
         let payloads = metadata.aiPayloads
-        guard payloads.contains(where: isPNGOnly) else { return table }
+        // The user comment holds one text (`MetadataWriter.movedParameters`);
+        // any other `parameters` chunk that differs from it stays behind.
+        let held = payloads.first(where: MetadataWriter.isUserComment) ?? MetadataWriter.movedParameters(in: metadata)
+        let leavesParameters = payloads.contains { MetadataWriter.isPNGParameters($0) && $0.text != held?.text }
+        guard isPartlyKept(metadata) || leavesParameters else { return table }
         if payloads.allSatisfy(isPNGOnly) { return .none(requiresPNGNote) }
-        return .limited("Only the generation parameters are kept; the graph requires PNG output.")
+        if leavesParameters { return .limited("Only the first generation parameters are kept; the rest requires PNG output.") }
+        // Unrecognised text under a tool keyword is carried as a PNG chunk only.
+        let lost = payloads.contains(where: isPNGOnly) ? "the graph" : "the unrecognised text"
+        return .limited("Only the generation parameters are kept; \(lost) requires PNG output.")
     }
 
     /// The same for a loaded source and a render spec. The ICC row goes through
@@ -73,9 +87,12 @@ extension MetadataPolicy {
                 if policy.iptc == .keep { return png || heic ? "\(format) has no IPTC block; kept as the XMP copies." : nil }
             case .aiWorkflow:
                 if policy.aiWorkflow == .keep {
-                    if cap.note != nil, source.metadata.aiPayloads.contains(where: isPNGOnly) { return cap.note }
-                    let moved = !png && source.metadata.aiPayloads.contains { isPNGChunk($0) && !isPNGOnly($0) }
-                    return moved ? "Kept in the EXIF user comment." : nil
+                    // What this source loses in the format, over the table's general remark.
+                    if cap != capability(of: section, in: type) { return cap.note }
+                    guard !png, MetadataWriter.movedParameters(in: source.metadata) != nil else { return nil }
+                    let replaces = policy.exif == .keep && capability(of: .exif, in: type).canCarry
+                        && MetadataWriter.ordinaryUserComment(in: source.properties) != nil
+                    return movedParametersNote(replacingComment: replaces)
                 }
                 return nil
             case .exif, .gps, .xmp:
@@ -83,7 +100,8 @@ extension MetadataPolicy {
             }
             // Stripping: the copies in a kept XMP packet go too (PRD §10.3).
             guard section != .xmp, source.metadata.hasXMP, reserving || policy.xmp == .keep,
-                  capability(of: .xmp, in: type).canCarry, mirrors(section, in: source.metadata.xmpPacket)
+                  capability(of: .xmp, in: type, carrying: source.metadata).canCarry,
+                  let packet = source.metadata.xmpPacket, mirrors(section, in: packet)
             else { return nil }
             return "Also removed from XMP"
         }
@@ -93,6 +111,13 @@ extension MetadataPolicy {
             if let n = note(option, reserving: true), !all.contains(n) { all.append(n) }
         }
         return SwitchState(isEnabled: true, note: note(spec.metadata, reserving: false), possibleNotes: all)
+    }
+
+    /// Where `parameters` from a PNG text chunk goes outside PNG. A comment of
+    /// the user's own that kept EXIF would have written there gives way.
+    static func movedParametersNote(replacingComment: Bool) -> String {
+        replacingComment ? "Kept in the EXIF user comment, replacing the comment already there."
+            : "Kept in the EXIF user comment."
     }
 
     /// The policy with this section set to each of its options in turn.
@@ -121,6 +146,11 @@ extension MetadataPolicy {
 
     // MARK: - Pieces
 
+    /// Whether something of the AI workflow lives in PNG text chunks alone.
+    private static func isPartlyKept(_ metadata: ImageMetadata) -> Bool {
+        metadata.aiPayloads.contains(where: isPNGOnly) || !metadata.unrecognisedAIChunks.isEmpty
+    }
+
     private static func isPNGChunk(_ payload: ImageMetadata.AIPayload) -> Bool {
         payload.location.hasPrefix("PNG ")
     }
@@ -132,10 +162,8 @@ extension MetadataPolicy {
         isPNGChunk(payload) && payload.name != "parameters"
     }
 
-    /// Whether an XMP packet repeats fields of a section. A packet that was not
-    /// read (containers `XMPScanner` does not walk) is assumed to.
-    private static func mirrors(_ section: Section, in packet: String?) -> Bool {
-        guard let packet else { return true }
+    /// Whether an XMP packet repeats fields of a section.
+    private static func mirrors(_ section: Section, in packet: String) -> Bool {
         switch section {
         case .gps: return packet.contains("exif:GPS")
         case .exif: return packet.contains("tiff:") || packet.replacingOccurrences(of: "exif:GPS", with: "").contains("exif:")

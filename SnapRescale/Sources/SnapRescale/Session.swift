@@ -186,8 +186,9 @@ final class Session {
                 guard let v = it.next() else { break }
                 if v.lowercased() == "original" { aspect = .original }
                 else {
-                    let p = v.split(separator: ":").compactMap { Int($0) }
-                    if p.count == 2, p[0] > 0, p[1] > 0 { aspect = .fixed(width: p[0], height: p[1]) }
+                    // Exactly two numbers: "16:x:9" is not 16:9 (review 2026-09-30, S4).
+                    let p = v.split(separator: ":", omittingEmptySubsequences: false).map { Int($0) }
+                    if p.count == 2, let w = p[0], let h = p[1], w > 0, h > 0 { aspect = .fixed(width: w, height: h) }
                 }
                 launchAspect = aspect
             case "--width", "--height", "--mp", "--scale":
@@ -208,8 +209,10 @@ final class Session {
             case "--window":
                 // "1440x900": frame size in points, for App Store screenshots (2× → 2880×1800).
                 if let v = it.next() {
-                    let p = v.lowercased().split(separator: "x").compactMap { Double($0) }
-                    if p.count == 2 { launchWindowSize = CGSize(width: p[0], height: p[1]) }
+                    let p = v.lowercased().split(separator: "x", omittingEmptySubsequences: false).map { Double($0) }
+                    if p.count == 2, let w = p[0], let h = p[1], w.isFinite, h.isFinite, w > 0, h > 0 {
+                        launchWindowSize = CGSize(width: w, height: h)
+                    }
                 }
             case "--about":
                 openWindowOnLaunch = "about"
@@ -265,49 +268,65 @@ final class Session {
     var canSave: Bool { source != nil && !isLoading && !isSaving }
 
     /// Decodes off the main actor so a large file does not freeze the window.
+    /// At most one decode runs; a load requested meanwhile waits as the single
+    /// pending one, and a newer request takes its place. A decode cannot be
+    /// interrupted, so starting one per request would let a burst of drops
+    /// hold that many full-size images at once (review 2026-09-30).
     func load(_ url: URL) {
         loadGeneration += 1
-        let generation = loadGeneration
+        pendingLoad = url
         isLoading = true
+        guard !decodeRunning else { return }
+        decodeRunning = true
         Task {
-            defer { if generation == loadGeneration { isLoading = false } }
-            do {
-                let (loaded, preview, converted) = try await Task.detached(priority: .userInitiated) {
-                    let loaded = try SourceImage.load(url)
-                    let preview = Self.makePreview(loaded.image, maxPixels: 2048)
-                    return (loaded, preview, Self.convertedToSRGB(preview))
-                }.value
-                // A newer load was requested while this one decoded: drop it.
-                guard generation == loadGeneration else { return }
-                source = loaded
-                sourcePreview = preview
-                sRGBPreview = converted
-                anchor = .center
-                // Defaults for a new image (review C7); launch overrides win.
-                aspect = launchAspect ?? .original
-                launchAspect = nil
-                multiple = launchMultiple ?? AppSettings.shared.defaultMultiple
-                launchMultiple = nil
-                quality = AppSettings.shared.defaultQuality
-                metadataPolicy = .default
-                if let v = launchSizeValue {
-                    sizeValue = v
-                    launchSizeValue = nil
-                } else {
-                    sizeKind = .width
-                    sizeValue = Double(min(loaded.size.width, 2048))
-                }
-                if let name = launchPreset, let p = presets.presets.first(where: { $0.name == name }) {
-                    apply(p)
-                    launchPreset = nil
-                }
-                lastSaved = nil
-                resolveFormat()
-                scheduleEncode()
-                if saveOnLoad { saveOnLoad = false; isLoading = false; saveNextToOriginal() }
-            } catch {
-                if generation == loadGeneration { errorMessage = error.localizedDescription }
+            while let url = pendingLoad {
+                pendingLoad = nil
+                await decode(url, generation: loadGeneration)
             }
+            decodeRunning = false
+        }
+    }
+    private var pendingLoad: URL?
+    private var decodeRunning = false
+
+    private func decode(_ url: URL, generation: Int) async {
+        defer { if generation == loadGeneration { isLoading = false } }
+        do {
+            let (loaded, preview, converted) = try await Task.detached(priority: .userInitiated) {
+                let loaded = try SourceImage.load(url)
+                let preview = Self.makePreview(loaded.image, maxPixels: 2048)
+                return (loaded, preview, Self.convertedToSRGB(preview))
+            }.value
+            // A newer load was requested while this one decoded: drop it.
+            guard generation == loadGeneration else { return }
+            source = loaded
+            sourcePreview = preview
+            sRGBPreview = converted
+            anchor = .center
+            // Defaults for a new image (review C7); launch overrides win.
+            aspect = launchAspect ?? .original
+            launchAspect = nil
+            multiple = launchMultiple ?? AppSettings.shared.defaultMultiple
+            launchMultiple = nil
+            quality = AppSettings.shared.defaultQuality
+            metadataPolicy = .default
+            if let v = launchSizeValue {
+                sizeValue = v
+                launchSizeValue = nil
+            } else {
+                sizeKind = .width
+                sizeValue = Double(min(loaded.size.width, 2048))
+            }
+            if let name = launchPreset, let p = presets.presets.first(where: { $0.name == name }) {
+                apply(p)
+                launchPreset = nil
+            }
+            lastSaved = nil
+            resolveFormat()
+            scheduleEncode()
+            if saveOnLoad { saveOnLoad = false; isLoading = false; saveNextToOriginal() }
+        } catch {
+            if generation == loadGeneration { errorMessage = error.localizedDescription }
         }
     }
 
@@ -465,6 +484,7 @@ final class Session {
     /// `viaFolderAccess` is the silent path: it may ask for the folder once under
     /// the sandbox. The save panel path already carries its own grant. The
     /// encode runs off the main actor; the window shows a saving state meanwhile.
+    /// Both paths replace an existing file as a whole, or not at all (`SafeWrite`).
     private func write(to url: URL, source: SourceImage, spec: RenderSpec, viaFolderAccess: Bool = false) {
         isSaving = true
         Task {
@@ -480,8 +500,9 @@ final class Session {
                     case .failed(let error): throw error
                     }
                 } else {
-                    try data.write(to: url)
+                    try SafeWrite.write(data, to: url)
                 }
+                // Only a committed file is reported as saved (review 2026-09-30, G1).
                 lastSaved = url
                 if revealAfterSave { NSWorkspace.shared.activateFileViewerSelecting([url]) }
                 if quitsAfterSave {

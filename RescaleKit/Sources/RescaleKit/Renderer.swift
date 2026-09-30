@@ -140,25 +140,39 @@ public enum Renderer {
         guard let type = spec.format.resolvedType(for: sourceType) else {
             throw RenderError.cannotKeepFormat(sourceType)
         }
-        let data = NSMutableData()
-        guard let dest = CGImageDestinationCreateWithData(data, type.identifier as CFString, 1, nil)
-        else { throw RenderError.encodeFailed(type) }
-        let kept = MetadataWriter.properties(from: sourceProperties, policy: spec.metadata, type: type,
-                                             size: PixelSize(image.width, image.height))
-        var props = kept
-        if spec.format.isLossy(for: sourceType) {
-            props[kCGImageDestinationLossyCompressionQuality] = spec.quality
-        }
+        let size = PixelSize(image.width, image.height)
+        var kept = MetadataWriter.properties(from: sourceProperties, policy: spec.metadata, type: type, size: size,
+                                             carrying: sourceMetadata)
         // The kept part of the source's packet; the dictionaries still say
         // what goes into the EXIF, GPS and IPTC blocks.
-        if let xmp = sourceMetadata.flatMap({ XMPWriter.metadata(from: $0, policy: spec.metadata, type: type,
-                                                                 size: PixelSize(image.width, image.height)) }) {
-            CGImageDestinationAddImageAndMetadata(dest, image, xmp, props as CFDictionary)
-        } else {
-            CGImageDestinationAddImage(dest, image, props as CFDictionary)
+        let xmp = sourceMetadata.flatMap { XMPWriter.metadata(from: $0, policy: spec.metadata, type: type, size: size) }
+        func write(_ kept: [CFString: Any]) throws -> Data {
+            let data = NSMutableData()
+            guard let dest = CGImageDestinationCreateWithData(data, type.identifier as CFString, 1, nil)
+            else { throw RenderError.encodeFailed(type) }
+            var props = MetadataWriter.encoderProperties(kept)
+            if spec.format.isLossy(for: sourceType) {
+                props[kCGImageDestinationLossyCompressionQuality] = spec.quality
+            }
+            if let xmp {
+                CGImageDestinationAddImageAndMetadata(dest, image, xmp, props as CFDictionary)
+            } else {
+                CGImageDestinationAddImage(dest, image, props as CFDictionary)
+            }
+            guard CGImageDestinationFinalize(dest) else { throw RenderError.encodeFailed(type) }
+            return data as Data
         }
-        guard CGImageDestinationFinalize(dest) else { throw RenderError.encodeFailed(type) }
-        return MetadataWriter.finish(data as Data, type: type, written: kept)
+        var data = try write(kept)
+        // An AI user comment outside ASCII is encoded after ImageIO (`MetadataWriter.PendingUserComment`).
+        if let pending = kept[MetadataWriter.pendingUserCommentKey] as? MetadataWriter.PendingUserComment {
+            if let done = pending.applied(to: data) {
+                data = done
+            } else {
+                kept = MetadataWriter.lettingImageIOEncodeUserComment(kept)
+                data = try write(kept)
+            }
+        }
+        return MetadataWriter.finish(data, type: type, written: kept)
     }
 
     /// Render and encode in one go; the byte count is what the UI shows (PRD §8).

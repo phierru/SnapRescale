@@ -197,6 +197,57 @@ struct MetadataExportTests {
                 == ["p.prompt.json", "p.a1111.parameters.txt", "p.swarmui.parameters.txt"])
     }
 
+    /// Review 2026-09-30, G6: repeated payloads each get a name and an identity of their own.
+    @Test func repeatedPayloadsGetDistinctNamesAndIDs() {
+        let m = Self.metadata(Self.payload(.comfyUI, "workflow", #"{"nodes":[1]}"#),
+                              Self.payload(.comfyUI, "prompt", #"{"1":{}}"#),
+                              Self.payload(.comfyUI, "workflow", #"{"nodes":[2]}"#),
+                              Self.payload(.comfyUI, "workflow", #"{"nodes":[3]}"#))
+        let exports = m.aiExports(baseName: "p")
+        #expect(exports.map(\.filename) == ["p.workflow.json", "p.prompt.json", "p.workflow.2.json", "p.workflow.3.json"])
+        #expect(Set(exports.map(\.id)).count == 4)
+        // Each export still carries its own bytes, untouched.
+        #expect(exports.map { Self.string($0) } == [#"{"nodes":[1]}"#, #"{"1":{}}"#, #"{"nodes":[2]}"#, #"{"nodes":[3]}"#])
+        #expect(exports.map(\.payload) == m.aiPayloads)
+
+        // The primary is one of the choices, by identity: the first `workflow`.
+        let primary = m.primaryAIExport(baseName: "p")
+        #expect(primary == exports[0])
+        #expect(exports.filter { $0.id == primary?.id }.count == 1)
+    }
+
+    @Test func parametersFromSeveralLocationsStayApart() {
+        let text = "x\nSteps: 1, Sampler: e"
+        let m = Self.metadata(Self.payload(.a1111, "parameters", text),
+                              Payload(source: .a1111, name: "UserComment", location: "EXIF UserComment", text: text),
+                              Self.payload(.swarmUI, "parameters", "y"),
+                              Self.payload(.a1111, "parameters", "z"))
+        let exports = m.aiExports(baseName: "p")
+        #expect(exports.map(\.filename) == ["p.a1111.parameters.txt", "p.a1111.parameters.2.txt",
+                                            "p.swarmui.parameters.txt", "p.a1111.parameters.3.txt"])
+        #expect(Set(exports.map(\.id)).count == 4)
+        #expect(exports.map { Self.string($0) } == [text, text, "y", "z"])
+    }
+
+    /// The identity does not follow the display name: a renamed source keeps it.
+    @Test func exportIDIsIndependentOfTheFilename() {
+        let m = Self.metadata(Self.payload(.comfyUI, "workflow", "{}"), Self.payload(.comfyUI, "workflow", "[]"))
+        let (a, b) = (m.aiExports(baseName: "one"), m.aiExports(baseName: "two"))
+        #expect(a.map(\.id) == b.map(\.id))
+        #expect(a.map(\.filename) != b.map(\.filename))
+        #expect(!a.map(\.id).contains { $0.contains("one") })
+        #expect(m.exportAll(baseName: "one").id == m.exportAll(baseName: "two").id)
+        #expect(!a.map(\.id).contains(m.exportAll(baseName: "one").id))
+    }
+
+    /// A suffix never lands on a name another payload already has.
+    @Test func occurrenceSuffixSkipsTakenNames() {
+        let m = Self.metadata(Self.payload(.a1111, "parameters", "a"), Self.payload(.a1111, "parameters.2", "b"),
+                              Self.payload(.a1111, "parameters", "c"), Self.payload(.a1111, "PARAMETERS", "d"))
+        let names = m.aiExports(baseName: "p").map(\.filename)
+        #expect(names == ["p.parameters.txt", "p.parameters.2.txt", "p.parameters.3.txt", "p.parameters.4.txt"])
+    }
+
     @Test func nothingToExportWithoutPayloads() throws {
         #expect(try Fixture.load(.camera).aiExports.isEmpty)
         #expect(try Fixture.load(.camera).primaryAIExport == nil)

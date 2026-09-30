@@ -6,24 +6,17 @@ import UniformTypeIdentifiers
 /// encoded file, byte for byte, just before `IEND`.
 public enum PNGSplicer {
     /// Keywords that only an AI tool writes; carried whatever else the file holds.
-    static let workflowKeywords: Set<String> = [
-        "prompt", "workflow", "parameters", "fooocus_scheme", "invokeai_metadata", "invokeai_graph", "sd-metadata",
-    ]
-    /// Generic keywords NovelAI uses for its payload; carried only from a NovelAI file.
-    static let novelAIKeywords: Set<String> = ["Software", "Comment", "Description", "Title", "Source"]
+    static var workflowKeywords: Set<String> { ImageMetadata.toolKeywords }
 
     /// The AI-provenance text chunks among `chunks`, in source order
-    /// (`docs/reference/image-metadata.md` §3). Never `XML:com.adobe.xmp`: that
-    /// belongs to the XMP switch. `caBX` (C2PA, always stripped) is not a text
-    /// chunk and so never reaches here.
+    /// (`docs/reference/image-metadata.md` §3): the classification the
+    /// inspector shows (`ImageMetadata.workflowChunks`), so every chunk taken
+    /// here is listed in the AI workflow section. Never `XML:com.adobe.xmp`:
+    /// that belongs to the XMP switch. `caBX` (C2PA, always stripped) is not a
+    /// text chunk and so never reaches here.
     public static func aiWorkflowChunks(in chunks: [PNGScanner.TextChunk]) -> [PNGScanner.TextChunk] {
-        let found = Set(ImageMetadata.provenance(fromPNGChunks: chunks))
-        return chunks.filter { chunk in
-            if workflowKeywords.contains(chunk.keyword) { return true }
-            if found.contains(.novelAI), novelAIKeywords.contains(chunk.keyword) { return true }
-            if found.contains(.midjourney), chunk.keyword == "Description" { return true }
-            return false
-        }
+        ImageMetadata.workflowChunks(fromPNGChunks: chunks, provenance: ImageMetadata.provenance(fromPNGChunks: chunks))
+            .map(\.chunk)
     }
 
     /// `png` with `chunks` inserted immediately before `IEND`, each with its

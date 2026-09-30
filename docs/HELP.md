@@ -71,8 +71,7 @@ inspector at that section. Full list:
 - **Copy** on every section, **Copy Prompt** and **Export…** on an AI workflow,
   **Copy All** and **Export All…** (JSON) in the **…** menu. They work whatever
   the switches say.
-- SnapRescale does not edit metadata. For that, use ExifTool, Photos or
-  Preview.
+- SnapRescale does not edit metadata. For that, use ExifTool or Photos.
 
 ## Shortcuts
 

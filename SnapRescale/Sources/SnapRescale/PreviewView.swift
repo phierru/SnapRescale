@@ -68,7 +68,7 @@ struct PreviewView: View {
         let slackY = Double(source.height) - crop.height
 
         return ZStack(alignment: .topLeading) {
-            image(preview, in: frame)
+            image(preview, in: frame, overWhite: flattensSourceAlpha)
             // Dim everything outside the surviving region.
             Path { p in
                 p.addRect(frame)
@@ -123,16 +123,30 @@ struct PreviewView: View {
 
     private func stretchLayer(preview: CGImage, target: PixelSize, avail: CGSize) -> some View {
         let canvas = fitRect(aspect: target.aspectRatio, in: avail)
-        return image(preview, in: canvas)
+        return image(preview, in: canvas, overWhite: flattensSourceAlpha)
     }
 
     // MARK: Pieces
 
-    private func image(_ cg: CGImage, in rect: CGRect) -> some View {
+    /// True when the source has transparency the output format cannot carry:
+    /// the encoder then flattens it over white, and so must the preview, or a
+    /// translucent region shows the window behind it instead of what the file
+    /// will hold (PRD §7; review 2026-09-30, G4). Same policy as the padding:
+    /// `ColorPlan` says whether the render has alpha, the format whether it
+    /// survives. A format that keeps alpha leaves the preview transparent too.
+    private var flattensSourceAlpha: Bool {
+        guard let source = session.source, let spec = session.spec else { return false }
+        return ColorPlan(source: source, spec: spec).hasAlpha && !spec.format.supportsAlpha(for: source.type)
+    }
+
+    /// `overWhite` backs the picture with white, inside its own rectangle only.
+    /// The padded canvas needs none: it is opaque already when the format is.
+    private func image(_ cg: CGImage, in rect: CGRect, overWhite: Bool = false) -> some View {
         Image(decorative: cg, scale: 1)
             .resizable()
             .interpolation(.high)
             .frame(width: rect.width, height: rect.height)
+            .background(overWhite ? Color.white : Color.clear)
             .offset(x: rect.minX, y: rect.minY)
     }
 

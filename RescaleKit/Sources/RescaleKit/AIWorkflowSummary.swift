@@ -103,13 +103,18 @@ enum WorkflowReader {
     }
 
     /// `Key: value, Key: "quoted, value", …` as a dictionary. A key stated twice
-    /// with different values is dropped.
+    /// with different values is dropped. A quoted value is a JSON string, as A1111
+    /// writes it: `\"` does not close it, and its escapes are decoded (review 2026-09-30, G7).
     static func settings(_ line: String) -> [String: String] {
         var parts: [String] = []
         var current = ""
         var quoted = false
+        var escaped = false
         for c in line {
-            if c == "\"" { quoted.toggle() }
+            // Inside quotes a backslash takes the next character with it.
+            if escaped { escaped = false }
+            else if c == "\\", quoted { escaped = true }
+            else if c == "\"" { quoted.toggle() }
             if c == ",", !quoted { parts.append(current); current = "" } else { current.append(c) }
         }
         parts.append(current)
@@ -120,13 +125,20 @@ enum WorkflowReader {
             guard let colon = part.firstIndex(of: ":") else { continue }
             let key = part[..<colon].trimmingCharacters(in: .whitespaces)
             var value = part[part.index(after: colon)...].trimmingCharacters(in: .whitespaces)
-            if value.count >= 2, value.hasPrefix("\""), value.hasSuffix("\"") { value = String(value.dropFirst().dropLast()) }
+            if value.count >= 2, value.hasPrefix("\""), value.hasSuffix("\"") { value = unquoted(value) }
             guard !key.isEmpty, !value.isEmpty else { continue }
             if let old = out[key], old != value { clashing.insert(key) }
             out[key] = value
         }
         for key in clashing { out[key] = nil }
         return out
+    }
+
+    /// A `"quoted"` value decoded as the JSON string it is; when it is not valid
+    /// JSON, the quotes come off and the rest stays as written.
+    private static func unquoted(_ value: String) -> String {
+        let decoded = try? JSONSerialization.jsonObject(with: Data(value.utf8), options: .fragmentsAllowed)
+        return decoded as? String ?? String(value.dropFirst().dropLast())
     }
 
     // MARK: ComfyUI API graph

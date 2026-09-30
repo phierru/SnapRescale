@@ -242,6 +242,102 @@ struct XMPWriterTests {
         #expect(XMPWriter.metadata(packet: "not xml", extended: nil, kept: XMPWriter.Kept(), size: PixelSize(6, 4)) == nil)
     }
 
+    // MARK: Structures and arrays (review 2026-09-30, S2)
+
+    /// Mirrors, a thumbnail, a sideways orientation and the original's
+    /// dimensions again, this time inside a structure, a structure in a
+    /// structure and the items of an array, next to fields of the tool's own.
+    static let nestedPacket = """
+        <x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\
+        <rdf:Description rdf:about="" xmlns:xmp="http://ns.adobe.com/xap/1.0/" \
+        xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:exif="http://ns.adobe.com/exif/1.0/" \
+        xmlns:tiff="http://ns.adobe.com/tiff/1.0/" xmlns:xmpGImg="http://ns.adobe.com/xap/1.0/g/img/" \
+        xmlns:acme="http://example.com/acme/1.0/" xmp:Rating="5">\
+        <dc:title><rdf:Alt><rdf:li xml:lang="x-default">Packet title</rdf:li></rdf:Alt></dc:title>\
+        <acme:Place rdf:parseType="Resource"><acme:Name>Nested name</acme:Name>\
+        <exif:GPSLatitude>0,0.0N</exif:GPSLatitude><tiff:Orientation>6</tiff:Orientation>\
+        <exif:PixelXDimension>4000</exif:PixelXDimension><exif:PixelYDimension>3000</exif:PixelYDimension>\
+        <acme:Inner rdf:parseType="Resource"><exif:GPSLongitude>0,0.0E</exif:GPSLongitude>\
+        <acme:Deep>Deep note</acme:Deep></acme:Inner>\
+        <acme:Preview rdf:parseType="Resource"><xmpGImg:format>JPEG</xmpGImg:format>\
+        <xmpGImg:image>NESTEDTHUMBNAILBASE64</xmpGImg:image></acme:Preview>\
+        <acme:Hidden rdf:parseType="Resource"><exif:GPSAltitude>0/1</exif:GPSAltitude></acme:Hidden>\
+        </acme:Place>\
+        <acme:Items><rdf:Seq>\
+        <rdf:li rdf:parseType="Resource"><exif:GPSAltitude>0/1</exif:GPSAltitude><acme:Label>First item</acme:Label></rdf:li>\
+        <rdf:li>Plain item</rdf:li>\
+        <rdf:li rdf:parseType="Resource"><tiff:ImageWidth>4000</tiff:ImageWidth><tiff:ImageLength>3000</tiff:ImageLength>\
+        <acme:Label>Third item</acme:Label></rdf:li>\
+        </rdf:Seq></acme:Items>\
+        </rdf:Description></rdf:RDF></x:xmpmeta>
+        """
+
+    /// Every tag of a tree at any depth as `namespace name value`, containers without a value.
+    static func leaves(_ tree: CGImageMetadata) -> [String] {
+        var out: [String] = []
+        CGImageMetadataEnumerateTagsUsingBlock(tree, nil, [kCGImageMetadataEnumerateRecursively: true] as CFDictionary) { _, tag in
+            let value = CGImageMetadataTagCopyValue(tag) as? String ?? ""
+            out.append("\(CGImageMetadataTagCopyNamespace(tag) as String? ?? "") \(CGImageMetadataTagCopyName(tag) as String? ?? "") \(value)")
+            return true
+        }
+        return out
+    }
+
+    @Test func filterReachesEveryDescendant() throws {
+        let kept = XMPWriter.Kept(exif: true, gps: false, iptc: true, aiWorkflow: true)
+        let tree = try #require(XMPWriter.metadata(packet: Self.nestedPacket, extended: nil, kept: kept, size: PixelSize(6, 4)))
+        let leaves = Self.leaves(tree)
+        #expect(!leaves.contains { $0.contains(" GPS") })
+        #expect(!leaves.contains { $0.hasPrefix(XMPWriter.thumbnailImage) })
+        // A structure left with nothing goes with its contents.
+        #expect(!leaves.contains { $0.contains(" Hidden") || $0.contains(" Preview") })
+        // PRD §10.4 at every depth.
+        let acme = "http://example.com/acme/1.0/"
+        #expect(leaves.contains("\(XMPWriter.tiff) Orientation 1"))
+        #expect(leaves.contains("\(XMPWriter.exif) PixelXDimension 6") && leaves.contains("\(XMPWriter.exif) PixelYDimension 4"))
+        #expect(leaves.contains("\(XMPWriter.tiff) ImageWidth 6") && leaves.contains("\(XMPWriter.tiff) ImageLength 4"))
+        // The tool's own fields are untouched, in order.
+        for own in ["Name Nested name", "Deep Deep note", "Label First item", "[1] Plain item", "Label Third item"] {
+            #expect(leaves.contains("\(acme) \(own)"), "\(own)")
+        }
+        #expect(leaves.contains("\(XMPWriter.xmp) Rating 5"))
+        // An untouched property keeps its qualifiers.
+        let title = try #require(CGImageMetadataCopyTagWithPath(tree, nil, "dc:title" as CFString))
+        let item = try #require((CGImageMetadataTagCopyValue(title) as? [CGImageMetadataTag])?.first)
+        #expect((CGImageMetadataTagCopyQualifiers(item) as? [CGImageMetadataTag])?.count == 1)
+
+        // Kept GPS stays where it was; stripped EXIF goes at every depth.
+        let noEXIF = try #require(XMPWriter.metadata(packet: Self.nestedPacket, extended: nil,
+                                                     kept: XMPWriter.Kept(exif: false), size: PixelSize(6, 4)))
+        let rest = Self.leaves(noEXIF)
+        #expect(rest.filter { $0.contains(" GPS") }.count == 4)
+        #expect(!rest.contains { $0.hasPrefix(XMPWriter.tiff) || $0.contains("PixelXDimension") })
+        #expect(rest.contains("\(acme) Label Third item"))
+    }
+
+    @Test(arguments: formats)
+    func nestedMirrorsFollowTheirSwitchInTheSavedFile(_ format: OutputFormat) throws {
+        let source = try Self.source(packet: Self.nestedPacket)
+        var policy = MetadataPolicy.keepAll
+        policy.gps = .strip
+        let out = try FixtureProbe.inspect(try Renderer.produce(source, spec: RenderSpec(target: PixelSize(6, 4), format: format,
+                                                                                         metadata: policy)))
+        #expect(out.xmp("xmp:Rating") == "5")
+        for text in ["GPSLatitude", "GPSLongitude", "GPSAltitude", "0,0.0N", "0,0.0E", "NESTEDTHUMBNAILBASE64", "xmpGImg",
+                     "4000", "3000", "<tiff:Orientation>6"] {
+            #expect(!out.contains(text), "\(text)")
+        }
+        for text in ["Nested name", "Deep note", "First item", "Plain item", "Third item", "Packet title"] {
+            #expect(out.packet.contains(text), "\(text)")
+        }
+        #expect(!out.metadata.hasGPS && !out.showsLocation)
+        // Default and Strip all write nothing of the packet at all.
+        for policy in [MetadataPolicy.default, .stripAll] {
+            let bare = try Self.render(source, format, policy)
+            #expect(!bare.contains("Nested name") && !bare.contains("GPS"))
+        }
+    }
+
     // MARK: Extended XMP
 
     /// A JPEG's extended packet is folded into the one packet that is written,
@@ -271,7 +367,8 @@ struct XMPWriterTests {
     func packetOverTheJPEGSegmentLimit(_ format: OutputFormat) throws {
         let long = String(repeating: "lorem ipsum ", count: 9000)   // 108 KB
         let packet = XMPDetectionTests.packet.replacingOccurrences(of: "xmp:Rating=\"4\"", with: "xmp:Rating=\"4\" xmp:Nickname=\"\(long)\"")
-        let source = try Self.source(packet: XMPDetectionTests.packet, extended: packet)
+        let source = try Self.source(packet: ExtendedXMPTests.main(naming: String(repeating: "A", count: 32)),
+                                     extended: packet)
         let out = try Self.render(source, format, .keepMost)
         #expect(out.xmp("xmp:Rating") == "4" && out.xmp("xmp:Nickname") == long)
         #expect((out.metadata.xmpExtendedPacket != nil) == (format == .jpeg))
@@ -343,6 +440,140 @@ struct AIWorkflowInEXIFTests {
         #expect(Self.userComment(out) == nil)
         #expect(out.metadata.provenance.isEmpty && out.metadata.aiPayloads.isEmpty)
         #expect(!out.contains("Steps:") && !out.contains("Sampler") && !out.metadataTags.contains("exif:UserComment"))
+    }
+
+    // MARK: From a PNG text chunk (review 2026-09-30, G2)
+
+    static let chunkFormats: [OutputFormat] = [.jpeg, .heic, .tiff]
+
+    /// `parameters` has no text chunk to live in outside PNG: it moves to the
+    /// user comment, where A1111 itself puts it, whatever EXIF says.
+    @Test(arguments: chunkFormats, [MetadataPolicy.Action.keep, .strip])
+    func pngParametersMoveToTheUserComment(_ format: OutputFormat, _ exif: MetadataPolicy.Action) throws {
+        let parameters = try #require(try Fixture.load(.a1111PNG).metadata.aiPayloads.first?.text)
+        let out = try MetadataWriterTests.render(.a1111PNG, format, XMPWriterTests.only(exif: exif, aiWorkflow: .keep))
+        #expect(Self.userComment(out) == parameters)
+        #expect(out.metadata.provenance == [.a1111])
+        #expect(out.metadata.aiPayloads.map(\.text) == [parameters])
+        #expect(out.metadata.aiPayloads.map(\.location) == ["EXIF UserComment"])
+        MetadataWriterTests.expectUpright(out)
+        // The same under the default policy, which is what the app starts with.
+        let byDefault = try MetadataWriterTests.render(.a1111PNG, format, .default)
+        #expect(Self.userComment(byDefault) == parameters && byDefault.metadata.provenance == [.a1111])
+    }
+
+    @Test(arguments: chunkFormats, [MetadataPolicy.Action.keep, .strip])
+    func strippedPNGParametersDoNotMove(_ format: OutputFormat, _ exif: MetadataPolicy.Action) throws {
+        var policy = MetadataPolicy.keepAll
+        policy.exif = exif
+        policy.aiWorkflow = .strip
+        let out = try MetadataWriterTests.render(.a1111PNG, format, policy)
+        #expect(Self.userComment(out) == nil)
+        #expect(out.metadata.provenance.isEmpty && out.metadata.aiPayloads.isEmpty)
+        #expect(!out.contains("Steps:") && !out.contains("Sampler"))
+    }
+
+    /// PNG output keeps the chunk itself and gets no second copy.
+    @Test func pngOutputKeepsTheChunkOnly() throws {
+        let out = try MetadataWriterTests.render(.a1111PNG, .png, .keepAll)
+        #expect(out.metadata.pngTextKeywords == ["parameters"] && Self.userComment(out) == nil)
+        #expect(out.metadata.aiPayloads.map(\.location) == ["PNG tEXt chunk"])
+    }
+
+    /// The comment ImageIO writes reads back as the same text, accents and all.
+    @Test(arguments: chunkFormats)
+    func movedParametersSurviveOutsideASCII(_ format: OutputFormat) throws {
+        let parameters = "un café au bord du lac, 湖\nNegative prompt: flou\nSteps: 20, Sampler: Euler a, CFG scale: 7"
+        let source = try PNGSplicerTests.source(holding: [PNGSplicerTests.text("parameters", parameters)])
+        #expect(source.metadata.aiPayloads.map(\.text) == [parameters])
+        let out = try XMPWriterTests.render(source, format, .default)
+        #expect(Self.userComment(out) == parameters && out.metadata.provenance == [.a1111])
+        // A1111's own form: `UNICODE`, then UTF-16 big endian. No stand-in is left behind.
+        #expect(out.contains("UNICODE\0") && !out.contains("ASCII\0\0\0"))
+        #expect(out.data.range(of: Data([0x6E, 0x56])) != nil)   // 湖
+        // Encoding is deterministic.
+        #expect(try Renderer.produce(source, spec: RenderSpec(target: source.size, format: format)) == out.data)
+
+        // Saved again from that file, the comment is the source's own and survives the same way.
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("comment-\(UUID().uuidString)")
+            .appendingPathExtension(out.type.preferredFilenameExtension ?? "img")
+        try out.data.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let again = try XMPWriterTests.render(try SourceImage.load(url), format, .default)
+        #expect(Self.userComment(again) == parameters && again.metadata.provenance == [.a1111])
+
+        // Next to a kept packet, which has a user comment of its own to give way.
+        let packet = XMPDetectionTests.packet.replacingOccurrences(of: "xmp:Rating=\"4\"", with: "xmp:Rating=\"4\" exif:UserComment=\"Holiday, day 3\"")
+        let xmp = PNGSplicerTests.chunk("iTXt", Data("XML:com.adobe.xmp\0\0\0\0\0\(packet)".utf8))
+        var png = PNGSplicer.splice([PNGSplicerTests.text("parameters", parameters)], into: MetadataTests.encode(.png))
+        png.insert(contentsOf: xmp, at: try #require(PNGSplicer.iendOffset(in: png)))
+        let both = try XMPWriterTests.render(try PNGSplicerTests.source(fromPNG: png), format, .keepAll)
+        #expect(Self.userComment(both) == parameters && both.xmp("xmp:Rating") == "4")
+        #expect(!both.contains("Holiday, day 3"))
+    }
+
+    /// One comment holds one text: the source's own AI comment stays, else the
+    /// first `parameters` chunk goes in; the capability says what is left out.
+    @Test func severalCandidatesKeepTheFirst() throws {
+        let first = "first placeholder prompt\nSteps: 20, Sampler: Euler a, CFG scale: 7"
+        let second = "second placeholder prompt\nSteps: 30, Sampler: DDIM, CFG scale: 5"
+        let source = try PNGSplicerTests.source(holding: [PNGSplicerTests.text("parameters", first),
+                                                          PNGSplicerTests.text("parameters", second)])
+        #expect(source.metadata.aiPayloads.map(\.text) == [first, second])
+        let out = try XMPWriterTests.render(source, .jpeg, .default)
+        #expect(Self.userComment(out) == first && !out.contains("second placeholder prompt"))
+        let state = MetadataPolicy.switchState(of: .aiWorkflow, for: source, spec: RenderSpec(target: source.size, format: .jpeg))
+        #expect(state.isEnabled && state.note == "Only the first generation parameters are kept; the rest requires PNG output.")
+        // PNG keeps both chunks and has nothing to add.
+        let png = try XMPWriterTests.render(source, .png, .default)
+        #expect(png.metadata.aiPayloads.map(\.text) == [first, second])
+        #expect(MetadataPolicy.switchState(of: .aiWorkflow, for: source, spec: RenderSpec(target: source.size, format: .png)).note == nil)
+
+        // An AI comment already in the source's EXIF wins over a chunk that differs.
+        let own: [CFString: Any] = [kCGImagePropertyExifDictionary: ["UserComment": second]]
+        var metadata = ImageMetadata()
+        metadata.aiPayloads = [.init(source: .a1111, name: "UserComment", location: "EXIF UserComment", text: second),
+                               .init(source: .a1111, name: "parameters", location: "PNG tEXt chunk", text: first)]
+        let written = MetadataWriter.properties(from: own, policy: .default, type: .jpeg, size: PixelSize(8, 8), carrying: metadata)
+        #expect((written[kCGImagePropertyExifDictionary] as? [String: Any])?["UserComment"] as? String == second)
+        #expect(MetadataPolicy.capability(of: .aiWorkflow, in: .jpeg, carrying: metadata).note?.hasPrefix("Only the first") == true)
+        // The same text in both places is one candidate.
+        metadata.aiPayloads[1] = .init(source: .a1111, name: "parameters", location: "PNG tEXt chunk", text: second)
+        #expect(MetadataPolicy.capability(of: .aiWorkflow, in: .jpeg, carrying: metadata)
+                == MetadataPolicy.capability(of: .aiWorkflow, in: .jpeg))
+    }
+
+    /// A comment of the user's own in the source's EXIF: the parameters take
+    /// its place while the AI workflow is kept, and the switch says so; with
+    /// the AI workflow stripped the comment stays with EXIF.
+    @Test func movedParametersReplaceAnOrdinaryComment() throws {
+        let parameters = try #require(try Fixture.load(.a1111PNG).metadata.aiPayloads.first?.text)
+        let properties: [CFString: Any] = [kCGImagePropertyExifDictionary: ["UserComment": "Holiday, day 3", "FNumber": 2.8]]
+        let metadata = try Fixture.load(.a1111PNG).metadata
+        func comment(_ policy: MetadataPolicy, _ type: UTType = .jpeg) -> String? {
+            let out = MetadataWriter.properties(from: properties, policy: policy, type: type, size: PixelSize(8, 8), carrying: metadata)
+            return (out[kCGImagePropertyExifDictionary] as? [String: Any])?["UserComment"] as? String
+        }
+        #expect(comment(.keepAll) == parameters && comment(.default) == parameters)
+        #expect(comment(XMPWriterTests.only(exif: .keep)) == "Holiday, day 3")
+        #expect(comment(XMPWriterTests.only()) == nil)
+        // In PNG the parameters stay a chunk, so the comment is left alone.
+        #expect(comment(.keepAll, .png) == "Holiday, day 3")
+
+        // End to end, from a PNG that holds both.
+        let exif: [CFString: Any] = [kCGImagePropertyExifDictionary: [kCGImagePropertyExifUserComment: "Holiday, day 3"]]
+        let source = try PNGSplicerTests.source(fromPNG: PNGSplicer.splice([PNGSplicerTests.text("parameters", parameters)],
+                                                                           into: MetadataTests.encode(.png, properties: exif)))
+        try #require(MetadataWriter.ordinaryUserComment(in: source.properties) == "Holiday, day 3")
+        func note(_ policy: MetadataPolicy, _ format: OutputFormat = .jpeg) -> String? {
+            MetadataPolicy.switchState(of: .aiWorkflow, for: source,
+                                       spec: RenderSpec(target: source.size, format: format, metadata: policy)).note
+        }
+        #expect(note(.keepAll) == "Kept in the EXIF user comment, replacing the comment already there.")
+        #expect(note(.default) == "Kept in the EXIF user comment." && note(.keepAll, .png) == nil)
+        #expect(note(XMPWriterTests.only(exif: .keep)) == nil)
+        #expect(Self.userComment(try XMPWriterTests.render(source, .jpeg, .keepAll)) == parameters)
+        #expect(Self.userComment(try XMPWriterTests.render(source, .jpeg, XMPWriterTests.only(exif: .keep))) == "Holiday, day 3")
     }
 
     /// A comment that is not an AI payload stays with EXIF.

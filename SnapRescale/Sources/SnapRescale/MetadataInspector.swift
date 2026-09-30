@@ -244,7 +244,8 @@ struct MetadataInspector: View {
     }
 
     /// Asks where, then writes there and nowhere else: under the sandbox the
-    /// panel's URL is the only place the app may write to. The panel opens a
+    /// panel's URL is the only place the app may write to, and a file already
+    /// there survives a failed write (`SafeWrite`). The panel opens a
     /// run-loop turn after the click (GitHub #2, see Deferred.swift).
     private func save(_ export: MetadataExport) {
         let folder = session.source?.url.deletingLastPathComponent()
@@ -255,7 +256,7 @@ struct MetadataInspector: View {
             panel.allowedContentTypes = [export.type]
             guard panel.runModal() == .OK, let url = panel.url else { return }
             do {
-                try export.data.write(to: url)
+                try SafeWrite.write(export.data, to: url)
             } catch {
                 session.errorMessage = error.localizedDescription
             }
@@ -359,11 +360,15 @@ struct MetadataInspector: View {
         var primaryExport: MetadataExport?
     }
 
+    /// The exports are named after the file, so the cache is for one file: a
+    /// renamed copy with the same metadata is another image (review 2026-09-30, G5).
+    private var url: URL?
     private var metadata: ImageMetadata?
     private var value = Value()
 
     func of(_ source: SourceImage) -> Value {
-        if metadata != source.metadata {
+        if url != source.url || metadata != source.metadata {
+            url = source.url
             metadata = source.metadata
             value = Value(summary: source.metadata.aiSummary, prompt: source.metadata.positivePrompt,
                           exports: source.aiExports, primaryExport: source.primaryAIExport)

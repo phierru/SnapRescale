@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import RescaleKit
 
 /// Sandbox-aware write access to a folder (PRD §8, §11).
 ///
@@ -19,24 +20,25 @@ enum FolderAccess {
     }
 
     /// Writes `data` to `url`, asking for its folder once if the sandbox refuses.
+    /// Every attempt replaces the file as a whole or leaves it alone (`SafeWrite`).
     static func write(_ data: Data, to url: URL) -> Outcome {
         let folder = url.deletingLastPathComponent()
 
         // 1. A stored grant for this folder.
         if let granted = resolveBookmark(for: folder) {
             defer { granted.stopAccessingSecurityScopedResource() }
-            do { try data.write(to: url); return .written } catch { /* fall through to re-ask */ }
+            do { try SafeWrite.write(data, to: url); return .written } catch { /* fall through to re-ask */ }
         }
 
         // 2. Plain write: works unsandboxed, or when the folder is already reachable.
         do {
-            try data.write(to: url)
+            try SafeWrite.write(data, to: url)
             return .written
         } catch let error as NSError where isPermissionDenied(error) {
             // 3. Ask once for the folder.
             guard let granted = askForFolder(folder) else { return .cancelled }
             defer { granted.stopAccessingSecurityScopedResource() }
-            do { try data.write(to: url); return .written } catch { return .failed(error) }
+            do { try SafeWrite.write(data, to: url); return .written } catch { return .failed(error) }
         } catch {
             return .failed(error)
         }
@@ -84,7 +86,7 @@ enum FolderAccess {
     }
 
     private static func isPermissionDenied(_ error: NSError) -> Bool {
-        (error.domain == NSCocoaErrorDomain && (error.code == NSFileWriteNoPermissionError || error.code == NSFileWriteVolumeReadOnlyError))
+        (error.domain == NSCocoaErrorDomain && [NSFileWriteNoPermissionError, NSFileReadNoPermissionError, NSFileWriteVolumeReadOnlyError].contains(error.code))
             || (error.domain == NSPOSIXErrorDomain && (error.code == Int(EPERM) || error.code == Int(EACCES)))
             || ((error.userInfo[NSUnderlyingErrorKey] as? NSError).map(isPermissionDenied) ?? false)
     }

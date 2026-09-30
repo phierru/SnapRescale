@@ -10,7 +10,10 @@ public struct MetadataExport: Hashable, Sendable, Identifiable {
     public let data: Data
     /// The AI payload this came from; nil for Export All.
     public let payload: ImageMetadata.AIPayload?
-    public var id: String { filename }
+    /// Which export this is, whatever it is called: `ComfyUI.workflow`, `ComfyUI.workflow#2`
+    /// for a second one, `metadata` for Export All. Unique within a source and independent
+    /// of the file name (review 2026-09-30, G6).
+    public let id: String
 
     /// `json` or `txt`.
     public var fileExtension: String { type == .json ? "json" : "txt" }
@@ -51,7 +54,7 @@ extension ImageMetadata {
 
     /// Export All… with its suggested name, `picture.metadata.json`.
     public func exportAll(baseName: String) -> MetadataExport {
-        MetadataExport(filename: "\(baseName).metadata.json", type: .json, data: exportAllJSON, payload: nil)
+        MetadataExport(filename: "\(baseName).metadata.json", type: .json, data: exportAllJSON, payload: nil, id: "metadata")
     }
 
     /// A JSON string literal. JSONSerialization does the escaping; key order is ours.
@@ -98,15 +101,20 @@ extension ImageMetadata.AIPayload {
     /// The payload as a file: `.json` when it parses as JSON, else `.txt`. The bytes are the
     /// payload text as UTF-8, untouched, so a ComfyUI graph drops straight back into ComfyUI.
     public func export(baseName: String) -> MetadataExport? {
-        export(baseName: baseName, qualified: false)
+        guard isExportable else { return nil }
+        return export(filename: exportFilename(baseName: baseName, qualified: false), id: id)
     }
 
-    func export(baseName: String, qualified: Bool) -> MetadataExport? {
-        guard isExportable else { return nil }
-        let type: UTType = isJSON ? .json : .plainText
+    /// `qualified` adds the source, `occurrence` numbers a repeat from 2 on:
+    /// `picture.a1111.parameters.2.txt`.
+    func exportFilename(baseName: String, qualified: Bool, occurrence: Int = 1) -> String {
         let label = qualified ? "\(source.rawValue.lowercased()).\(exportLabel)" : exportLabel
-        return MetadataExport(filename: "\(baseName).\(label).\(isJSON ? "json" : "txt")", type: type,
-                              data: Data(text.utf8), payload: self)
+        let suffix = occurrence > 1 ? ".\(occurrence)" : ""
+        return "\(baseName).\(label)\(suffix).\(isJSON ? "json" : "txt")"
+    }
+
+    func export(filename: String, id: String) -> MetadataExport {
+        MetadataExport(filename: filename, type: isJSON ? .json : .plainText, data: Data(text.utf8), payload: self, id: id)
     }
 }
 
@@ -114,17 +122,40 @@ extension ImageMetadata {
     /// Every exportable AI payload in file order (AI workflow ▸ Export…, PRD §10.5).
     /// `baseName` is the source file's name without extension. Names that would
     /// collide between two sources gain the source: `picture.a1111.parameters.txt`.
+    /// Names that still collide (a payload stated twice, `parameters` in a chunk and in
+    /// EXIF) are numbered in file order from the second on: `picture.workflow.2.json`.
+    /// Every export ends up with a `filename` and an `id` of its own (review 2026-09-30, G6).
     public func aiExports(baseName: String) -> [MetadataExport] {
-        let plain = aiPayloads.compactMap { $0.export(baseName: baseName) }
-        var count: [String: Int] = [:]
-        for e in plain { count[e.filename, default: 0] += 1 }
-        return plain.compactMap { e in
-            count[e.filename] == 1 ? e : e.payload?.export(baseName: baseName, qualified: true)
+        let payloads = aiPayloads.filter(\.isExportable)
+        var sources: [String: Set<Provenance>] = [:]
+        for p in payloads { sources[p.exportFilename(baseName: "", qualified: false), default: []].insert(p.source) }
+        func name(_ p: AIPayload, _ occurrence: Int) -> String {
+            let qualified = (sources[p.exportFilename(baseName: "", qualified: false)]?.count ?? 0) > 1
+            return p.exportFilename(baseName: baseName, qualified: qualified, occurrence: occurrence)
+        }
+
+        // A number never lands on a name another payload holds. Names are compared
+        // without case, as the file system may.
+        var names = Set(payloads.map { name($0, 1).lowercased() })
+        var ids = Set(payloads.map(\.id))
+        var seenNames = Set<String>(), seenIDs = Set<String>()
+        return payloads.map { p in
+            var filename = name(p, 1), id = p.id
+            if !seenNames.insert(filename.lowercased()).inserted {
+                var n = 1
+                repeat { n += 1; filename = name(p, n) } while !names.insert(filename.lowercased()).inserted
+            }
+            if !seenIDs.insert(id).inserted {
+                var n = 1
+                repeat { n += 1; id = "\(p.id)#\(n)" } while !ids.insert(id).inserted
+            }
+            return p.export(filename: filename, id: id)
         }
     }
 
     /// The one to offer first: ComfyUI `workflow` over `prompt`, InvokeAI's graph over its
-    /// metadata, otherwise the first in file order. Nil when nothing is exportable.
+    /// metadata, otherwise the first in file order. Nil when nothing is exportable. Always
+    /// one of `aiExports`, with the same `id`.
     public func primaryAIExport(baseName: String) -> MetadataExport? {
         aiExports(baseName: baseName).enumerated()
             .min { a, b in

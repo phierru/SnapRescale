@@ -66,6 +66,45 @@ struct MetadataCapabilityTests {
         #expect(!MetadataPolicy.capability(of: .aiWorkflow, in: .tiff, carrying: invoke).canCarry)
     }
 
+    /// Unrecognised text under a tool keyword stays a PNG chunk while the parameters beside it move.
+    @Test func unrecognisedTextBesideParametersIsPartlyKept() throws {
+        let parameters = try #require(try Fixture.load(.a1111PNG).metadata.pngTextChunks.first)
+        let source = try PNGSplicerTests.source(holding: [parameters, PNGSplicerTests.text("prompt", PNGSplicerTests.privateNote)])
+        let state = MetadataPolicy.switchState(of: .aiWorkflow, for: source, spec: RenderSpec(target: source.size, format: .jpeg))
+        #expect(state.isEnabled && state.note == "Only the generation parameters are kept; the unrecognised text requires PNG output.")
+        let out = try FixtureProbe.inspect(try Renderer.produce(source, spec: RenderSpec(target: source.size, format: .jpeg)))
+        #expect(out.metadata.provenance == [.a1111] && !out.contains(PNGSplicerTests.privateNote))
+    }
+
+    /// A GIF's XMP is read through ImageIO's display fields, with no packet for
+    /// the writer to copy: Keep is not offered (review 2026-09-30, G8).
+    @Test(arguments: [OutputFormat.png, .jpeg, .heic, .tiff])
+    func xmpShownWithoutAPacketCannotBeKept(_ format: OutputFormat) throws {
+        let gif = try XMPDetectionTests.encode(.gif, packet: XMPDetectionTests.packet)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("xmp-\(UUID().uuidString).gif")
+        try gif.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let source = try SourceImage.load(url)
+        #expect(source.metadata.hasXMP && source.metadata.xmpPacket == nil)
+        #expect(source.metadata.section(.xmp)?["xmp:Rating"] == "4")
+
+        var spec = RenderSpec(target: source.size, format: format, metadata: .keepAll)
+        let xmp = MetadataPolicy.switchState(of: .xmp, for: source, spec: spec)
+        #expect(!xmp.isEnabled && xmp.note == MetadataPolicy.xmpNotCarriedNote && xmp.possibleNotes == [MetadataPolicy.xmpNotCarriedNote])
+        #expect(!MetadataPolicy.capability(of: .xmp, for: source, spec: spec).canCarry)
+        // Nothing of it is written, so there are no copies for another switch to remove.
+        spec.metadata.gps = .strip
+        let gps = MetadataPolicy.switchState(of: .gps, for: source, spec: spec)
+        #expect(gps.isEnabled && gps.note == nil && gps.possibleNotes.isEmpty)
+        let out = try FixtureProbe.inspect(try Renderer.produce(source, spec: spec))
+        #expect(out.metadata.section(.xmp)?["xmp:Rating"] == nil)
+
+        // A source whose packet was read is unaffected.
+        let packet = try Fixture.load(.iptcXMP)
+        let kept = RenderSpec(target: packet.size, format: format, metadata: .keepAll)
+        #expect(MetadataPolicy.switchState(of: .xmp, for: packet, spec: kept).isEnabled)
+    }
+
     @Test func otherSectionsFollowTheTable() throws {
         let metadata = try Fixture.load(.comfyUI).metadata
         for section in Section.allCases where section != .aiWorkflow {
