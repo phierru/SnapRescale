@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import RescaleKit
 
 /// UI state of the metadata inspector (PRD §10.2): open or closed, which
@@ -102,6 +103,8 @@ struct MetadataInspector: View {
     @Environment(Session.self) private var session
     @State private var state = InspectorState.shared
     @State private var details = AIDetails()
+    /// Copy All has just run: its menu shows a tick for a moment.
+    @State private var copiedAll = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -150,16 +153,114 @@ struct MetadataInspector: View {
         .accessibilityLabel("Metadata policy")
     }
 
+    /// Before the master control: Copy All and Export All… (PRD §10.5). Read-only,
+    /// so they work whatever the switches say.
+    private var panelActions: some View {
+        Menu {
+            Button("Copy All") {
+                guard let source = session.source else { return }
+                Pasteboard.copy(source.metadata.copyAllText)
+                // A run-loop turn later (GitHub #2, see Deferred.swift).
+                deferred { copiedAll = true }
+                Task { @MainActor in
+                    try? await Task.sleep(for: CopyButton.feedback)
+                    copiedAll = false
+                }
+            }
+            Button("Export All…") {
+                if let source = session.source { save(source.exportAll) }
+            }
+        } label: {
+            // A menu label takes one image, so the symbol is swapped; both are
+            // the same circle, and the frame below keeps the room fixed anyway.
+            Image(systemName: copiedAll ? "checkmark.circle" : "ellipsis.circle")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .frame(width: 22, height: 22)
+        .disabled(session.source == nil)
+        .help("Copy every section as text, or export them all as one JSON file")
+        .accessibilityLabel("Copy or export all metadata")
+    }
+
     /// The row under a section title, one fixed-size control after another: the
-    /// keep / strip switch leads; the section's buttons (#17) trail. Its own row
+    /// keep / strip switch leads; the AI workflow's Export… trails. Its own row
     /// because the three-way colour switch does not fit beside "ICC profile" at
     /// the panel's minimum width.
-    private func sectionControls(_ section: MetadataSection, _ state: MetadataPolicy.SwitchState?) -> some View {
-        HStack(spacing: 6) {
+    private func sectionControls(_ section: MetadataSection, _ state: MetadataPolicy.SwitchState?,
+                                 _ source: SourceImage) -> some View {
+        HStack(spacing: 8) {
             if let policySection = section.kind.policySection {
                 SectionSwitch(section: policySection, isEnabled: state?.isEnabled ?? true)
             }
             Spacer(minLength: 0)
+            if section.kind == .aiWorkflow {
+                let ai = details.of(source)
+                exportControl(ai.exports, primary: ai.primaryExport)
+            }
+        }
+    }
+
+    /// Trailing side of a section title: what it copies. Copy Prompt for the AI
+    /// workflow, when a prompt can be read off, then Copy for every section —
+    /// in the title, so the sections without a switch row have it too.
+    private func sectionCopies(_ section: MetadataSection, _ source: SourceImage) -> some View {
+        HStack(spacing: 8) {
+            if section.kind == .aiWorkflow, let prompt = details.of(source).prompt {
+                CopyButton(title: "Copy Prompt", help: "Copy the positive prompt") { prompt }
+            }
+            CopyButton(help: "Copy \(section.title) as text") { copyText(section, source) }
+        }
+    }
+
+    /// Export…: a button for one file, a menu when the source holds several
+    /// (a ComfyUI `workflow` and its `prompt`), the one to prefer first.
+    @ViewBuilder private func exportControl(_ exports: [MetadataExport], primary: MetadataExport?) -> some View {
+        if let primary {
+            Group {
+                if exports.count > 1 {
+                    Menu("Export…") {
+                        ForEach([primary] + exports.filter { $0 != primary }) { export in
+                            Button(export.filename) { save(export) }
+                        }
+                    }
+                    .menuStyle(.button)
+                    .menuIndicator(.hidden)
+                } else {
+                    Button("Export…") { save(primary) }
+                }
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .fixedSize()
+            .help(exports.count > 1 ? "Save a workflow payload as a file" : "Save \(primary.filename)")
+        }
+    }
+
+    /// What Copy puts on the pasteboard for a section: its `Label: value` lines,
+    /// under the summary for the AI workflow.
+    private func copyText(_ section: MetadataSection, _ source: SourceImage) -> String {
+        let summary = section.kind == .aiWorkflow ? source.metadata.aiSummaryText : ""
+        return summary.isEmpty ? section.text : summary + "\n" + section.text
+    }
+
+    /// Asks where, then writes there and nowhere else: under the sandbox the
+    /// panel's URL is the only place the app may write to. The panel opens a
+    /// run-loop turn after the click (GitHub #2, see Deferred.swift).
+    private func save(_ export: MetadataExport) {
+        let folder = session.source?.url.deletingLastPathComponent()
+        deferred {
+            let panel = NSSavePanel()
+            panel.directoryURL = folder
+            panel.nameFieldStringValue = export.filename
+            panel.allowedContentTypes = [export.type]
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            do {
+                try export.data.write(to: url)
+            } catch {
+                session.errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -185,6 +286,7 @@ struct MetadataInspector: View {
         HStack(spacing: 8) {
             Text("Metadata").font(.headline)
             Spacer()
+            panelActions
             panelAccessory
             // `toggle()` writes a run-loop turn later (GitHub #2).
             Button { state.toggle() } label: {
@@ -228,8 +330,9 @@ struct MetadataInspector: View {
                                          showsMore: state.showsMore.contains(section.kind),
                                          switchState: switchState,
                                          toggle: { state.toggleSection(section.kind, startsCollapsed: startsCollapsed) },
-                                         toggleMore: { state.toggleMore(section.kind) }) {
-                            sectionControls(section, switchState)
+                                         toggleMore: { state.toggleMore(section.kind) },
+                                         copies: { sectionCopies(section, source) }) {
+                            sectionControls(section, switchState, source)
                         }
                         .id(section.kind)
                         Divider()
@@ -254,6 +357,9 @@ struct MetadataInspector: View {
 @MainActor private final class AIDetails {
     struct Value {
         var summary: [MetadataField] = []
+        var prompt: String?
+        var exports: [MetadataExport] = []
+        var primaryExport: MetadataExport?
     }
 
     private var metadata: ImageMetadata?
@@ -262,9 +368,58 @@ struct MetadataInspector: View {
     func of(_ source: SourceImage) -> Value {
         if metadata != source.metadata {
             metadata = source.metadata
-            value = Value(summary: source.metadata.aiSummary)
+            value = Value(summary: source.metadata.aiSummary, prompt: source.metadata.positivePrompt,
+                          exports: source.aiExports, primaryExport: source.primaryAIExport)
         }
         return value
+    }
+}
+
+enum Pasteboard {
+    /// Plain text, replacing what was there.
+    @MainActor static func copy(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+}
+
+/// Copies text and says so: the icon (or the title) turns into a tick for a
+/// moment. Both states are laid out, so nothing moves.
+private struct CopyButton: View {
+    static let feedback = Duration.milliseconds(1200)
+
+    /// `nil` for the icon-only button of a section title.
+    var title: String?
+    let help: String
+    /// Built on the click, not on every redraw: a section's text can be a whole workflow.
+    let text: () -> String
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            Pasteboard.copy(text())
+            // A run-loop turn later (GitHub #2, see Deferred.swift).
+            deferred { copied = true }
+            Task { @MainActor in
+                try? await Task.sleep(for: Self.feedback)
+                copied = false
+            }
+        } label: {
+            ZStack {
+                Group {
+                    if let title { Text(title) } else { Image(systemName: "doc.on.doc") }
+                }
+                .opacity(copied ? 0 : 1)
+                Image(systemName: "checkmark").opacity(copied ? 1 : 0)
+            }
+            .frame(minWidth: 18, minHeight: 18)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .fixedSize()
+        .help(help)
+        .accessibilityLabel(title ?? help)
     }
 }
 
@@ -320,10 +475,10 @@ private struct SectionSwitch: View {
     }
 }
 
-/// A section: a title row that folds it, a row for its switch and buttons, the
+/// A section: a title row that folds it and copies it, a row for its switch and buttons, the
 /// lines for the section's own note and the switch's, then its rows: the AI
 /// summary, the primary fields, and the rest behind a More row.
-private struct InspectorSection<Controls: View>: View {
+private struct InspectorSection<Copies: View, Controls: View>: View {
     let section: MetadataSection
     /// The AI workflow summary, shown above the fields; empty for the other sections.
     let summary: [MetadataField]
@@ -333,6 +488,7 @@ private struct InspectorSection<Controls: View>: View {
     let switchState: MetadataPolicy.SwitchState?
     let toggle: () -> Void
     let toggleMore: () -> Void
+    @ViewBuilder let copies: Copies
     @ViewBuilder let controls: Controls
 
     var body: some View {
@@ -355,6 +511,7 @@ private struct InspectorSection<Controls: View>: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                copies
             }
             .padding(.horizontal, 12)
             .frame(height: 30)
