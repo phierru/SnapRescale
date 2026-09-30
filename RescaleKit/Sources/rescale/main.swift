@@ -25,15 +25,14 @@ func usage() -> Never {
 
 func parseAspect(_ s: String) -> AspectRatio {
     if s.lowercased() == "original" { return .original }
-    let parts = s.split(separator: ":").compactMap { Int($0) }
-    guard parts.count == 2, parts[0] > 0, parts[1] > 0 else { fail("bad aspect '\(s)'") }
-    return .fixed(width: parts[0], height: parts[1])
+    guard let (w, h) = NumberPair.parse(s, separator: ":", as: Int.self), w > 0, h > 0 else { fail("bad aspect '\(s)'") }
+    return .fixed(width: w, height: h)
 }
 
+/// Both edges positive and an area that fits in `Int`, checked before anything multiplies them.
 func parseSize(_ s: String) -> PixelSize {
-    let parts = s.lowercased().split(separator: "x").compactMap { Int($0) }
-    guard parts.count == 2, parts[0] > 0, parts[1] > 0 else { fail("bad size '\(s)', want WxH") }
-    return PixelSize(parts[0], parts[1])
+    guard let size = PixelSize(parsing: s) else { fail("bad size '\(s)', want WxH (positive, not absurdly large)") }
+    return size
 }
 
 func sourceSize(ofImageAt path: String) -> PixelSize {
