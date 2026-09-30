@@ -434,7 +434,9 @@ embeds a profile — an sRGB that macOS merely assumes gets no badge), **EXIF**,
 warning colour), **IPTC**, **XMP**, **Alpha**, **16-bit**, **HDR**, **Depth**,
 **Rotated**, **Animated ·N**, and one per AI-generation source detected:
 **ComfyUI**, **A1111**, **InvokeAI**, **NovelAI**, **Fooocus**, **SwarmUI**,
-**Midjourney**, **C2PA**. The full catalogue, where each lives and how it is
+**Midjourney**, **C2PA** — and **AI text** when a PNG carries text under an
+AI keyword (`prompt`, `parameters`, …) that is not a recognised payload: it is
+kept or stripped with the AI workflow switch, so it is shown. The full catalogue, where each lives and how it is
 detected, is in [`reference/image-metadata.md`](reference/image-metadata.md).
 
 Clicking a badge opens the metadata inspector at that badge's section.

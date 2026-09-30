@@ -41,7 +41,7 @@ The Metadata milestone: implemented, not yet released.
   allows, its bit depth are kept. CMYK sources are still converted to sRGB.
 - The ICC badge appears only when the file embeds a profile; an assumed sRGB
   is no longer shown as one.
-- Help describes the inspector and points to ExifTool, Photos and Preview for
+- Help describes the inspector and points to ExifTool and Photos for
   editing metadata, which SnapRescale does not do.
 
 ### Fixed

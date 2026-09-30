@@ -79,7 +79,7 @@ struct EmptyStateView: View {
                 .foregroundStyle(.secondary)
             Text("Drop an image here")
                 .font(.title2.weight(.semibold))
-            Text("Resize to any ratio, snapped to multiples of 8 and 16.")
+            Text("Resize to any ratio, snapped to multiples of 8, 16 or 32.")
                 .foregroundStyle(.secondary)
             if session.isLoading {
                 ProgressView().controlSize(.regular).padding(.top, 6)

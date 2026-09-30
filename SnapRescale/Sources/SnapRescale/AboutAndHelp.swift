@@ -27,7 +27,7 @@ struct AboutView: View {
                 .frame(width: 96, height: 96)
             VStack(spacing: 4) {
                 Text("SnapRescale").font(.title.weight(.semibold))
-                Text("Resize to any ratio, snapped to multiples of 8 and 16.")
+                Text("Resize to any ratio, snapped to multiples of 8, 16 or 32.")
                     .foregroundStyle(.secondary)
                 Text("Version \(AppInfo.version)").font(.callout).foregroundStyle(.tertiary)
             }
@@ -98,7 +98,7 @@ struct HelpView: View {
             "A switch is disabled, with a note, when the output format cannot carry the section: a ComfyUI graph requires PNG output.",
             "**Always:** the embedded EXIF thumbnail is dropped, orientation is baked into the pixels, and C2PA content credentials are stripped, because the signature binds the original pixels. Stripping IPTC also drops the EXIF artist and copyright. An HDR gain map is not written.",
             "**Copy** on every section, **Copy Prompt** and **Export…** on an AI workflow, **Copy All** and **Export All…** (JSON) in the **…** menu. They work whatever the switches say.",
-            "SnapRescale does not edit metadata. For that, use ExifTool, Photos or Preview.",
+            "SnapRescale does not edit metadata. For that, use ExifTool or Photos.",
         ]),
         Section(title: "Shortcuts", lines: [
             "**⌘O** open · **⌘S** save · **⇧⌘S** save as · **⌥⌘I** metadata inspector · **⌘,** settings · **⌘?** this help",
