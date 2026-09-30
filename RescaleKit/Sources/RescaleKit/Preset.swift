@@ -12,12 +12,14 @@ public struct Preset: Hashable, Sendable, Codable, Identifiable {
     public var padColor: PadColor?
     public var format: OutputFormat
     public var quality: Double
+    /// What Save keeps of the source's metadata (PRD §10.2).
+    public var metadata: MetadataPolicy
 
     public var id: String { name }
 
     public init(name: String, aspect: AspectRatio = .original, size: SizeParameter, multiple: Multiple = .eight,
                 fit: FitPolicy = .crop, padColor: PadColor? = .white, format: OutputFormat = .keepOriginal,
-                quality: Double = 0.95) {
+                quality: Double = 0.95, metadata: MetadataPolicy = .default) {
         self.name = name
         self.aspect = aspect
         self.size = size
@@ -26,6 +28,26 @@ public struct Preset: Hashable, Sendable, Codable, Identifiable {
         self.padColor = padColor
         self.format = format
         self.quality = quality
+        self.metadata = metadata
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, aspect, size, multiple, fit, padColor, format, quality, metadata
+    }
+
+    /// Hand-written so that a preset saved before `metadata` existed still
+    /// decodes, with the default policy: no migration step, no failure.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        aspect = try c.decode(AspectRatio.self, forKey: .aspect)
+        size = try c.decode(SizeParameter.self, forKey: .size)
+        multiple = try c.decode(Multiple.self, forKey: .multiple)
+        fit = try c.decode(FitPolicy.self, forKey: .fit)
+        padColor = try c.decodeIfPresent(PadColor.self, forKey: .padColor)
+        format = try c.decode(OutputFormat.self, forKey: .format)
+        quality = try c.decode(Double.self, forKey: .quality)
+        metadata = try c.decodeIfPresent(MetadataPolicy.self, forKey: .metadata) ?? .default
     }
 
     public var request: ResizeRequest { ResizeRequest(aspect: aspect, size: size, multiple: multiple) }
