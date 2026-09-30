@@ -158,19 +158,42 @@ enum MetadataFormat {
 // MARK: - XMP
 
 enum XMPReader {
-    /// ImageIO folds EXIF/TIFF into the metadata tree; only other namespaces prove a real XMP packet.
+    /// ImageIO folds EXIF/TIFF into the metadata tree; in the fallback only other namespaces count.
     static let synthesisedPrefixes: Set<String> = ["exif", "exifEX", "exifAux", "tiff", "GPS", "gps"]
+    /// ImageIO's own bookkeeping (`iio:hasXMP`, `iio:hasIIM`), never in a packet.
+    static let internalPrefix = "iio"
+    /// What ImageIO derives from the TIFF / EXIF dates and Software when there is no packet.
+    static let derivedPaths: Set<String> = ["xmp:CreateDate", "xmp:ModifyDate", "xmp:CreatorTool", "photoshop:DateCreated"]
+    /// Namespaces ImageIO fills from IPTC IIM and from TIFF description / artist / copyright.
+    static let mirrorPrefixes: Set<String> = ["dc", "photoshop", "Iptc4xmpCore", "Iptc4xmpExt"]
 
-    /// Top-level properties outside the synthesised namespaces, as `prefix:name` paths, sorted.
-    static func fields(_ source: CGImageSource) -> [MetadataField] {
-        guard let meta = CGImageSourceCopyMetadataAtIndex(source, 0, nil),
-              let tags = CGImageMetadataCopyTags(meta) as? [CGImageMetadataTag] else { return [] }
+    /// The properties really in a packet, mirrored `exif:` / `tiff:` ones included, as
+    /// `prefix:name` paths, sorted. Nil when the packet does not parse.
+    static func fields(packet: String) -> [MetadataField]? {
+        guard let meta = CGImageMetadataCreateFromXMPData(Data(packet.utf8) as CFData) else { return nil }
+        return fields(meta) { prefix, _ in prefix != internalPrefix }
+    }
+
+    /// Fallback for containers `XMPScanner` does not walk: ImageIO's merged tree
+    /// minus what it synthesises. With ImageIO's `iio:hasXMP` marker the other
+    /// namespaces are trusted; without it the derived dates and, when the file has
+    /// IPTC or TIFF text tags to mirror, the mirror namespaces are dropped too.
+    static func fields(_ source: CGImageSource, hasMirrorSources: Bool) -> [MetadataField] {
+        guard let meta = CGImageSourceCopyMetadataAtIndex(source, 0, nil) else { return [] }
+        let marked = CGImageMetadataCopyTagWithPath(meta, nil, "\(internalPrefix):hasXMP" as CFString) != nil
+        return fields(meta) { prefix, path in
+            guard prefix != internalPrefix, !synthesisedPrefixes.contains(prefix) else { return false }
+            return marked || !(derivedPaths.contains(path) || (hasMirrorSources && mirrorPrefixes.contains(prefix)))
+        }
+    }
+
+    private static func fields(_ meta: CGImageMetadata, where keep: (_ prefix: String, _ path: String) -> Bool) -> [MetadataField] {
+        guard let tags = CGImageMetadataCopyTags(meta) as? [CGImageMetadataTag] else { return [] }
         var section = MetadataSection(kind: .xmp)
         let named: [(String, CGImageMetadataTag)] = tags.compactMap { tag in
-            guard let prefix = CGImageMetadataTagCopyPrefix(tag) as String?, !synthesisedPrefixes.contains(prefix)
-            else { return nil }
-            let name = CGImageMetadataTagCopyName(tag) as String? ?? ""
-            return ("\(prefix):\(name)", tag)
+            guard let prefix = CGImageMetadataTagCopyPrefix(tag) as String? else { return nil }
+            let path = "\(prefix):\(CGImageMetadataTagCopyName(tag) as String? ?? "")"
+            return keep(prefix, path) ? (path, tag) : nil
         }
         for (path, tag) in named.sorted(by: { $0.0 < $1.0 }) { section.add(path, value(tag)) }
         return section.fields
