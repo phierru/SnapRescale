@@ -57,6 +57,11 @@ extension MetadataPolicy {
         /// format. The inspector shows `note` alone, and only while it applies;
         /// this is for a view that would rather reserve their room.
         public var possibleNotes: [String]
+        /// True when `note` says that something of the source is not saved with
+        /// the selected option: a disabled switch, a partly kept workflow, a
+        /// profile that falls back to sRGB. False for a note that only
+        /// explains where the data goes or what the option means.
+        public var noteIsLoss: Bool = false
     }
 
     public static func switchState(of section: Section, for source: SourceImage, spec: RenderSpec) -> SwitchState {
@@ -64,7 +69,7 @@ extension MetadataPolicy {
         let cap = capability(of: section, for: source, spec: spec)
         guard cap.canCarry else {
             let reason = cap.note ?? "This format cannot carry it."
-            return SwitchState(isEnabled: false, note: reason, possibleNotes: [reason])
+            return SwitchState(isEnabled: false, note: reason, possibleNotes: [reason], noteIsLoss: true)
         }
         // The ICC fallback (CMYK, Lab, grey padded in colour) is whatever the
         // source-aware row adds to the format's own.
@@ -110,7 +115,13 @@ extension MetadataPolicy {
         for option in options(of: section, from: spec.metadata) {
             if let n = note(option, reserving: true), !all.contains(n) { all.append(n) }
         }
-        return SwitchState(isEnabled: true, note: note(spec.metadata, reserving: false), possibleNotes: all)
+        let current = note(spec.metadata, reserving: false)
+        // The notes that report a loss; the rest explain (an IPTC block kept as
+        // XMP, PNG's sRGB marker, the copies a strip also removes).
+        let isLoss = current != nil && (current == fallback
+            || current == movedParametersNote(replacingComment: true)
+            || (section == .aiWorkflow && current == cap.note && cap != capability(of: section, in: type ?? .data)))
+        return SwitchState(isEnabled: true, note: current, possibleNotes: all, noteIsLoss: isLoss)
     }
 
     /// Where `parameters` from a PNG text chunk goes outside PNG. A comment of

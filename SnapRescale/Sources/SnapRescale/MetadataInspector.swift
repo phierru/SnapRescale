@@ -517,13 +517,6 @@ private struct InspectorSection<Controls: View>: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 5) {
-                    if let note {
-                        Text(note)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.bottom, 2)
-                    }
                     ForEach(summary) { InspectorRow(field: $0, isProse: true) }
                     ForEach(section.primaryFields) { InspectorRow(field: $0) }
                     if !secondary.isEmpty {
@@ -561,18 +554,14 @@ private struct InspectorSection<Controls: View>: View {
         .help(showsMore ? "Hide the other fields" : "Show the other \(secondary.count) fields")
     }
 
-    /// The kit's remark on the section, folded or not: an assumed colour
-    /// profile, a gain map that is not saved. It depends on the image alone, so
-    /// it sits above the switch's note and never moves with a toggle.
+    /// The remark on the section, folded or not: an assumed colour profile, a
+    /// gain map that is not saved, C2PA always stripped. It depends on the image
+    /// alone, so it sits above the switch's note and never moves with a toggle.
     @ViewBuilder private var sectionNote: some View {
-        if let text = section.note {
-            Text(text)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 28).padding(.trailing, 12)
-                .padding(.bottom, 6)
+        if section.kind == .c2pa {
+            NoteLine(text: NoteLine.c2pa, isLoss: true)
+        } else if let text = section.note {
+            NoteLine(text: text, isLoss: section.noteIsLoss)
         }
     }
 
@@ -581,23 +570,28 @@ private struct InspectorSection<Controls: View>: View {
     /// note that is not there reads as a stray blank line.
     @ViewBuilder private var switchNote: some View {
         if let switchState, let text = switchState.note {
-            Text(text)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .font(.caption)
-                .foregroundStyle(switchState.isEnabled ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
-                .padding(.leading, 28).padding(.trailing, 12)
-                .padding(.bottom, 6)
+            NoteLine(text: text, isLoss: switchState.noteIsLoss)
         }
     }
 
-    private var note: String? {
-        switch section.kind {
-        case .c2pa:
-            return "Always stripped on save. The signature binds the original pixels, so a resized copy that kept it would show as tampered."
-        default:
-            return nil
-        }
+}
+
+/// A note under a section title. Orange when it says that something of the
+/// source is not saved, grey when it only explains.
+private struct NoteLine: View {
+    static let c2pa = "Always stripped on save. The signature binds the original pixels, so a resized copy that kept it would show as tampered."
+
+    let text: String
+    let isLoss: Bool
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(isLoss ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 28).padding(.trailing, 12)
+            .padding(.bottom, 6)
     }
 }
 

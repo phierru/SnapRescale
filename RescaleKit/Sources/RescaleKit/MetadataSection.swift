@@ -52,13 +52,17 @@ public struct MetadataSection: Hashable, Sendable, Identifiable {
     /// A remark to show under the title: an assumed colour profile, a gain map
     /// that is not saved. Nil for most sections.
     public var note: String?
+    /// True when `note` says that something of the source is not saved: the
+    /// inspector shows it as a warning rather than as an explanation.
+    public var noteIsLoss: Bool
     public var id: Kind { kind }
     public var title: String { kind.rawValue }
 
-    public init(kind: Kind, fields: [MetadataField] = [], note: String? = nil) {
+    public init(kind: Kind, fields: [MetadataField] = [], note: String? = nil, noteIsLoss: Bool = false) {
         self.kind = kind
         self.fields = fields
         self.note = note
+        self.noteIsLoss = noteIsLoss
     }
 
     /// The important fields, in reading order (camera, lens, date, exposure, …).
