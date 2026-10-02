@@ -208,7 +208,7 @@ public struct ImageMetadata: Hashable, Sendable {
             m.xmpExtendedPacket = extended
             xmp.fields = XMPReader.fields(packet: packet) ?? []
             if let extended { xmp.addMissing(XMPReader.fields(packet: extended) ?? []) }
-            if m.skipped.contains(.extendedXMP) { xmp.note = MetadataBudget.Skip.extendedXMP.note }
+            if m.skipped.contains(.extendedXMP) { xmp.note = MetadataBudget.Skip.extendedXMP.note; xmp.noteIsLoss = true }
             // A packet that does not parse, or is empty, is still a packet.
             if xmp.fields.isEmpty { xmp.add("Packet", MetadataFormat.bytes(packet.utf8.count)) }
         case .absent:
@@ -300,7 +300,7 @@ public struct ImageMetadata: Hashable, Sendable {
 
     /// Read-only facts about the pixels.
     var structureSection: MetadataSection {
-        var s = MetadataSection(kind: .structure, note: structureNote)
+        var s = MetadataSection(kind: .structure, note: structureNote, noteIsLoss: structureNote != nil)
         s.add("Alpha", hasAlpha ? "Yes" : "No")
         s.add("Bit depth", "\(bitDepth) bits per channel")
         s.fields.append(MetadataField(key: "HDR gain map", value: hasHDR ? "Yes" : "No",

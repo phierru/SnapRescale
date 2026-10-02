@@ -15,6 +15,22 @@ struct MetadataCapabilityTests {
         return MetadataPolicy.switchState(of: section, for: source, spec: spec)
     }
 
+    /// A note that reports a loss is a warning; one that only explains is not.
+    @Test func notesSayWhetherSomethingIsLost() throws {
+        // Lost: a graph outside PNG, a profile that falls back to sRGB.
+        #expect(try state(.comfyUI, .aiWorkflow, .jpeg).noteIsLoss)
+        #expect(try state(.cmyk, .icc, .keepOriginal).noteIsLoss)
+        // Explained: parameters moved to the user comment, IPTC kept as XMP,
+        // PNG's sRGB marker, the copies a strip also removes.
+        #expect(try state(.a1111PNG, .aiWorkflow, .jpeg).note != nil)
+        #expect(try !state(.a1111PNG, .aiWorkflow, .jpeg).noteIsLoss)
+        #expect(try !state(.iptcXMP, .iptc, .png).noteIsLoss)
+        #expect(try !state(.camera, .icc, .png) { $0.icc = .strip }.noteIsLoss)
+        #expect(try !state(.iptcXMP, .iptc, .jpeg) { $0.iptc = .strip }.noteIsLoss)
+        // No note, no warning.
+        #expect(try !state(.camera, .exif, .jpeg).noteIsLoss)
+    }
+
     @Test func aGraphNeedsPNG() throws {
         for fixture in [Fixture.comfyUI, .compressedText] {
             let metadata = try Fixture.load(fixture).metadata
