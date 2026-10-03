@@ -9,7 +9,10 @@ import zlib
 /// raw), and AI workflow payloads.
 struct MetadataContentsTests {
     static func deflate(_ text: String) -> [UInt8] {
-        let input = Array(text.utf8)
+        deflate(Array(text.utf8))
+    }
+
+    static func deflate(_ input: [UInt8]) -> [UInt8] {
         var length = compressBound(uLong(input.count))
         var out = [UInt8](repeating: 0, count: Int(length))
         let status = compress(&out, &length, input, uLong(input.count))

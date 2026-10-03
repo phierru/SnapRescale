@@ -16,6 +16,14 @@ struct MetadataBudgetTests {
 
     static func text(_ count: Int) -> String { String(repeating: "lorem ", count: count / 6 + 1).prefix(count).description }
 
+    /// Everything the chunks keep: raw copies, labels and text.
+    static func held(_ chunks: [PNGScanner.TextChunk]) -> Int {
+        chunks.reduce(0) {
+            $0 + $1.raw.count + $1.keyword.utf8.count + $1.languageTag.utf8.count + $1.translatedKeyword.utf8.count
+                + ($1.text?.utf8.count ?? 0)
+        }
+    }
+
     // MARK: PNG text
 
     @Test func severalLegalChunksCannotExceedTheTotal() throws {
@@ -28,13 +36,13 @@ struct MetadataBudgetTests {
         ]
         let png = MetadataContentsTests.png(chunks)
         // Each fits on its own; only two fit together. The small one after them still does.
-        var budget = MetadataBudget(bytes: 100)
+        var budget = MetadataBudget(bytes: 210)
         let kept = PNGScanner.textChunks(in: png, budget: &budget)
         #expect(kept.map(\.keyword) == ["Title", "Comment", "Software"])
-        #expect(kept.reduce(0) { $0 + ($1.text?.utf8.count ?? 0) } <= 100)
-        #expect(budget.skipped == [.pngText(count: 2)] && budget.bytes == 16)
+        #expect(Self.held(kept) == 210 - budget.bytes)
+        #expect(budget.skipped == [.pngText(count: 2)] && budget.bytes == 9)
 
-        let m = Self.inspect(png, .png, MetadataBudget(bytes: 100))
+        let m = Self.inspect(png, .png, MetadataBudget(bytes: 210))
         #expect(m.pngTextKeywords == ["Title", "Comment", "Software"])
         #expect(m.skipped == [.pngText(count: 2)])
         let note = try #require(m.section(.structure)?.note)
@@ -97,23 +105,27 @@ struct MetadataBudgetTests {
     /// Every attempt spends what it inflated, kept or not, so a stream that is
     /// over the limit cannot be inflated again and again for free.
     @Test func rejectedStreamsCannotRepeatTheWork() {
-        let png = MetadataContentsTests.png((0..<10).map { ("zTXt", MetadataContentsTests.zTXt("k\($0)", Self.text(1000))) }
+        let stream = MetadataContentsTests.zTXt("k", Self.text(1000))
+        let png = MetadataContentsTests.png(Array(repeating: ("zTXt", stream), count: 10)
             + [("tEXt", MetadataTests.tEXt("Software", "tiny"))])
-        // Inflating stops one byte past the limit, well short of a buffer: each attempt costs one.
+        // Inflating stops one byte past what the raw copy and keyword leave for
+        // the text, well short of a buffer: each attempt costs one.
         var budget = MetadataBudget(bytes: 100, work: 11 * PNGScanner.inflateBuffer)
         #expect(PNGScanner.textChunks(in: png, budget: &budget).map(\.keyword) == ["Software"])
         #expect(budget.work == PNGScanner.inflateBuffer && budget.skipped == [.pngText(count: 10)])
 
         // Spent after three attempts; the rest are not inflated, and the plain chunk does not need to be.
         budget = MetadataBudget(bytes: 100, work: 3 * PNGScanner.inflateBuffer)
-        #expect(PNGScanner.textChunks(in: png, budget: &budget).map(\.keyword) == ["Software"])
-        #expect(budget.work == 0 && budget.skipped == [.pngText(count: 10)] && budget.bytes == 96)
+        let kept = PNGScanner.textChunks(in: png, budget: &budget)
+        #expect(kept.map(\.keyword) == ["Software"] && Self.held(kept) == 100 - budget.bytes)
+        #expect(budget.work == 0 && budget.skipped == [.pngText(count: 10)])
 
-        // Past a buffer, an attempt costs what it inflated: one byte past the limit.
-        let long = MetadataContentsTests.png([("zTXt", MetadataContentsTests.zTXt("k", Self.text(300_000)))])
+        // Past a buffer, an attempt costs what it inflated: one byte past the room for the text.
+        let long = MetadataContentsTests.zTXt("k", Self.text(300_000))
         budget = MetadataBudget(bytes: 200_000)
-        #expect(PNGScanner.textChunks(in: long, budget: &budget).isEmpty)
-        #expect(budget.work == MetadataBudget.defaultWork - 200_001 && budget.skipped == [.pngText(count: 1)])
+        #expect(PNGScanner.textChunks(in: MetadataContentsTests.png([("zTXt", long)]), budget: &budget).isEmpty)
+        let room = 200_000 - (4 + long.count) - 1
+        #expect(budget.work == MetadataBudget.defaultWork - (room + 1) && budget.skipped == [.pngText(count: 1)])
     }
 
     /// However little an attempt inflates, it costs a buffer's worth of work,
@@ -155,12 +167,107 @@ struct MetadataBudgetTests {
         #expect(budget.skipped == [.pngText(count: 1)])
     }
 
-    /// A damaged stream is not a budget matter: kept without text, as before, and not reported.
-    @Test func damagedChunkIsKeptNotSkipped() {
+    /// A damaged stream keeps its chunk without text, charged for its raw bytes
+    /// and keyword; when those do not fit it is skipped and reported like any
+    /// other. So is one that inflates past the room for its text before it
+    /// breaks off: until then it cannot be told from one that is too long.
+    @Test func damagedChunkIsKeptOnlyWhenItFits() {
         let broken: [UInt8] = Array("workflow".utf8) + [0, 0, 0x78, 0x9C, 0xFF, 0xFF, 0xFF]
-        var budget = MetadataBudget(bytes: 10)
-        let kept = PNGScanner.textChunks(in: MetadataContentsTests.png([("zTXt", broken)]), budget: &budget)
+        let png = MetadataContentsTests.png([("zTXt", broken)])
+        let cost = 4 + broken.count + "workflow".utf8.count
+        var budget = MetadataBudget(bytes: cost)
+        let kept = PNGScanner.textChunks(in: png, budget: &budget)
         #expect(kept.map(\.text) == [nil] && budget.skipped.isEmpty && budget.elements == MetadataBudget.defaultElements - 1)
+        #expect(Self.held(kept) == cost && budget.bytes == 0)
+
+        budget = MetadataBudget(bytes: cost - 1)
+        #expect(PNGScanner.textChunks(in: png, budget: &budget).isEmpty)
+        #expect(budget.skipped == [.pngText(count: 1)] && budget.bytes == cost - 1)
+
+        let long = Array("workflow".utf8) + [0, 0] + MetadataContentsTests.deflate(Self.text(1000)).dropLast(4)
+        budget = MetadataBudget(bytes: 4 + long.count + "workflow".utf8.count + 500)
+        #expect(PNGScanner.textChunks(in: MetadataContentsTests.png([("zTXt", long)]), budget: &budget).isEmpty)
+        #expect(budget.skipped == [.pngText(count: 1)])
+    }
+
+    /// The raw copy, keyword, language tag and translated keyword are charged
+    /// along with the text.
+    @Test func labelsAndRawCopyAreCharged() {
+        let body = Array("Title".utf8) + [0, 0, 0] + Array("en".utf8) + [0]
+            + [UInt8](repeating: UInt8(ascii: "T"), count: 120) + [0] + Array("x".utf8)
+        let png = MetadataContentsTests.png([("iTXt", body)])
+        let cost = 4 + body.count + "Title".utf8.count + "en".utf8.count + 120 + 1
+        var budget = MetadataBudget(bytes: cost)
+        let kept = PNGScanner.textChunks(in: png, budget: &budget)
+        #expect(kept.map(\.translatedKeyword) == [String(repeating: "T", count: 120)] && kept.first?.text == "x")
+        #expect(Self.held(kept) == cost && budget.bytes == 0)
+
+        for bytes in [4, cost - 1] {
+            budget = MetadataBudget(bytes: bytes)
+            #expect(PNGScanner.textChunks(in: png, budget: &budget).isEmpty, "\(bytes)")
+            #expect(budget.skipped == [.pngText(count: 1)] && budget.bytes == bytes, "\(bytes)")
+        }
+    }
+
+    /// Text is charged as it is kept: Latin-1 and repaired UTF-8 take more room
+    /// than the bytes they were decoded from.
+    @Test func conversionGrowthIsCharged() {
+        let latin1 = [UInt8](repeating: 0xE9, count: 1000), invalid = [UInt8](repeating: 0xFF, count: 1000)
+        let cases: [(chunk: Chunk, text: Int)] = [
+            (("tEXt", Array("k".utf8) + [0] + latin1), 2000),
+            (("zTXt", Array("k".utf8) + [0, 0] + MetadataContentsTests.deflate(latin1)), 2000),
+            (("iTXt", Array("k".utf8) + [0, 1, 0, 0, 0] + MetadataContentsTests.deflate(invalid)), 3000),
+        ]
+        for (chunk, text) in cases {
+            let png = MetadataContentsTests.png([chunk])
+            let cost = 4 + chunk.body.count + 1 + text
+            var budget = MetadataBudget(bytes: cost - 1)
+            #expect(PNGScanner.textChunks(in: png, budget: &budget).isEmpty, "\(chunk.type)")
+            #expect(budget.skipped == [.pngText(count: 1)], "\(chunk.type)")
+
+            budget = MetadataBudget(bytes: cost)
+            let kept = PNGScanner.textChunks(in: png, budget: &budget)
+            #expect(kept.first?.text?.utf8.count == text && Self.held(kept) == cost && budget.bytes == 0, "\(chunk.type)")
+        }
+    }
+
+    /// Text is held as it is charged, as UTF-8: Latin-1 is not kept as the
+    /// UTF-16 Foundation decodes it to, twice its charge when mostly ASCII.
+    @Test func textIsHeldAsUTF8() {
+        let keyword = Array("L".utf8) + [0xE9] + Array("gende de l'image".utf8)
+        let latin1 = Array("caf".utf8) + [0xE9] + Array(Self.text(1000).utf8)
+        let png = MetadataContentsTests.png([
+            ("tEXt", keyword + [0] + latin1),
+            ("zTXt", keyword + [0, 0] + MetadataContentsTests.deflate(latin1)),
+        ])
+        let kept = PNGScanner.textChunks(in: png)
+        #expect(kept.map(\.keyword) == ["Légende de l'image", "Légende de l'image"])
+        #expect(kept.map(\.text) == Array(repeating: "café" + Self.text(1000), count: 2))
+        #expect(kept.allSatisfy { $0.keyword.isContiguousUTF8 && $0.text?.isContiguousUTF8 == true })
+    }
+
+    /// Each byte decodes as Foundation's Latin-1 does, and invalid UTF-8 is
+    /// repaired as `String(decoding:as:)` repairs it.
+    @Test func decodingMatchesFoundation() {
+        let all = (0...255).map(UInt8.init)
+        let invalid = all + [0xE2, 0x82, 0x41, 0xF0, 0x9F, 0x98, 0xC0, 0x80, 0xED, 0xA0, 0x80, 0xF4, 0x90, 0x80, 0x80]
+        let png = MetadataContentsTests.png([
+            ("tEXt", Array("k".utf8) + [0] + all),
+            ("iTXt", Array("k".utf8) + [0, 0, 0, 0, 0] + invalid),
+            ("iTXt", Array("k".utf8) + [0, 1, 0, 0, 0] + MetadataContentsTests.deflate(invalid)),
+        ])
+        let latin1 = String(data: Data(all), encoding: .isoLatin1)!, repaired = String(decoding: invalid, as: UTF8.self)
+        #expect(PNGScanner.textChunks(in: png).map { Array(($0.text ?? "").utf8) }
+            == [latin1, repaired, repaired].map { Array($0.utf8) })
+    }
+
+    /// Nothing is inflated when the raw copy does not fit. (That the labels are
+    /// not decoded either cannot be seen from here.)
+    @Test func roomIsCheckedBeforeDecoding() {
+        let body = MetadataContentsTests.zTXt("k", Self.text(1000))
+        var budget = MetadataBudget(bytes: 4 + body.count - 1, work: 5000)
+        #expect(PNGScanner.textChunks(in: MetadataContentsTests.png([("zTXt", body)]), budget: &budget).isEmpty)
+        #expect(budget.work == 5000 && budget.skipped == [.pngText(count: 1)])
     }
 
     /// The default must not cut real files: a ComfyUI graph runs to a few MB.
