@@ -13,5 +13,10 @@ let package = Package(
             dependencies: [.product(name: "RescaleKit", package: "RescaleKit")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
+        .testTarget(
+            name: "SnapRescaleTests",
+            dependencies: ["SnapRescale", .product(name: "RescaleKit", package: "RescaleKit")],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
     ]
 )
