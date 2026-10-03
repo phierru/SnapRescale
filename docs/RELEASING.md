@@ -63,3 +63,4 @@ images. After each step no staged file may be left: nothing named
 
 | Date | Build | macOS | Result |
 |---|---|---|---|
+| 2026-10-03 | fa50d19, Release 1.1 (3), ad-hoc | 26.6.2 (25G83), VM | Pass: all 9, plus relaunch legs for 4, 5 and 8, and `--save` twice gives `_2`. Open: error alerts name the staged `.tmp` instead of the file; a folder renamed while its image is open fails the save until the image is reopened |
