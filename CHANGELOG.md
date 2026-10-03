@@ -55,6 +55,21 @@ The Metadata milestone: implemented, not yet released.
   when IPTC is stripped, and the IPTC block ImageIO adds to a JPEG by itself.
 - C2PA content credentials are always stripped, and the inspector says why:
   the signature binds the original pixels.
+- Saving next to the original, and `rescale --write`, never replace a file
+  that appeared after the name was chosen: the output takes the next number.
+- Opening another image while Save & Quit is still saving keeps the app open
+  on that image instead of quitting.
+- Writing a large file to a slow disk no longer freezes the window, and a quit
+  waits until the file is written.
+- A folder allowed for saving also covers the folders inside it, and a save
+  that fails for another reason (a full disk) reports it instead of asking for
+  the folder again.
+- Presets: a presets folder that cannot be read or created is reported in the
+  Preset menu without emptying it, a failed Delete says so, and saving a
+  preset can no longer crash.
+- Metadata limits hold for every format: PNG text labels, raw copies and
+  decompression work, and the XMP of TIFF, WebP and JPEG count against the
+  per-image limit; anything over it is left out and named in the inspector.
 
 ### Known limits
 

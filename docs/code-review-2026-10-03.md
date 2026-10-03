@@ -300,3 +300,44 @@ release archive/notarization validation, secret-history audit, or audit of
 Apple's image/XML decoders. No external publication, deployment or exploit work
 was performed. Source-only findings and scanner-only runtime checks are marked
 individually above so they are not mistaken for end-to-end application results.
+
+---
+
+## Resolution log (coding assistant, 2026-10-03)
+
+Fixed on `review/fixes-2026-10-03` (milestone "Review 2026-10-03", tracking
+#45). Each finding was first checked independently against `8295701`; the
+fixes were then made one commit per item, each reviewed by two or three
+reviewers with different lenses, and their confirmed findings folded in.
+
+| Finding | Status | Commit · issue |
+|---|---|---|
+| S2 PNG work limit | **Fixed.** `MetadataBudget.work`, 128 MiB per image; every inflate attempt spends what it produced, at least one 64 KiB buffer; nothing is inflated without an element or work left; skips are reported, damaged streams included | `6f48b39` · #36 |
+| S1 PNG retained data | **Fixed.** Raw copy, keyword, language, translated keyword and decoded text are charged before the raw copy is made; text is built as native UTF-8 of exactly the charged size (Latin-1 and lossy repair included); a damaged chunk that does not fit is skipped and reported | `ea43dc1` · #37 |
+| S3 XMP in every container | **Fixed.** TIFF, WebP and the primary JPEG packet draw on the budget; over it is skipped and reported, never handed to ImageIO (the TIFF fallback is gone); extended-XMP collection is bounded; an extension dropped for size says so as a loss note | `4e17b78` · #38 |
+| G2 exclusive create | **Fixed.** `SafeWrite.create` stages once and commits with `renamex_np(RENAME_EXCL)`, moving to the next counter on a collision; check-then-replace fallback on volumes without it; silent save and CLI use it; Save As and Export still replace | `9a9bfe3` · #39 |
+| P3 main-actor write | **Fixed.** `writeDetached` / `createDetached`; a quit waits for writes in flight (`applicationShouldTerminate`) | `2e4f877` · #40 |
+| G1 save vs. newer image | **Fixed.** A save keeps its load generation (Save As: before the panel); `lastSaved` and the one-shot quit only while it is current, rechecked after the delay; the quit runs from a run-loop block so a pending export cannot hang it | `051d30e` · #41 |
+| Found in verification: folder grants | **Fixed.** A stored grant covers subfolders (path components); only a refusal leads to asking again | `0e93a43` · #42 |
+| P3 preset errors | **Fixed.** Folder problems in the Preset menu with the last list kept; a failed Delete reports; no force unwrap after Save Preset; new SwiftPM test target `SnapRescaleTests` | `658951e` · #43 |
+| Verification gap: sandbox | **Checklist added** to `docs/RELEASING.md` as a release gate; not yet run | #44 |
+
+**Verified:** `swift test --package-path RescaleKit` 307 tests in 24 suites;
+`swift test --package-path SnapRescale` 9 tests; app build without warnings.
+In an unsandboxed dev build, against the same scripts on `main`:
+
+| Trial | `main` | fixed |
+|---|---|---|
+| Open B while A's Save & Quit encodes (×2) | app quits | stays open |
+| Open B within 300 ms of A's file landing (×2) | app quits | stays open |
+| Another process creates the output name during the render | its bytes overwritten | kept; output `_2` |
+| `--save` alone (control) | quits | quits |
+
+`rescale --write` twice gives `_2`. Crafted-file probes by the reviewers
+confirmed the bounds: inflate work at most 128 MiB per image, retained text
+equal to the charge.
+
+**Not verified:** the sandboxed build (renamex_np under the App Sandbox,
+staging, folder grants, relaunch); that is the RELEASING.md checklist. Whether
+ImageIO itself reads a large WebP/TIFF XMP during the pixel load is outside
+the scanners' budget and was not measured.

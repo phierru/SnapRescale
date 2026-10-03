@@ -123,7 +123,8 @@ Metadata milestone — not yet exercised by running the app:
 
 - The HDR note, on a real gain-map photo.
 - The C2PA section, with a really signed file.
-- Export… and Export All… in a sandboxed release build.
+- Export… and Export All… in a sandboxed release build (part of the sandbox
+  checks in `RELEASING.md`).
 
 ## M5 — ship it (current)
 
