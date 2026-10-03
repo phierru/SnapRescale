@@ -1,6 +1,5 @@
 import AppKit
 import Foundation
-import RescaleKit
 
 /// Sandbox-aware write access to a folder (PRD §8, §11).
 ///
@@ -14,31 +13,31 @@ enum FolderAccess {
     private static let defaultsKey = "folderBookmarks"
 
     enum Outcome {
-        case written
+        /// Where the file went, which `commit` decides.
+        case written(URL)
         case cancelled
         case failed(Error)
     }
 
-    /// Writes `data` to `url`, asking for its folder once if the sandbox refuses.
-    /// Every attempt replaces the file as a whole or leaves it alone (`SafeWrite`).
-    static func write(_ data: Data, to url: URL) -> Outcome {
-        let folder = url.deletingLastPathComponent()
-
+    /// Runs `commit`, which writes into `folder` and returns the URL it wrote,
+    /// asking for the folder once if the sandbox refuses. `commit` may run
+    /// again after a failure, so a failed attempt must leave nothing behind
+    /// and any existing file as it was (`SafeWrite`).
+    static func write(in folder: URL, _ commit: () throws -> URL) -> Outcome {
         // 1. A stored grant for this folder.
         if let granted = resolveBookmark(for: folder) {
             defer { granted.stopAccessingSecurityScopedResource() }
-            do { try SafeWrite.write(data, to: url); return .written } catch { /* fall through to re-ask */ }
+            do { return .written(try commit()) } catch { /* fall through to re-ask */ }
         }
 
         // 2. Plain write: works unsandboxed, or when the folder is already reachable.
         do {
-            try SafeWrite.write(data, to: url)
-            return .written
+            return .written(try commit())
         } catch let error as NSError where isPermissionDenied(error) {
             // 3. Ask once for the folder.
             guard let granted = askForFolder(folder) else { return .cancelled }
             defer { granted.stopAccessingSecurityScopedResource() }
-            do { try SafeWrite.write(data, to: url); return .written } catch { return .failed(error) }
+            do { return .written(try commit()) } catch { return .failed(error) }
         } catch {
             return .failed(error)
         }

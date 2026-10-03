@@ -134,8 +134,8 @@ if write {
     let spec = RenderSpec(target: s.size, fit: fit, format: format, quality: quality)
     do {
         let data = try Renderer.produce(loaded, spec: spec)
-        let url = OutputNaming.url(for: loaded, spec: spec)
-        try data.write(to: url)
+        // Staged, and never over a file that appears meanwhile (review 2026-10-03, G2).
+        let url = try SafeWrite.create(data, firstFreeOf: OutputNaming.candidates(for: loaded, spec: spec))
         print("wrote    \(url.path)  (\(data.count) bytes)")
     } catch { fail(error.localizedDescription) }
 }

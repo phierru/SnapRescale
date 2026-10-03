@@ -466,7 +466,7 @@ final class Session {
 
     func saveNextToOriginal() {
         guard canSave, let source, let spec else { return }
-        write(to: OutputNaming.url(for: source, spec: spec), source: source, spec: spec, viaFolderAccess: true)
+        write(to: .nextToOriginal, source: source, spec: spec)
     }
 
     func saveAs() {
@@ -477,15 +477,25 @@ final class Session {
         panel.nameFieldStringValue = suggested.lastPathComponent
         panel.allowedContentTypes = spec.format.resolvedType(for: source.type).map { [$0] } ?? []
         if panel.runModal() == .OK, let url = panel.url {
-            write(to: url, source: source, spec: spec)
+            write(to: .chosen(url), source: source, spec: spec)
         }
     }
 
-    /// `viaFolderAccess` is the silent path: it may ask for the folder once under
-    /// the sandbox. The save panel path already carries its own grant. The
-    /// encode runs off the main actor; the window shows a saving state meanwhile.
-    /// Both paths replace an existing file as a whole, or not at all (`SafeWrite`).
-    private func write(to url: URL, source: SourceImage, spec: RenderSpec, viaFolderAccess: Bool = false) {
+    private enum Destination {
+        /// The save panel's URL, which carries its own grant.
+        case chosen(URL)
+        /// The silent path, `{name}_{w}x{h}.{ext}` or the next free counter.
+        case nextToOriginal
+    }
+
+    /// `nextToOriginal` may ask for the folder once under the sandbox, and
+    /// takes the first name that is free when the file lands: it replaces no
+    /// file (review 2026-10-03, G2), except in the check-then-replace fallback
+    /// on a volume without an exclusive rename (`SafeWrite.create`). A
+    /// `chosen` URL replaces an existing file as a whole, since the save panel
+    /// confirmed that, or not at all (`SafeWrite`). The encode runs off the
+    /// main actor; the window shows a saving state meanwhile.
+    private func write(to destination: Destination, source: SourceImage, spec: RenderSpec) {
         isSaving = true
         Task {
             defer { isSaving = false }
@@ -493,14 +503,21 @@ final class Session {
                 let data = try await Task.detached(priority: .userInitiated) {
                     try Renderer.produce(source, spec: spec)
                 }.value
-                if viaFolderAccess {
-                    switch FolderAccess.write(data, to: url) {
-                    case .written: break
+                let url: URL
+                switch destination {
+                case .chosen(let chosen):
+                    try SafeWrite.write(data, to: chosen)
+                    url = chosen
+                case .nextToOriginal:
+                    let candidates = OutputNaming.candidates(for: source, spec: spec)
+                    let outcome = FolderAccess.write(in: source.url.deletingLastPathComponent()) {
+                        try SafeWrite.create(data, firstFreeOf: candidates)
+                    }
+                    switch outcome {
+                    case .written(let written): url = written
                     case .cancelled: return
                     case .failed(let error): throw error
                     }
-                } else {
-                    try SafeWrite.write(data, to: url)
                 }
                 // Only a committed file is reported as saved (review 2026-09-30, G1).
                 lastSaved = url

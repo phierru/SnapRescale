@@ -1,8 +1,10 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import RescaleKit
 
 /// Review 2026-09-30, G1: a failed save must not cost the file it replaces.
+/// Review 2026-10-03, G2: a save nobody confirmed must not replace anything.
 @Suite struct SafeWriteTests {
     struct Injected: Error {}
 
@@ -91,6 +93,88 @@ import Testing
             }
             #expect(try Data(contentsOf: url) == original)
             #expect(try names(in: locked) == ["out.jpg"])
+        }
+    }
+
+    // MARK: Create-only (review 2026-10-03, G2)
+
+    /// What `OutputNaming.candidates` yields for an output called `out.jpg`.
+    private func candidates(in dir: URL) -> [URL] {
+        (["out.jpg"] + (2...20).map { "out_\($0).jpg" }).map { dir.appendingPathComponent($0) }
+    }
+
+    /// Another process takes the chosen name while the output is still being
+    /// staged: its file keeps its bytes, and the output goes to the next name.
+    @Test func createSkipsANameTakenAfterTheChoice() throws {
+        try withFolder { dir in
+            let urls = candidates(in: dir)
+            let theirs = Data("theirs".utf8)
+            let written = try SafeWrite.create(Data("ours".utf8), firstFreeOf: urls) { data, temp in
+                try theirs.write(to: urls[0])
+                try data.write(to: temp)
+            }
+            #expect(written == urls[1])
+            #expect(try Data(contentsOf: urls[0]) == theirs)
+            #expect(try Data(contentsOf: urls[1]) == Data("ours".utf8))
+            #expect(try names(in: dir) == ["out.jpg", "out_2.jpg"])
+        }
+    }
+
+    /// Writers that all chose the same name each keep their output, under a name of their own.
+    @Test func concurrentCreatesKeepEveryOutput() throws {
+        try withFolder { dir in
+            let urls = candidates(in: dir)
+            let results = Mutex<[Result<URL, any Error>]>([])
+            DispatchQueue.concurrentPerform(iterations: 8) { i in
+                let result = Result { try SafeWrite.create(Data("writer \(i)".utf8), firstFreeOf: urls) }
+                results.withLock { $0.append(result) }
+            }
+            let written = try results.withLock { $0 }.map { try $0.get() }
+            #expect(Set(written) == Set(urls.prefix(8)))
+            let contents = try written.map { String(decoding: try Data(contentsOf: $0), as: UTF8.self) }
+            #expect(Set(contents) == Set((0..<8).map { "writer \($0)" }))
+            #expect(try names(in: dir) == urls.prefix(8).map(\.lastPathComponent).sorted())
+        }
+    }
+
+    /// Nothing in the folder, and the staged copy, which lives elsewhere, is gone.
+    @Test func failedCreateLeavesNothing() throws {
+        try withFolder { dir in
+            var staged: URL?
+            #expect(throws: Injected.self) {
+                try SafeWrite.create(Data("fresh".utf8), firstFreeOf: candidates(in: dir)) { data, temp in
+                    staged = temp
+                    try data.prefix(2).write(to: temp)
+                    throw Injected()
+                }
+            }
+            let left = try names(in: dir)
+            #expect(left.isEmpty)
+            #expect(!FileManager.default.fileExists(atPath: try #require(staged).path))
+        }
+    }
+
+    /// The folder refuses the new file: the error is the permission refusal
+    /// `FolderAccess` asks for the folder on, and nothing is left behind.
+    @Test func refusedCreateLeavesNothing() throws {
+        try withFolder { dir in
+            let locked = dir.appendingPathComponent("locked")
+            try FileManager.default.createDirectory(at: locked, withIntermediateDirectories: true)
+            let original = Data("original".utf8)
+            try original.write(to: locked.appendingPathComponent("out.jpg"))
+            try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: locked.path)
+            defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path) }
+            var staged: URL?
+            let error = #expect(throws: CocoaError.self) {
+                try SafeWrite.create(Data("fresh".utf8), firstFreeOf: candidates(in: locked)) { data, temp in
+                    staged = temp
+                    try data.write(to: temp)
+                }
+            }
+            #expect(error?.code == .fileWriteNoPermission)
+            #expect(try Data(contentsOf: locked.appendingPathComponent("out.jpg")) == original)
+            #expect(try names(in: locked) == ["out.jpg"])
+            #expect(!FileManager.default.fileExists(atPath: try #require(staged).path))
         }
     }
 }
