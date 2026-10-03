@@ -36,8 +36,9 @@ public struct ImageMetadata: Hashable, Sendable {
     /// Where the C2PA manifest was found, e.g. "JPEG APP11 segment (JUMBF)".
     public var c2paLocation: String?
     /// The XMP packet as stored in the file (JPEG APP1, PNG `iTXt`, TIFF tag 700,
-    /// WebP `XMP ` chunk, HEIC `mime` item). Nil when the file has none, and for
-    /// containers `XMPScanner` does not walk, where `hasXMP` comes from ImageIO.
+    /// WebP `XMP ` chunk, HEIC `mime` item). Nil when the file has none or it
+    /// was over the budget (see `skipped`), and for containers `XMPScanner`
+    /// does not walk, where `hasXMP` comes from ImageIO.
     public var xmpPacket: String?
     /// A JPEG's extended XMP (the part over 64 KB), reassembled. A second RDF document.
     public var xmpExtendedPacket: String?
@@ -208,7 +209,8 @@ public struct ImageMetadata: Hashable, Sendable {
             m.xmpExtendedPacket = extended
             xmp.fields = XMPReader.fields(packet: packet) ?? []
             if let extended { xmp.addMissing(XMPReader.fields(packet: extended) ?? []) }
-            if m.skipped.contains(.extendedXMP) { xmp.note = MetadataBudget.Skip.extendedXMP.note; xmp.noteIsLoss = true }
+            let ignored = m.skipped.filter(Self.isExtendedXMP).map(\.note)
+            if !ignored.isEmpty { xmp.note = ignored.joined(separator: " "); xmp.noteIsLoss = true }
             // A packet that does not parse, or is empty, is still a packet.
             if xmp.fields.isEmpty { xmp.add("Packet", MetadataFormat.bytes(packet.utf8.count)) }
         case .absent:
@@ -294,8 +296,13 @@ public struct ImageMetadata: Hashable, Sendable {
     /// one section every file shows, so the inspector always has it to display.
     /// Ignored extended XMP is remarked on the XMP section instead.
     var structureNote: String? {
-        let notes = [hdrNote].compactMap { $0 } + skipped.filter { $0 != .extendedXMP }.map(\.note)
+        let notes = [hdrNote].compactMap { $0 } + skipped.filter { !Self.isExtendedXMP($0) }.map(\.note)
         return notes.isEmpty ? nil : notes.joined(separator: " ")
+    }
+
+    /// Extended XMP left out, for whatever reason: its main packet's section says so.
+    static func isExtendedXMP(_ skip: MetadataBudget.Skip) -> Bool {
+        skip == .extendedXMP || skip == .extendedXMPOverLimit
     }
 
     /// Read-only facts about the pixels.
