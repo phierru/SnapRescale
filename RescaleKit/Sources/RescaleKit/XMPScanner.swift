@@ -12,7 +12,7 @@ public enum XMPScanner {
     public enum Result: Hashable, Sendable {
         /// The packet as stored, and the reassembled extended packet of a JPEG if any.
         case found(packet: String, extended: String?)
-        /// The container was walked and holds no packet.
+        /// The container was walked and holds no packet, or none within the budget.
         case absent
         /// The container is not one we walk, or could not be walked.
         case notScanned
@@ -31,15 +31,18 @@ public enum XMPScanner {
     }
 
     /// `pngChunks` spares a second walk when the caller has them already, and
-    /// were charged to `budget` then. What is assembled here draws on it too;
-    /// TIFF and WebP packets are single runs of the file's own bytes.
+    /// were charged to `budget` then. Every other packet read here draws on it
+    /// too; one that does not fit is reported in `budget.skipped`. A main
+    /// packet that does not fit makes the result `.absent`, so it is not handed
+    /// to ImageIO to read instead; a JPEG extension that does not fit is left
+    /// out of `.found`.
     static func packet(in data: Data, type: UTType, pngChunks: [PNGScanner.TextChunk]?,
                        budget: inout MetadataBudget) -> Result {
         let bytes = Bytes(data)
         if type.conforms(to: .png) { return png(pngChunks ?? PNGScanner.textChunks(in: data, budget: &budget), bytes) }
         if type.conforms(to: .jpeg) { return jpeg(bytes, &budget) }
-        if type.conforms(to: .tiff) { return tiff(bytes) }
-        if type.conforms(to: .webP) { return webP(bytes) }
+        if type.conforms(to: .tiff) { return tiff(bytes, &budget) }
+        if type.conforms(to: .webP) { return webP(bytes, &budget) }
         if type.conforms(to: .heic) || type.conforms(to: .heif) || type.identifier == "public.avif" {
             return isoBMFF(bytes, &budget)
         }
@@ -54,12 +57,15 @@ public enum XMPScanner {
     /// Only the extension the standard packet names in `xmpNote:HasExtendedXMP`
     /// is its own, and only when the portions agree on the total length and
     /// cover it exactly once (XMP Part 3 §1.1.3.1). Anything else is left out
-    /// and reported through `budget.skipped`.
+    /// and reported through `budget.skipped`. Portions are collected no further
+    /// than the budget could hold them, by count and by size, whoever they
+    /// belong to; past that, the extension is reported as over the limit.
     static func jpeg(_ d: Bytes, _ budget: inout MetadataBudget) -> Result {
         guard d.count > 4, d[0] == 0xFF, d[1] == 0xD8 else { return .notScanned }
         var main: Data?
         var portions: [Portion] = []
-        var unusable = false
+        var collected = 0
+        var unusable = false, crowded = false
         var i = 2
         while i + 4 <= d.count, d[i] == 0xFF {
             let marker = d[i + 1]
@@ -72,25 +78,37 @@ public enum XMPScanner {
                 if main == nil, d.starts(with: jpegNamespace, at: start, end: end) {
                     main = d.slice(start + jpegNamespace.count, end)
                 } else if d.starts(with: jpegExtensionNamespace, at: start, end: end) {
-                    let header = start + jpegExtensionNamespace.count + 32
-                    if header + 8 < end {
+                    let header = start + jpegExtensionNamespace.count + 32, size = end - header - 8
+                    if size <= 0 {
+                        unusable = true
+                    } else if crowded || portions.count >= budget.elements || size > budget.bytes - collected {
+                        // Collected no further than the budget could hold, as HEIF joins its extents.
+                        crowded = true
+                    } else {
                         portions.append(Portion(guid: d.slice(header - 32, header), total: d.u32(header),
                                                 offset: d.u32(header + 4), data: d.slice(header + 8, end)))
-                    } else {
-                        unusable = true
+                        collected += size
                     }
                 }
             }
             i = end
         }
         guard let main else { return .absent }
-        guard !portions.isEmpty || unusable else { return .found(packet: string(main), extended: nil) }
+        guard let packet = charged(main, &budget) else { return .absent }
+        if crowded {
+            budget.skipped.append(.extendedXMPOverLimit)
+            return .found(packet: packet, extended: nil)
+        }
+        guard !portions.isEmpty || unusable else { return .found(packet: packet, extended: nil) }
 
-        let packet = string(main)
         let own = extensionGUID(in: packet).map { guid in portions.filter { $0.guid.elementsEqual(guid) } } ?? []
+        let skips = budget.skipped.count
         let extended = assembled(own, &budget)
-        if extended == nil || own.count != portions.count || unusable { budget.skipped.append(.extendedXMP) }
-        return .found(packet: packet, extended: extended.map(string))
+        let overLimit = budget.skipped.count > skips
+        if (extended == nil && !overLimit) || own.count != portions.count || unusable {
+            budget.skipped.append(.extendedXMP)
+        }
+        return .found(packet: packet, extended: extended)
     }
 
     /// One extension segment: the packet's GUID (32 ASCII hex digits), its
@@ -109,17 +127,27 @@ public enum XMPScanner {
     }
 
     /// One group's portions joined in offset order, whatever their order in the
-    /// file. Nil unless they agree on a total within the budget and each starts
-    /// where the last ended, from 0 to that total: no gap, no overlap, no excess.
-    static func assembled(_ portions: [Portion], _ budget: inout MetadataBudget) -> Data? {
-        guard let total = portions.first?.total, total > 0, total <= sizeLimit, total <= budget.bytes,
+    /// file, charged to `budget`. Nil unless they agree on a total and each
+    /// starts where the last ended, from 0 to that total: no gap, no overlap,
+    /// no excess. One that would but is over the budget is not joined; it is
+    /// recorded as skipped, over the limit, and nil returned.
+    static func assembled(_ portions: [Portion], _ budget: inout MetadataBudget) -> String? {
+        guard let total = portions.first?.total, total > 0,
               portions.allSatisfy({ $0.total == total }) else { return nil }
-        var out = Data(capacity: total)
-        for portion in portions.sorted(by: { $0.offset < $1.offset }) {
-            guard portion.offset == out.count, portion.data.count <= total - out.count else { return nil }
-            out.append(portion.data)
+        let sorted = portions.sorted { $0.offset < $1.offset }
+        var end = 0
+        for portion in sorted {
+            guard portion.offset == end, portion.data.count <= total - end else { return nil }
+            end += portion.data.count
         }
-        return out.count == total && budget.take(total) ? out : nil
+        guard end == total else { return nil }
+        guard total <= sizeLimit, budget.elements > 0, total <= budget.bytes else {
+            budget.skipped.append(.extendedXMPOverLimit)
+            return nil
+        }
+        var out = Data(capacity: total)
+        for portion in sorted { out.append(portion.data) }
+        return charged(out, &budget, skip: .extendedXMPOverLimit)
     }
 
     // MARK: PNG
@@ -135,7 +163,7 @@ public enum XMPScanner {
     // MARK: TIFF
 
     /// Tag 700 (XMLPacket) of the first IFD. BigTIFF is not walked.
-    static func tiff(_ d: Bytes) -> Result {
+    static func tiff(_ d: Bytes, _ budget: inout MetadataBudget) -> Result {
         guard d.count >= 8 else { return .notScanned }
         let little: Bool
         switch (d[0], d[1]) {
@@ -154,21 +182,25 @@ public enum XMPScanner {
             // BYTE or UNDEFINED, so the count is the size; four bytes or fewer sit inline.
             let size = d.u32(e + 4, little: little)
             let at = size <= 4 ? e + 8 : d.u32(e + 8, little: little)
-            guard size > 0, size <= sizeLimit, at + size <= d.count else { return .notScanned }
-            return .found(packet: string(d.slice(at, at + size)), extended: nil)
+            guard size > 0, at + size <= d.count else { return .notScanned }
+            // Over the budget, or the size limit, is not handed to ImageIO to read instead.
+            return charged(d.slice(at, at + size), &budget).map { .found(packet: $0, extended: nil) } ?? .absent
         }
         return .absent
     }
 
     // MARK: WebP
 
-    static func webP(_ d: Bytes) -> Result {
+    static func webP(_ d: Bytes, _ budget: inout MetadataBudget) -> Result {
         guard d.count >= 12, d.fourCC(0) == "RIFF", d.fourCC(8) == "WEBP" else { return .notScanned }
         var i = 12
         while i + 8 <= d.count {
             let size = d.u32(i + 4, little: true)
             guard i + 8 + size <= d.count else { break }
-            if d.fourCC(i) == "XMP " { return .found(packet: string(d.slice(i + 8, i + 8 + size)), extended: nil) }
+            if d.fourCC(i) == "XMP " {
+                let packet = charged(d.slice(i + 8, i + 8 + size), &budget)
+                return packet.map { .found(packet: $0, extended: nil) } ?? .absent
+            }
             i += 8 + size + (size & 1)
         }
         return .absent
@@ -202,11 +234,11 @@ public enum XMPScanner {
         guard let itemID else { return .absent }
         guard let iloc = children.first(where: { $0.type == "iloc" }) else { return .notScanned }
         let skips = budget.skipped.count
-        guard let packet = item(itemID, d, iloc: iloc, idat: children.first { $0.type == "idat" }, &budget) else {
+        guard let joined = item(itemID, d, iloc: iloc, idat: children.first { $0.type == "idat" }, &budget) else {
             // Over the budget is not handed to ImageIO to assemble instead.
             return budget.skipped.count > skips ? .absent : .notScanned
         }
-        return .found(packet: string(packet), extended: nil)
+        return charged(joined, &budget).map { .found(packet: $0, extended: nil) } ?? .absent
     }
 
     struct Box { let type: String; let start: Int; let end: Int }
@@ -233,6 +265,7 @@ public enum XMPScanner {
     /// An item's bytes, its extents joined. File offsets and `idat` offsets only.
     /// Extents may repeat a range, so the joined size is held to `budget`, not
     /// to the file's: past it the item is recorded as skipped and nil returned.
+    /// What is joined is charged by the caller, as the packet it decodes to.
     private static func item(_ wanted: Int, _ d: Bytes, iloc: Box, idat: Box?, _ budget: inout MetadataBudget) -> Data? {
         var p = iloc.start
         guard p + 6 <= iloc.end else { return nil }
@@ -288,18 +321,42 @@ public enum XMPScanner {
                 guard size <= budget.bytes - out.count else { return over() }
                 out.append(d.slice(at, at + size))
             }
-            if id == wanted { return out.isEmpty ? nil : budget.take(out.count) ? out : over() }
+            if id == wanted { return out.isEmpty ? nil : out }
         }
         return nil
     }
 
     // MARK: Bytes
 
+    /// `data` as a packet, charged to `budget` at its size once decoded, which
+    /// lossy repair can make larger than the bytes. Nil, and `skip` recorded,
+    /// when it is over the size limit or does not fit. Decoding never makes it
+    /// smaller, so bytes that do not fit are not decoded; repaired ones are
+    /// counted before they are built, at exactly the size they are charged.
+    static func charged(_ data: Data, _ budget: inout MetadataBudget,
+                        skip: MetadataBudget.Skip = .xmpPacket) -> String? {
+        func over() -> String? {
+            budget.skipped.append(skip)
+            return nil
+        }
+        guard data.count <= sizeLimit, budget.elements > 0 else { return over() }
+        let bytes = unpadded(data), room = budget.bytes
+        guard bytes.count <= room,
+              let packet = String(validating: bytes, as: UTF8.self)
+                ?? bytes.withUnsafeBytes({ String(transcoding: $0, from: UTF8.self, limit: room) }),
+              budget.take(packet.utf8.count) else { return over() }
+        return packet
+    }
+
     /// UTF-8 (lossy when damaged), without the NUL padding some writers leave.
     private static func string(_ data: Data) -> String {
+        String(decoding: unpadded(data), as: UTF8.self)
+    }
+
+    private static func unpadded(_ data: Data) -> Data {
         var end = data.endIndex
         while end > data.startIndex, data[end - 1] == 0 { end -= 1 }
-        return String(decoding: data[data.startIndex..<end], as: UTF8.self)
+        return data[data.startIndex..<end]
     }
 
     /// Zero-based, bounds-checked-by-the-caller reads over a (possibly sliced) `Data`.

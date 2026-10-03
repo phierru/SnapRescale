@@ -2,18 +2,24 @@ import Foundation
 import zlib
 
 /// One image's allowance for the metadata its scanners lift out of the file:
-/// decoded bytes and element count, shared by everything read from that file,
-/// so that many individually legal elements cannot add up past it. Neither the
-/// pixel size nor the file size bounds what a text chunk inflates to.
+/// the bytes kept (raw copies, and strings at their size once decoded, as the
+/// UTF-8 they are held in) and the element count, shared by everything read
+/// from that file so that many individually legal elements cannot add up past
+/// it, and the inflate work spent getting there. Neither the pixel size nor the
+/// file size bounds what a text chunk inflates to.
 public struct MetadataBudget: Hashable, Sendable {
     /// What a scanner left out. The inspector shows `note`; none of it is written on save.
     public enum Skip: Hashable, Sendable {
         /// PNG text chunks past the budget.
         case pngText(count: Int)
-        /// An XMP packet whose extents join to more than the budget (HEIC / HEIF / AVIF).
+        /// An XMP packet over the budget or the size limit, in a JPEG, TIFF, WebP
+        /// or HEIC / HEIF / AVIF (whose extents may join to more than the file):
+        /// left out, not read through ImageIO instead.
         case xmpPacket
         /// JPEG extended XMP the main packet does not name, or that does not assemble.
         case extendedXMP
+        /// JPEG extended XMP past the budget, assembled or while its portions were collected.
+        case extendedXMPOverLimit
 
         public var note: String {
             switch self {
@@ -26,32 +32,47 @@ public struct MetadataBudget: Hashable, Sendable {
             case .extendedXMP:
                 return "Extended XMP that does not belong to this packet, or is incomplete, was ignored: not shown "
                     + "here and not carried into the saved file."
+            case .extendedXMPOverLimit:
+                return "Extended XMP was over the metadata size limit and not read: not shown here and not carried "
+                    + "into the saved file."
             }
         }
     }
 
     /// 64 MiB: what a single inflated chunk was already allowed, now for the
-    /// whole image. A ComfyUI graph runs from tens of kB to a few MB.
+    /// whole image. A ComfyUI graph runs from tens of kB to a few MB; kept in
+    /// an uncompressed chunk it counts twice, as raw copy and as text.
     public static let defaultBytes = 64 << 20
     /// Real files carry a handful of text chunks; this only stops a flood of tiny ones.
     public static let defaultElements = 4096
+    /// 128 MiB of inflate output, kept or not: twice what can be kept, so that
+    /// streams which are rejected (over the limit, damaged) cannot repeat the
+    /// work. An attempt costs at least 64 KiB, so this bounds their number too.
+    public static let defaultWork = 2 * defaultBytes
 
     /// What is left of each.
     public private(set) var bytes: Int
     public private(set) var elements: Int
+    public private(set) var work: Int
     public internal(set) var skipped: [Skip] = []
 
-    public init(bytes: Int = defaultBytes, elements: Int = defaultElements) {
+    public init(bytes: Int = defaultBytes, elements: Int = defaultElements, work: Int = defaultWork) {
         self.bytes = max(0, bytes)
         self.elements = max(0, elements)
+        self.work = max(0, work)
     }
 
-    /// One more element of `count` decoded bytes; false, and nothing taken, when it does not fit.
+    /// One more element of `count` bytes kept; false, and nothing taken, when it does not fit.
     mutating func take(_ count: Int) -> Bool {
         guard elements > 0, count >= 0, count <= bytes else { return false }
         elements -= 1
         bytes -= count
         return true
+    }
+
+    /// Inflate work done, whether or not its output is kept.
+    mutating func spend(_ count: Int) {
+        work = max(0, work - count)
     }
 }
 
@@ -86,6 +107,10 @@ public enum PNGScanner {
     static let signature: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
     /// Ceiling on one inflated text chunk, against decompression bombs.
     static let inflateLimit = 64 << 20
+    /// What one inflate pass writes into. An attempt costs at least this much
+    /// work, however little it inflates, so that the allowance bounds how many
+    /// attempts are made as well as their output.
+    static let inflateBuffer = 64 << 10
 
     /// Text chunks in file order.
     public static func textChunks(in data: Data) -> [TextChunk] {
@@ -93,57 +118,85 @@ public enum PNGScanner {
         return textChunks(in: data, budget: &budget)
     }
 
-    /// As above, drawing on the image's `budget`. A chunk that does not fit is
-    /// left out whole, text and raw bytes, and counted in `budget.skipped`.
+    /// As above, drawing on the image's `budget`. A chunk is charged for all it
+    /// keeps: its raw copy, keyword, language tag and translated keyword, and
+    /// its text as decoded, each checked against what is left before it is
+    /// decoded. One that does not fit is left out whole and counted in
+    /// `budget.skipped`; so is a compressed one, damaged or not, once the
+    /// budget's work is spent. A damaged stream is kept without text, unless it
+    /// inflates past the room for the text before it breaks off: that is over
+    /// the limit, as a stream too long to keep is.
     static func textChunks(in data: Data, budget: inout MetadataBudget) -> [TextChunk] {
         var out: [TextChunk] = []
         var skipped = 0
         forEachChunk(in: data) { type, body in
             guard type == "tEXt" || type == "zTXt" || type == "iTXt" else { return }
             guard let nul = body.firstIndex(of: 0) else { return }
-            // Room is checked before anything is decoded or copied. The outer nil
-            // is "does not fit"; the inner one a damaged stream, kept without text.
-            func plain(_ bytes: Data, utf8Only: Bool) -> String?? {
-                budget.take(bytes.count) ? .some(string(bytes, utf8Only: utf8Only)) : nil
-            }
-            func deflated(_ bytes: Data, utf8Only: Bool) -> String?? {
-                switch inflated(bytes, limit: min(inflateLimit, budget.bytes)) {
-                case .data(let d): return budget.take(d.count) ? .some(string(d, utf8Only: utf8Only)) : nil
-                case .damaged: return budget.take(0) ? .some(nil) : nil
-                case .overLimit: return nil
-                }
-            }
-            let keyword = string(body[body.startIndex..<nul], utf8Only: false)
-            var decoded: String??
+            // The fields are found first; nothing is decoded until the raw copy is known to fit.
+            var textBytes = body[(nul + 1)...]
             var compressed = false
-            var language = "", translated = ""
+            var languageBytes = Data(), translatedBytes = Data()
 
             switch type {
             case "tEXt":
-                // Latin-1 by the spec; most AI tools write UTF-8 anyway.
-                decoded = plain(body[(nul + 1)...], utf8Only: false)
+                // keyword\0 text
+                break
             case "zTXt":
                 // keyword\0 method(1) deflate stream
                 guard nul + 1 < body.endIndex else { return }
                 compressed = true
-                decoded = deflated(body[(nul + 2)...], utf8Only: false)
+                textBytes = body[(nul + 2)...]
             default:
                 // keyword\0 compressionFlag(1) method(1) language\0 translated\0 text
                 guard nul + 2 < body.endIndex else { return }
                 compressed = body[nul + 1] != 0
                 var i = nul + 3
                 guard let langEnd = body[i...].firstIndex(of: 0) else { return }
-                language = string(body[i..<langEnd], utf8Only: true)
+                languageBytes = body[i..<langEnd]
                 i = langEnd + 1
                 guard let transEnd = body[i...].firstIndex(of: 0) else { return }
-                translated = string(body[i..<transEnd], utf8Only: true)
-                i = transEnd + 1
-                decoded = compressed ? deflated(body[i...], utf8Only: true) : plain(body[i...], utf8Only: true)
+                translatedBytes = body[i..<transEnd]
+                textBytes = body[(transEnd + 1)...]
             }
-            guard let text = decoded else { skipped += 1; return }
+            let rawCount = body.count + 4
+            guard budget.elements > 0, rawCount <= budget.bytes else { skipped += 1; return }
+
+            // Latin-1 by the spec for tEXt and zTXt; most AI tools write UTF-8 anyway.
+            let utf8Only = type == "iTXt"
+            // What is left once the raw copy, and each field decoded so far, are
+            // paid for. A field that would not fit in it is not decoded.
+            var room = budget.bytes - rawCount
+            func decoded(_ bytes: Data, utf8Only: Bool) -> String? {
+                let s = string(bytes, utf8Only: utf8Only, limit: room)
+                room -= s?.utf8.count ?? 0
+                return s
+            }
+            guard let keyword = decoded(body[body.startIndex..<nul], utf8Only: false),
+                  let language = decoded(languageBytes, utf8Only: true),
+                  let translated = decoded(translatedBytes, utf8Only: true) else { skipped += 1; return }
+            let labels = keyword.utf8.count + language.utf8.count + translated.utf8.count
+            // The outer nil is "does not fit"; the inner one a damaged stream, kept without text.
+            func plain(_ bytes: Data) -> String?? {
+                decoded(bytes, utf8Only: utf8Only).map { .some($0) }
+            }
+            func deflated(_ bytes: Data) -> String?? {
+                // Nothing is inflated that could not be kept, nor once the work is spent.
+                guard budget.work > 0 else { return nil }
+                var work = 0
+                let result = inflated(bytes, limit: min(inflateLimit, room, budget.work), work: &work)
+                budget.spend(max(work, inflateBuffer))
+                switch result {
+                case .data(let d): return plain(d)
+                case .damaged: return .some(nil)
+                case .overLimit: return nil
+                }
+            }
+            // One charge for everything kept, before the raw copy is made.
+            guard let text = compressed ? deflated(textBytes) : plain(textBytes),
+                  budget.take(rawCount + labels + (text?.utf8.count ?? 0)) else { skipped += 1; return }
 
             // Copy out of the (possibly memory-mapped) file so the chunk owns its bytes.
-            var raw = Data(capacity: body.count + 4)
+            var raw = Data(capacity: rawCount)
             raw.append(contentsOf: Array(type.utf8))
             raw.append(contentsOf: body)
             out.append(TextChunk(type: type, keyword: keyword, text: text, isCompressed: compressed,
@@ -170,24 +223,33 @@ public enum PNGScanner {
 
     /// Inflates a zlib stream to at most `limit` bytes. A truncated stream is `.damaged`.
     static func inflated(_ data: Data, limit: Int = inflateLimit) -> Inflated {
+        var work = 0
+        return inflated(data, limit: limit, work: &work)
+    }
+
+    /// As above; `work` is what the attempt inflated, whatever the result: at
+    /// most one byte past `limit`, which is enough to know a stream is over it.
+    static func inflated(_ data: Data, limit: Int, work: inout Int) -> Inflated {
         guard !data.isEmpty else { return .damaged }
         var stream = z_stream()
         guard inflateInit_(&stream, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size)) == Z_OK else { return .damaged }
         defer { inflateEnd(&stream) }
         var out = Data()
-        var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+        var buffer = [UInt8](repeating: 0, count: inflateBuffer)
         return data.withUnsafeBytes { (src: UnsafeRawBufferPointer) -> Inflated in
             stream.next_in = UnsafeMutablePointer(mutating: src.bindMemory(to: Bytef.self).baseAddress)
             stream.avail_in = uInt(src.count)
             while true {
                 var produced = 0
                 let status = buffer.withUnsafeMutableBufferPointer { buf -> Int32 in
+                    let room = min(buf.count - 1, max(0, limit - out.count)) + 1
                     stream.next_out = buf.baseAddress
-                    stream.avail_out = uInt(buf.count)
+                    stream.avail_out = uInt(room)
                     let s = zlib.inflate(&stream, Z_NO_FLUSH)
-                    produced = buf.count - Int(stream.avail_out)
+                    produced = room - Int(stream.avail_out)
                     return s
                 }
+                work += produced
                 // Before the append, and before the end of the stream is accepted.
                 guard produced <= limit - out.count else { return .overLimit }
                 out.append(contentsOf: buffer[0..<produced])
@@ -197,11 +259,18 @@ public enum PNGScanner {
         }
     }
 
-    /// UTF-8 when valid; otherwise Latin-1 (the `tEXt` / `zTXt` encoding), or lossy UTF-8 for `iTXt`.
-    private static func string(_ bytes: Data, utf8Only: Bool) -> String {
+    /// UTF-8 when valid; otherwise Latin-1 (the `tEXt` / `zTXt` encoding), or
+    /// lossy UTF-8 for `iTXt`. Nil, with nothing built, when that is over
+    /// `limit` bytes. Decoding makes nothing smaller but a dropped UTF-8 BOM, so
+    /// bytes over it are not decoded at all.
+    private static func string(_ bytes: Data, utf8Only: Bool, limit: Int) -> String? {
+        guard bytes.count <= limit else { return nil }
         if let s = String(data: bytes, encoding: .utf8) { return s }
-        if !utf8Only, let s = String(data: bytes, encoding: .isoLatin1) { return s }
-        return String(decoding: bytes, as: UTF8.self)
+        return bytes.withUnsafeBytes { raw in
+            // Latin-1 is the first 256 code points: each byte is a UTF-16 unit as it stands.
+            utf8Only ? String(transcoding: raw, from: UTF8.self, limit: limit)
+                : String(transcoding: raw.lazy.map(UInt16.init), from: UTF16.self, limit: limit)
+        }
     }
 
     private static func forEachChunk(in data: Data, _ body: (String, Data) -> Void) {
@@ -215,6 +284,28 @@ public enum PNGScanner {
             body(type, data[start..<start + length])
             if type == "IEND" { return }
             i = start + length + 4
+        }
+    }
+}
+
+extension String {
+    /// `units` as UTF-8 of exactly its size, each invalid sequence replaced by
+    /// U+FFFD as `String(decoding:as:)` does; nil when that is over `limit`
+    /// bytes. The size is counted before anything is built, and what is built
+    /// is what the budget charges for: not UTF-16 bridged from Foundation, nor
+    /// the spare capacity lossy repair leaves.
+    init?<Units: Collection, Encoding: Unicode.Encoding>(transcoding units: Units, from encoding: Encoding.Type,
+                                                         limit: Int) where Units.Element == Encoding.CodeUnit {
+        var size = 0
+        _ = transcode(units.makeIterator(), from: encoding, to: UTF8.self, stoppingOnError: false) { _ in size += 1 }
+        guard size <= limit else { return nil }
+        self.init(unsafeUninitializedCapacity: size) { buffer in
+            var i = 0
+            _ = transcode(units.makeIterator(), from: encoding, to: UTF8.self, stoppingOnError: false) {
+                buffer[i] = $0
+                i += 1
+            }
+            return i
         }
     }
 }

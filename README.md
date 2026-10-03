@@ -67,6 +67,7 @@ with Xcode's command line tools).
 open -a build/SnapRescale.app photo.heic      # or launch it and drop an image on the window
 ./Scripts/build-xcode.sh Release              # store-style build: sandboxed, hardened → build/xcode/SnapRescale.app
 cd RescaleKit && swift test                   # the engine's tests
+swift test --package-path SnapRescale         # the app's tests (presets)
 ```
 
 The Xcode project is generated from `project.yml`; the `.xcodeproj` is not

@@ -206,19 +206,23 @@ struct XMPDetectionTests {
 
     // MARK: Other containers
 
+    /// A RIFF chunk: ID, little-endian size, body, and a pad byte when the size is odd.
+    static func riffChunk(_ id: String, _ body: [UInt8]) -> [UInt8] {
+        let n = body.count
+        return Array(id.utf8) + [UInt8(n & 0xFF), UInt8(n >> 8 & 0xFF), 0, 0] + body + (n % 2 == 1 ? [0] : [])
+    }
+
+    /// A bare WebP container around `chunks`.
+    static func riff(_ chunks: [UInt8]) -> Data {
+        let n = chunks.count + 4
+        return Data(Array("RIFF".utf8) + [UInt8(n & 0xFF), UInt8(n >> 8 & 0xFF), 0, 0] + Array("WEBP".utf8) + chunks)
+    }
+
     @Test func webPChunk() {
-        func chunk(_ id: String, _ body: [UInt8]) -> [UInt8] {
-            let n = body.count
-            return Array(id.utf8) + [UInt8(n & 0xFF), UInt8(n >> 8 & 0xFF), 0, 0] + body + (n % 2 == 1 ? [0] : [])
-        }
-        func riff(_ chunks: [UInt8]) -> Data {
-            let n = chunks.count + 4
-            return Data(Array("RIFF".utf8) + [UInt8(n & 0xFF), UInt8(n >> 8 & 0xFF), 0, 0] + Array("WEBP".utf8) + chunks)
-        }
-        let vp8x = chunk("VP8X", [UInt8](repeating: 0, count: 10)), exif = chunk("EXIF", [1, 2, 3])
-        #expect(XMPScanner.packet(in: riff(vp8x + exif + chunk("XMP ", Array(Self.packet.utf8))), type: .webP)
+        let vp8x = Self.riffChunk("VP8X", [UInt8](repeating: 0, count: 10)), exif = Self.riffChunk("EXIF", [1, 2, 3])
+        #expect(XMPScanner.packet(in: Self.riff(vp8x + exif + Self.riffChunk("XMP ", Array(Self.packet.utf8))), type: .webP)
             == .found(packet: Self.packet, extended: nil))
-        #expect(XMPScanner.packet(in: riff(vp8x + exif), type: .webP) == .absent)
+        #expect(XMPScanner.packet(in: Self.riff(vp8x + exif), type: .webP) == .absent)
     }
 
     /// GIF is not walked: ImageIO's tree decides, minus what it derives.
