@@ -3,8 +3,9 @@ import zlib
 
 /// One image's allowance for the metadata its scanners lift out of the file:
 /// decoded bytes and element count, shared by everything read from that file,
-/// so that many individually legal elements cannot add up past it. Neither the
-/// pixel size nor the file size bounds what a text chunk inflates to.
+/// so that many individually legal elements cannot add up past it, and the
+/// inflate work spent getting there. Neither the pixel size nor the file size
+/// bounds what a text chunk inflates to.
 public struct MetadataBudget: Hashable, Sendable {
     /// What a scanner left out. The inspector shows `note`; none of it is written on save.
     public enum Skip: Hashable, Sendable {
@@ -35,15 +36,21 @@ public struct MetadataBudget: Hashable, Sendable {
     public static let defaultBytes = 64 << 20
     /// Real files carry a handful of text chunks; this only stops a flood of tiny ones.
     public static let defaultElements = 4096
+    /// 128 MiB of inflate output, kept or not: twice what can be kept, so that
+    /// streams which are rejected (over the limit, damaged) cannot repeat the
+    /// work. An attempt costs at least 64 KiB, so this bounds their number too.
+    public static let defaultWork = 2 * defaultBytes
 
     /// What is left of each.
     public private(set) var bytes: Int
     public private(set) var elements: Int
+    public private(set) var work: Int
     public internal(set) var skipped: [Skip] = []
 
-    public init(bytes: Int = defaultBytes, elements: Int = defaultElements) {
+    public init(bytes: Int = defaultBytes, elements: Int = defaultElements, work: Int = defaultWork) {
         self.bytes = max(0, bytes)
         self.elements = max(0, elements)
+        self.work = max(0, work)
     }
 
     /// One more element of `count` decoded bytes; false, and nothing taken, when it does not fit.
@@ -52,6 +59,11 @@ public struct MetadataBudget: Hashable, Sendable {
         elements -= 1
         bytes -= count
         return true
+    }
+
+    /// Inflate work done, whether or not its output is kept.
+    mutating func spend(_ count: Int) {
+        work = max(0, work - count)
     }
 }
 
@@ -86,6 +98,10 @@ public enum PNGScanner {
     static let signature: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
     /// Ceiling on one inflated text chunk, against decompression bombs.
     static let inflateLimit = 64 << 20
+    /// What one inflate pass writes into. An attempt costs at least this much
+    /// work, however little it inflates, so that the allowance bounds how many
+    /// attempts are made as well as their output.
+    static let inflateBuffer = 64 << 10
 
     /// Text chunks in file order.
     public static func textChunks(in data: Data) -> [TextChunk] {
@@ -94,7 +110,8 @@ public enum PNGScanner {
     }
 
     /// As above, drawing on the image's `budget`. A chunk that does not fit is
-    /// left out whole, text and raw bytes, and counted in `budget.skipped`.
+    /// left out whole, text and raw bytes, and counted in `budget.skipped`; so
+    /// is a compressed one, damaged or not, once the budget's work is spent.
     static func textChunks(in data: Data, budget: inout MetadataBudget) -> [TextChunk] {
         var out: [TextChunk] = []
         var skipped = 0
@@ -107,7 +124,12 @@ public enum PNGScanner {
                 budget.take(bytes.count) ? .some(string(bytes, utf8Only: utf8Only)) : nil
             }
             func deflated(_ bytes: Data, utf8Only: Bool) -> String?? {
-                switch inflated(bytes, limit: min(inflateLimit, budget.bytes)) {
+                // Nothing is inflated that could not be kept, nor once the work is spent.
+                guard budget.elements > 0, budget.work > 0 else { return nil }
+                var work = 0
+                let result = inflated(bytes, limit: min(inflateLimit, budget.bytes, budget.work), work: &work)
+                budget.spend(max(work, inflateBuffer))
+                switch result {
                 case .data(let d): return budget.take(d.count) ? .some(string(d, utf8Only: utf8Only)) : nil
                 case .damaged: return budget.take(0) ? .some(nil) : nil
                 case .overLimit: return nil
@@ -170,24 +192,33 @@ public enum PNGScanner {
 
     /// Inflates a zlib stream to at most `limit` bytes. A truncated stream is `.damaged`.
     static func inflated(_ data: Data, limit: Int = inflateLimit) -> Inflated {
+        var work = 0
+        return inflated(data, limit: limit, work: &work)
+    }
+
+    /// As above; `work` is what the attempt inflated, whatever the result: at
+    /// most one byte past `limit`, which is enough to know a stream is over it.
+    static func inflated(_ data: Data, limit: Int, work: inout Int) -> Inflated {
         guard !data.isEmpty else { return .damaged }
         var stream = z_stream()
         guard inflateInit_(&stream, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size)) == Z_OK else { return .damaged }
         defer { inflateEnd(&stream) }
         var out = Data()
-        var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+        var buffer = [UInt8](repeating: 0, count: inflateBuffer)
         return data.withUnsafeBytes { (src: UnsafeRawBufferPointer) -> Inflated in
             stream.next_in = UnsafeMutablePointer(mutating: src.bindMemory(to: Bytef.self).baseAddress)
             stream.avail_in = uInt(src.count)
             while true {
                 var produced = 0
                 let status = buffer.withUnsafeMutableBufferPointer { buf -> Int32 in
+                    let room = min(buf.count - 1, max(0, limit - out.count)) + 1
                     stream.next_out = buf.baseAddress
-                    stream.avail_out = uInt(buf.count)
+                    stream.avail_out = uInt(room)
                     let s = zlib.inflate(&stream, Z_NO_FLUSH)
-                    produced = buf.count - Int(stream.avail_out)
+                    produced = room - Int(stream.avail_out)
                     return s
                 }
+                work += produced
                 // Before the append, and before the end of the stream is accepted.
                 guard produced <= limit - out.count else { return .overLimit }
                 out.append(contentsOf: buffer[0..<produced])

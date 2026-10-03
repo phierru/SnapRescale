@@ -61,6 +61,12 @@ struct MetadataBudgetTests {
         let long = Data(MetadataContentsTests.deflate(Self.text(200_000)))
         #expect(PNGScanner.inflated(long, limit: 199_999) == .overLimit)
         #expect(PNGScanner.inflated(long, limit: 200_000) == .data(Data(Self.text(200_000).utf8)))
+        // The work is what was inflated, kept or not: never more than a byte past the limit.
+        for (limit, spent) in [(100, 100), (99, 100), (0, 1), (199_999, 200_000), (200_000, 200_000)] {
+            var work = 0
+            _ = PNGScanner.inflated(limit < 200 ? stream : long, limit: limit, work: &work)
+            #expect(work == spent, "\(limit)")
+        }
     }
 
     @Test func largeUncompressedTextAndCompressedTextShareTheBudget() {
@@ -74,6 +80,79 @@ struct MetadataBudgetTests {
         // The big plain chunk is not copied at all; the stream that inflates past what is left is dropped.
         #expect(kept.map(\.keyword) == ["Title"] && kept.first?.text == Self.text(900))
         #expect(budget.skipped == [.pngText(count: 2)])
+    }
+
+    /// A compressed chunk that could not be kept is not inflated at all.
+    @Test func noElementLeftMeansNoInflate() {
+        let png = MetadataContentsTests.png([
+            ("tEXt", MetadataTests.tEXt("a", "")),
+            ("zTXt", MetadataContentsTests.zTXt("b", Self.text(50))),
+            ("iTXt", MetadataContentsTests.iTXt("c", Self.text(50), compressed: true)),
+        ])
+        var budget = MetadataBudget(elements: 1, work: 1000)
+        #expect(PNGScanner.textChunks(in: png, budget: &budget).map(\.keyword) == ["a"])
+        #expect(budget.work == 1000 && budget.skipped == [.pngText(count: 2)])
+    }
+
+    /// Every attempt spends what it inflated, kept or not, so a stream that is
+    /// over the limit cannot be inflated again and again for free.
+    @Test func rejectedStreamsCannotRepeatTheWork() {
+        let png = MetadataContentsTests.png((0..<10).map { ("zTXt", MetadataContentsTests.zTXt("k\($0)", Self.text(1000))) }
+            + [("tEXt", MetadataTests.tEXt("Software", "tiny"))])
+        // Inflating stops one byte past the limit, well short of a buffer: each attempt costs one.
+        var budget = MetadataBudget(bytes: 100, work: 11 * PNGScanner.inflateBuffer)
+        #expect(PNGScanner.textChunks(in: png, budget: &budget).map(\.keyword) == ["Software"])
+        #expect(budget.work == PNGScanner.inflateBuffer && budget.skipped == [.pngText(count: 10)])
+
+        // Spent after three attempts; the rest are not inflated, and the plain chunk does not need to be.
+        budget = MetadataBudget(bytes: 100, work: 3 * PNGScanner.inflateBuffer)
+        #expect(PNGScanner.textChunks(in: png, budget: &budget).map(\.keyword) == ["Software"])
+        #expect(budget.work == 0 && budget.skipped == [.pngText(count: 10)] && budget.bytes == 96)
+
+        // Past a buffer, an attempt costs what it inflated: one byte past the limit.
+        let long = MetadataContentsTests.png([("zTXt", MetadataContentsTests.zTXt("k", Self.text(300_000)))])
+        budget = MetadataBudget(bytes: 200_000)
+        #expect(PNGScanner.textChunks(in: long, budget: &budget).isEmpty)
+        #expect(budget.work == MetadataBudget.defaultWork - 200_001 && budget.skipped == [.pngText(count: 1)])
+    }
+
+    /// However little an attempt inflates, it costs a buffer's worth of work,
+    /// so the allowance bounds how many attempts are made, not only their output.
+    @Test func everyAttemptCostsAtLeastABuffer() {
+        let png = MetadataContentsTests.png((0..<5).map { ("zTXt", MetadataContentsTests.zTXt("k\($0)", "xx")) })
+        var budget = MetadataBudget(work: 3 * PNGScanner.inflateBuffer)
+        #expect(PNGScanner.textChunks(in: png, budget: &budget).map(\.keyword) == ["k0", "k1", "k2"])
+        #expect(budget.work == 0 && budget.skipped == [.pngText(count: 2)])
+    }
+
+    /// A chunk is inflated no further than the work left, whatever room there is
+    /// to keep it: a stream longer than that is over the limit.
+    @Test func inflateLimitIsHeldToTheWorkLeft() {
+        let png = MetadataContentsTests.png([("zTXt", MetadataContentsTests.zTXt("k", Self.text(1000)))])
+        var budget = MetadataBudget(work: 999)
+        #expect(PNGScanner.textChunks(in: png, budget: &budget).isEmpty)
+        #expect(budget.work == 0 && budget.skipped == [.pngText(count: 1)])
+
+        budget = MetadataBudget(work: 1000)
+        #expect(PNGScanner.textChunks(in: png, budget: &budget).map(\.text) == [Self.text(1000)])
+        #expect(budget.work == 0 && budget.skipped.isEmpty)
+    }
+
+    /// A damaged stream spends what it inflated before it broke off; once the
+    /// work is spent, damaged chunks are skipped like any other.
+    @Test func damagedStreamsSpendWork() {
+        let damaged = Array("workflow".utf8) + [0, 0] + MetadataContentsTests.deflate(Self.text(100_000)).dropLast(4)
+        let png = MetadataContentsTests.png(Array(repeating: ("zTXt", damaged), count: 5))
+        var budget = MetadataBudget(work: 200_000)
+        #expect(PNGScanner.textChunks(in: png, budget: &budget).map(\.text) == [nil, nil])
+        #expect(budget.work == 0 && budget.skipped == [.pngText(count: 3)])
+        #expect(budget.elements == MetadataBudget.defaultElements - 2)
+
+        // Even one that breaks off at once: with no work left, nothing is attempted.
+        let broken: [UInt8] = Array("workflow".utf8) + [0, 0, 0x78, 0x9C, 0xFF, 0xFF, 0xFF]
+        budget = MetadataBudget(work: 0)
+        #expect(PNGScanner.textChunks(in: MetadataContentsTests.png([("zTXt", broken)]), budget: &budget).isEmpty)
+        #expect(budget.skipped == [.pngText(count: 1)])
     }
 
     /// A damaged stream is not a budget matter: kept without text, as before, and not reported.
@@ -96,6 +175,10 @@ struct MetadataBudgetTests {
         let m = MetadataTests.inspect(png, .png)
         #expect(m.skipped.isEmpty && m.provenance == [.comfyUI])
         #expect(m.pngTextChunks.map(\.text) == [graph, graph])
+        // Only the compressed copy is inflated, once.
+        var budget = MetadataBudget()
+        _ = PNGScanner.textChunks(in: png, budget: &budget)
+        #expect(budget.work == MetadataBudget.defaultWork - graph.utf8.count)
     }
 
     /// Keep re-emits the chunks the source holds, so a skipped one is not
