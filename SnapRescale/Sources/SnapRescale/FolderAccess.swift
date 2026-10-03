@@ -6,8 +6,8 @@ import Foundation
 /// Under App Sandbox an opened file grants access to that file only, not its
 /// folder, so "save next to the original without asking" needs the user to
 /// point at the folder once. The grant is kept as a security-scoped bookmark,
-/// so later saves into the same folder are silent. Outside the sandbox the
-/// direct write simply succeeds and none of this runs.
+/// so later saves into that folder, or any folder inside it, are silent.
+/// Outside the sandbox the direct write simply succeeds and none of this runs.
 @MainActor
 enum FolderAccess {
     private static let defaultsKey = "folderBookmarks"
@@ -21,14 +21,22 @@ enum FolderAccess {
 
     /// Runs `commit`, which writes into `folder` and returns the URL it wrote,
     /// asking for the folder once if the sandbox refuses. `commit` may run
-    /// again after a failure, so a failed attempt must leave nothing behind
+    /// again after a refusal, so a failed attempt must leave nothing behind
     /// and any existing file as it was (`SafeWrite`). The write itself may
     /// leave the main actor; a grant's scope stays open until it is done.
     static func write(in folder: URL, _ commit: () async throws -> URL) async -> Outcome {
-        // 1. A stored grant for this folder.
+        // 1. A stored grant for this folder or one enclosing it. Only a refusal
+        // means asking again; any other failure (a full disk, an ejected
+        // volume) is reported as it is (#42).
         if let granted = resolveBookmark(for: folder) {
             defer { granted.stopAccessingSecurityScopedResource() }
-            do { return .written(try await commit()) } catch { /* fall through to re-ask */ }
+            do {
+                return .written(try await commit())
+            } catch let error as NSError where isPermissionDenied(error) {
+                // Fall through to re-ask.
+            } catch {
+                return .failed(error)
+            }
         }
 
         // 2. Plain write: works unsandboxed, or when the folder is already reachable.
@@ -51,19 +59,36 @@ enum FolderAccess {
         set { UserDefaults.standard.set(newValue, forKey: defaultsKey) }
     }
 
-    /// Resolves and starts accessing a stored bookmark; caller must stop accessing.
+    /// Resolves and starts accessing the stored grant for `folder` or, since
+    /// the user may have allowed a parent, the nearest folder enclosing it;
+    /// caller must stop accessing. Paths compare by whole components, so a
+    /// grant for /a/b never covers /a/bc (#42).
     private static func resolveBookmark(for folder: URL) -> URL? {
-        guard let data = bookmarks[folder.path] else { return nil }
+        let target = folder.standardizedFileURL.pathComponents
+        let enclosing = bookmarks.keys
+            .map { (key: $0, components: URL(fileURLWithPath: $0, isDirectory: true).standardizedFileURL.pathComponents) }
+            .filter { target.starts(with: $0.components) }
+            .sorted { $0.components.count > $1.components.count }
+        for (key, _) in enclosing {
+            if let resolved = resolveBookmark(key) { return resolved }
+        }
+        return nil
+    }
+
+    /// Resolves and starts accessing one stored bookmark: refreshed when stale,
+    /// forgotten when it no longer resolves.
+    private static func resolveBookmark(_ key: String) -> URL? {
+        guard let data = bookmarks[key] else { return nil }
         var stale = false
         guard let resolved = try? URL(resolvingBookmarkData: data, options: [.withSecurityScope],
                                       relativeTo: nil, bookmarkDataIsStale: &stale),
               resolved.startAccessingSecurityScopedResource()
         else {
-            bookmarks[folder.path] = nil
+            bookmarks[key] = nil
             return nil
         }
         if stale, let fresh = try? resolved.bookmarkData(options: [.withSecurityScope]) {
-            bookmarks[folder.path] = fresh
+            bookmarks[key] = fresh
         }
         return resolved
     }
