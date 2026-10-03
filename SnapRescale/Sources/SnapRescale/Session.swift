@@ -262,6 +262,7 @@ final class Session {
 
     private(set) var isLoading = false
     /// Each load gets a number; only the latest may commit (review 2026-09-06, C1).
+    /// A save keeps the number of its image (review 2026-10-03, G1).
     private var loadGeneration = 0
 
     /// Saving needs a settled source: not while a replacement is decoding.
@@ -466,26 +467,47 @@ final class Session {
 
     func saveNextToOriginal() {
         guard canSave, let source, let spec else { return }
-        write(to: OutputNaming.url(for: source, spec: spec), source: source, spec: spec, viaFolderAccess: true)
+        write(to: .nextToOriginal, source: source, spec: spec, generation: loadGeneration)
     }
 
     func saveAs() {
         guard canSave, let source, let spec else { return }
+        // Taken before the panel. The panel runs inside a main-actor job
+        // (`deferred`), so an image opened while it is up loads only once it
+        // closes, which can still be before the save's task starts.
+        let generation = loadGeneration
         let suggested = OutputNaming.url(for: source, spec: spec)
         let panel = NSSavePanel()
         panel.directoryURL = suggested.deletingLastPathComponent()
         panel.nameFieldStringValue = suggested.lastPathComponent
         panel.allowedContentTypes = spec.format.resolvedType(for: source.type).map { [$0] } ?? []
         if panel.runModal() == .OK, let url = panel.url {
-            write(to: url, source: source, spec: spec)
+            write(to: .chosen(url), source: source, spec: spec, generation: generation)
         }
     }
 
-    /// `viaFolderAccess` is the silent path: it may ask for the folder once under
-    /// the sandbox. The save panel path already carries its own grant. The
-    /// encode runs off the main actor; the window shows a saving state meanwhile.
-    /// Both paths replace an existing file as a whole, or not at all (`SafeWrite`).
-    private func write(to url: URL, source: SourceImage, spec: RenderSpec, viaFolderAccess: Bool = false) {
+    private enum Destination {
+        /// The save panel's URL, which carries its own grant.
+        case chosen(URL)
+        /// The silent path, `{name}_{w}x{h}.{ext}` or the next free counter.
+        case nextToOriginal
+    }
+
+    /// `nextToOriginal` may ask for the folder once under the sandbox, and
+    /// takes the first name that is free when the file lands: it replaces no
+    /// file (review 2026-10-03, G2), except in the check-then-replace fallback
+    /// on a volume without an exclusive rename (`SafeWrite.create`). A
+    /// `chosen` URL replaces an existing file as a whole, since the save panel
+    /// confirmed that, or not at all (`SafeWrite`). The encode and the write
+    /// run off the main actor; the window shows a saving state until the save
+    /// is over, and a quit waits for the write (`whileWriting`).
+    ///
+    /// `generation` is the load the save was started for. Open, drops and
+    /// Open With stay available meanwhile, so a newer image may have been
+    /// requested by the end: the file, its reveal and any error still belong
+    /// to this save, the session's status and the one-shot quit only while
+    /// its image is the latest one (review 2026-10-03, G1).
+    private func write(to destination: Destination, source: SourceImage, spec: RenderSpec, generation: Int) {
         isSaving = true
         Task {
             defer { isSaving = false }
@@ -493,27 +515,71 @@ final class Session {
                 let data = try await Task.detached(priority: .userInitiated) {
                     try Renderer.produce(source, spec: spec)
                 }.value
-                if viaFolderAccess {
-                    switch FolderAccess.write(data, to: url) {
-                    case .written: break
+                let url: URL
+                switch destination {
+                case .chosen(let chosen):
+                    try await whileWriting { try await SafeWrite.writeDetached(data, to: chosen) }
+                    url = chosen
+                case .nextToOriginal:
+                    let candidates = OutputNaming.candidates(for: source, spec: spec)
+                    let outcome = await FolderAccess.write(in: source.url.deletingLastPathComponent()) {
+                        try await whileWriting { try await SafeWrite.createDetached(data, firstFreeOf: candidates) }
+                    }
+                    switch outcome {
+                    case .written(let written): url = written
                     case .cancelled: return
                     case .failed(let error): throw error
                     }
-                } else {
-                    try SafeWrite.write(data, to: url)
                 }
+                if revealAfterSave { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                guard generation == loadGeneration else { return }
                 // Only a committed file is reported as saved (review 2026-09-30, G1).
                 lastSaved = url
-                if revealAfterSave { NSWorkspace.shared.activateFileViewerSelecting([url]) }
                 if quitsAfterSave {
-                    // Let the Finder reveal go out first, then finish the one-shot session.
+                    // Let the Finder reveal go out first, then finish the one-shot
+                    // session, unless another image arrived meanwhile.
                     try? await Task.sleep(for: .milliseconds(300))
-                    NSApp.terminate(nil)
+                    // From a run-loop block, not from this task: with an export
+                    // still being written AppKit waits for it (`terminateReply`)
+                    // in a run loop nested in the caller, and nested in a
+                    // main-actor job that loop does not drain the main queue, so
+                    // the export could never finish and the app would hang.
+                    RunLoop.main.perform(inModes: [.default]) {
+                        MainActor.assumeIsolated {
+                            if generation == self.loadGeneration { NSApp.terminate(nil) }
+                        }
+                    }
                 }
             } catch {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    /// File writes in flight, a save's or an inspector export's. They run off
+    /// the main actor, so without this ⌘Q or closing the window would end the
+    /// process half way through one (review 2026-10-03, #40).
+    private var writesInFlight = 0
+    private var quitWaitsForWrites = false
+
+    /// Runs `body`, holding off a quit until it is over.
+    func whileWriting<T>(_ body: () async throws -> T) async rethrows -> T {
+        writesInFlight += 1
+        defer {
+            writesInFlight -= 1
+            if writesInFlight == 0, quitWaitsForWrites {
+                quitWaitsForWrites = false
+                NSApp.reply(toApplicationShouldTerminate: true)
+            }
+        }
+        return try await body()
+    }
+
+    /// For `applicationShouldTerminate`: quit now, or once the writes in flight are over.
+    func terminateReply() -> NSApplication.TerminateReply {
+        guard writesInFlight > 0 else { return .terminateNow }
+        quitWaitsForWrites = true
+        return .terminateLater
     }
 }
 

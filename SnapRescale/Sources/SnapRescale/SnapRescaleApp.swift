@@ -172,6 +172,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    /// A quit waits for a file still being written (`Session.whileWriting`).
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        Session.shared.terminateReply()
+    }
 }
 
 /// Target of the "Resize with SnapRescale" entry in Finder's Services menu.

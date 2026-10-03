@@ -184,16 +184,38 @@ public enum Renderer {
 
 /// `{name}_{w}x{h}.{ext}` next to the original; collisions append a counter (PRD §11).
 public enum OutputNaming {
+    /// The first candidate that does not exist yet: the Save As suggestion.
+    /// It is not reserved; a save nobody confirms takes its name at commit
+    /// time instead (`SafeWrite.create`).
     public static func url(for source: SourceImage, spec: RenderSpec, in directory: URL? = nil) -> URL {
-        let dir = directory ?? source.url.deletingLastPathComponent()
-        let ext = spec.format.resolvedType(for: source.type)?.preferredFilenameExtension ?? "jpg"
-        let base = source.url.deletingPathExtension().lastPathComponent + "_\(spec.target.width)x\(spec.target.height)"
-        var candidate = dir.appendingPathComponent(base).appendingPathExtension(ext)
-        var n = 2
-        while FileManager.default.fileExists(atPath: candidate.path) {
-            candidate = dir.appendingPathComponent("\(base)_\(n)").appendingPathExtension(ext)
-            n += 1
+        // Endless, so a free one is always found.
+        candidates(for: source, spec: spec, in: directory).first { !FileManager.default.fileExists(atPath: $0.path) }!
+    }
+
+    /// Every name the output may take, in order: `{name}_{w}x{h}.{ext}`, then
+    /// `_2`, `_3`… Endless.
+    public static func candidates(for source: SourceImage, spec: RenderSpec, in directory: URL? = nil) -> Candidates {
+        Candidates(directory: directory ?? source.url.deletingLastPathComponent(),
+                   base: source.url.deletingPathExtension().lastPathComponent + "_\(spec.target.width)x\(spec.target.height)",
+                   ext: spec.format.resolvedType(for: source.type)?.preferredFilenameExtension ?? "jpg")
+    }
+
+    /// What `candidates` returns: a value, so a save can take it off the main actor.
+    public struct Candidates: Sequence, IteratorProtocol, Sendable {
+        let directory: URL
+        let base: String
+        let ext: String
+        private var n = 1
+
+        init(directory: URL, base: String, ext: String) {
+            self.directory = directory
+            self.base = base
+            self.ext = ext
         }
-        return candidate
+
+        public mutating func next() -> URL? {
+            defer { n += 1 }
+            return directory.appendingPathComponent(n == 1 ? base : "\(base)_\(n)").appendingPathExtension(ext)
+        }
     }
 }
