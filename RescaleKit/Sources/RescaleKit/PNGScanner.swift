@@ -12,10 +12,14 @@ public struct MetadataBudget: Hashable, Sendable {
     public enum Skip: Hashable, Sendable {
         /// PNG text chunks past the budget.
         case pngText(count: Int)
-        /// An XMP packet whose extents join to more than the budget (HEIC / HEIF / AVIF).
+        /// An XMP packet over the budget or the size limit, in a JPEG, TIFF, WebP
+        /// or HEIC / HEIF / AVIF (whose extents may join to more than the file):
+        /// left out, not read through ImageIO instead.
         case xmpPacket
         /// JPEG extended XMP the main packet does not name, or that does not assemble.
         case extendedXMP
+        /// JPEG extended XMP past the budget, assembled or while its portions were collected.
+        case extendedXMPOverLimit
 
         public var note: String {
             switch self {
@@ -28,6 +32,9 @@ public struct MetadataBudget: Hashable, Sendable {
             case .extendedXMP:
                 return "Extended XMP that does not belong to this packet, or is incomplete, was ignored: not shown "
                     + "here and not carried into the saved file."
+            case .extendedXMPOverLimit:
+                return "Extended XMP was over the metadata size limit and not read: not shown here and not carried "
+                    + "into the saved file."
             }
         }
     }

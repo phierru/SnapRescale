@@ -110,17 +110,53 @@ struct ExtendedXMPTests {
         try Self.expectIgnored(Self.jpeg([Portion(0..<0, total: 0)]), "empty")
     }
 
-    @Test func extensionDrawsOnTheBudget() {
+    /// What the main packet leaves of the budget; past it the extension is
+    /// left out, and the XMP section says it was too large, as a loss.
+    @Test func extensionDrawsOnTheBudget() throws {
         let jpeg = Self.jpeg(Self.thirds.map { Portion($0) }), n = Self.bytes.count
-        var budget = MetadataBudget(bytes: n - 1)
+        let main = Self.main(naming: Self.guid).utf8.count
+        var budget = MetadataBudget(bytes: main + n - 1)
         guard case .found(_, let extended) = XMPScanner.packet(in: jpeg, type: .jpeg, pngChunks: nil, budget: &budget)
         else { Issue.record("no packet"); return }
-        #expect(extended == nil && budget.skipped == [.extendedXMP] && budget.bytes == n - 1)
+        #expect(extended == nil && budget.skipped == [.extendedXMPOverLimit] && budget.bytes == n - 1)
 
-        budget = MetadataBudget(bytes: n)
+        budget = MetadataBudget(bytes: main + n)
         #expect(XMPScanner.packet(in: jpeg, type: .jpeg, pngChunks: nil, budget: &budget)
             == .found(packet: Self.main(naming: Self.guid), extended: Self.extended))
         #expect(budget.skipped.isEmpty && budget.bytes == 0)
+
+        let m = MetadataBudgetTests.inspect(jpeg, .jpeg, MetadataBudget(bytes: main + n - 1))
+        let xmp = try #require(m.section(.xmp))
+        #expect(xmp["xmp:Rating"] == "4" && xmp["xmp:Label"] == nil)
+        #expect(xmp.note == MetadataBudget.Skip.extendedXMPOverLimit.note && xmp.noteIsLoss)
+        #expect(xmp.note?.contains("over the metadata size limit") == true)
+        #expect(m.section(.structure)?.note == nil)
+    }
+
+    /// Portions are collected no further than the budget could hold them, by
+    /// count and by size, whoever they belong to, as HEIF joins its extents.
+    @Test func collectionIsBoundedByTheBudget() {
+        let n = Self.bytes.count, main = Self.main(naming: Self.guid).utf8.count
+        func extended(_ jpeg: Data, _ budget: inout MetadataBudget) -> String?? {
+            guard case .found(_, let extended) = XMPScanner.packet(in: jpeg, type: .jpeg, pngChunks: nil, budget: &budget)
+            else { return nil }
+            return extended
+        }
+        // Three portions, and elements for only two.
+        let jpeg = Self.jpeg(Self.thirds.map { Portion($0) })
+        var budget = MetadataBudget(elements: 2)
+        #expect(extended(jpeg, &budget) == .some(nil))
+        #expect(budget.skipped == [.extendedXMPOverLimit] && budget.elements == 1)
+
+        // Room for the packet and its own extension, but not for strangers' portions as well.
+        let crowded = Self.jpeg(Self.thirds.map { Portion($0) } + (0..<4).map { _ in Portion(0..<n, guid: Self.otherGUID) })
+        budget = MetadataBudget(bytes: main + n)
+        #expect(extended(crowded, &budget) == .some(nil))
+        #expect(budget.skipped == [.extendedXMPOverLimit] && budget.bytes == n)
+        // With room for them all, its own is merged and the strangers are ignored, as before.
+        budget = MetadataBudget(bytes: main + 5 * n)
+        #expect(extended(crowded, &budget) == .some(Self.extended))
+        #expect(budget.skipped == [.extendedXMP])
     }
 
     /// What is ignored on load is not merged into the saved packet either.

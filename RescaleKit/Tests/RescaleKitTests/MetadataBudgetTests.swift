@@ -351,4 +351,79 @@ struct MetadataBudgetTests {
         #expect(enough.bytes == 0)
         #expect(MetadataBudget.Skip.xmpPacket.note.contains("not carried into the saved file"))
     }
+
+    // MARK: JPEG, TIFF and WebP
+
+    /// A big-endian TIFF whose first IFD holds tag 700 alone: `count` bytes (the
+    /// packet's own by default) at offset 26, where the packet follows.
+    static func tiff(_ packet: [UInt8], count: Int? = nil) -> Data {
+        Data([0x4D, 0x4D, 0, 42] + be(8) + be(1, 2) + be(700, 2) + be(1, 2) + be(count ?? packet.count) + be(26) + be(0)
+            + packet)
+    }
+
+    /// `packet` as the only XMP in a bare container of `type`.
+    static func container(_ type: UTType, packet: [UInt8]) -> Data {
+        switch type {
+        case .jpeg:
+            XMPDetectionTests.withSegment(MetadataTests.encode(.jpeg), marker: 0xE1, body: XMPScanner.jpegNamespace + packet)
+        case .tiff: tiff(packet)
+        default: XMPDetectionTests.riff(XMPDetectionTests.riffChunk("XMP ", packet))
+        }
+    }
+
+    /// The packet itself draws on the budget, as HEIF's does, at its size once
+    /// decoded: lossy UTF-8 repair is paid for. What does not fit is reported.
+    @Test(arguments: [UTType.jpeg, .tiff, .webP])
+    func packetDrawsOnTheBudget(_ type: UTType) {
+        func scan(_ data: Data, _ budget: inout MetadataBudget) -> XMPScanner.Result {
+            XMPScanner.packet(in: data, type: type, pngChunks: nil, budget: &budget)
+        }
+        let packet = XMPDetectionTests.packet, size = packet.utf8.count
+        let data = Self.container(type, packet: Array(packet.utf8))
+        var exact = MetadataBudget(bytes: size)
+        #expect(scan(data, &exact) == .found(packet: packet, extended: nil))
+        #expect(exact.bytes == 0 && exact.elements == MetadataBudget.defaultElements - 1 && exact.skipped.isEmpty)
+        for budget in [MetadataBudget(bytes: size - 1), MetadataBudget(elements: 0)] {
+            var short = budget
+            #expect(scan(data, &short) == .absent)
+            #expect(short.skipped == [.xmpPacket] && short.bytes == budget.bytes && short.elements == budget.elements)
+        }
+
+        // Ten bytes that are not UTF-8 are kept as ten replacement characters, thirty bytes.
+        let damaged = Self.container(type, packet: [UInt8](repeating: 0xFF, count: 10))
+        var budget = MetadataBudget(bytes: 29)
+        #expect(scan(damaged, &budget) == .absent && budget.skipped == [.xmpPacket])
+        budget = MetadataBudget(bytes: 30)
+        #expect(scan(damaged, &budget) == .found(packet: String(repeating: "\u{FFFD}", count: 10), extended: nil))
+        #expect(budget.bytes == 0)
+    }
+
+    /// A packet over the budget is left out and reported, not left to ImageIO
+    /// to read instead: the files ImageIO writes hold one it would find.
+    @Test(arguments: [UTType.jpeg, .tiff])
+    func packetOverTheBudgetIsNotLeftToImageIO(_ type: UTType) throws {
+        let data = try XMPDetectionTests.encode(type, packet: XMPDetectionTests.packet)
+        #expect(MetadataTests.inspect(data, type).section(.xmp)?["xmp:Rating"] == "4")
+        let m = Self.inspect(data, type, MetadataBudget(bytes: 10))
+        XMPDetectionTests.expectNoXMP(m)
+        #expect(m.skipped == [.xmpPacket])
+        let structure = try #require(m.section(.structure))
+        #expect(structure.note == MetadataBudget.Skip.xmpPacket.note && structure.noteIsLoss)
+    }
+
+    /// Past the size limit a TIFF packet is reported too; it used to be left
+    /// to ImageIO, which read it with no limit at all.
+    @Test func tiffPacketOverTheSizeLimitIsReported() {
+        let size = XMPScanner.sizeLimit + 1
+        var tiff = Data(count: 26 + size)
+        tiff.replaceSubrange(0..<26, with: Self.tiff([], count: size))
+        var budget = MetadataBudget(bytes: 2 * size)
+        #expect(XMPScanner.packet(in: tiff, type: .tiff, pngChunks: nil, budget: &budget) == .absent)
+        #expect(budget.skipped == [.xmpPacket] && budget.bytes == 2 * size)
+
+        // Running past the end of the file is damage, not size: that still is not scanned.
+        budget = MetadataBudget()
+        #expect(XMPScanner.packet(in: tiff.prefix(126), type: .tiff, pngChunks: nil, budget: &budget) == .notScanned)
+        #expect(budget.skipped.isEmpty)
+    }
 }
