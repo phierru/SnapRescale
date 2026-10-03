@@ -382,12 +382,12 @@ struct PresetRow: View {
             Button("Save Current as Preset…") { newName = session.activePreset ?? ""; namingSheet = true }
                 .disabled(session.source == nil)
             if let name = session.activePreset {
-                Button("Delete “\(name)”") { deferred { session.presets.delete(named: name); session.noteSettingsChanged() } }
+                Button("Delete “\(name)”") { deferred { delete(name) } }
             }
             if !session.presets.problems.isEmpty {
                 Divider()
                 ForEach(session.presets.problems, id: \.self) { problem in
-                    Button("Skipped: \(problem)") {}.disabled(true)
+                    Button(problem) {}.disabled(true)
                 }
             }
             Button("Show Presets Folder in Finder") {
@@ -424,11 +424,22 @@ struct PresetRow: View {
         let name = newName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
         do {
-            try session.presets.save(session.currentPreset(named: name))
-            session.apply(session.presets.presets.first { $0.name == name }!)
+            // As read back; nil if the folder could not be read again (the menu says why).
+            if let saved = try session.presets.save(session.currentPreset(named: name)) {
+                session.apply(saved)
+            }
             namingSheet = false
         } catch {
             session.errorMessage = error.localizedDescription
         }
+    }
+
+    private func delete(_ name: String) {
+        do {
+            try session.presets.delete(named: name)
+        } catch {
+            session.errorMessage = error.localizedDescription
+        }
+        session.noteSettingsChanged()
     }
 }
