@@ -493,8 +493,9 @@ final class Session {
     /// file (review 2026-10-03, G2), except in the check-then-replace fallback
     /// on a volume without an exclusive rename (`SafeWrite.create`). A
     /// `chosen` URL replaces an existing file as a whole, since the save panel
-    /// confirmed that, or not at all (`SafeWrite`). The encode runs off the
-    /// main actor; the window shows a saving state meanwhile.
+    /// confirmed that, or not at all (`SafeWrite`). The encode and the write
+    /// run off the main actor; the window shows a saving state until the save
+    /// is over, and a quit waits for the write (`whileWriting`).
     private func write(to destination: Destination, source: SourceImage, spec: RenderSpec) {
         isSaving = true
         Task {
@@ -506,12 +507,12 @@ final class Session {
                 let url: URL
                 switch destination {
                 case .chosen(let chosen):
-                    try SafeWrite.write(data, to: chosen)
+                    try await whileWriting { try await SafeWrite.writeDetached(data, to: chosen) }
                     url = chosen
                 case .nextToOriginal:
                     let candidates = OutputNaming.candidates(for: source, spec: spec)
-                    let outcome = FolderAccess.write(in: source.url.deletingLastPathComponent()) {
-                        try SafeWrite.create(data, firstFreeOf: candidates)
+                    let outcome = await FolderAccess.write(in: source.url.deletingLastPathComponent()) {
+                        try await whileWriting { try await SafeWrite.createDetached(data, firstFreeOf: candidates) }
                     }
                     switch outcome {
                     case .written(let written): url = written
@@ -525,12 +526,45 @@ final class Session {
                 if quitsAfterSave {
                     // Let the Finder reveal go out first, then finish the one-shot session.
                     try? await Task.sleep(for: .milliseconds(300))
-                    NSApp.terminate(nil)
+                    // From a run-loop block, not from this task: with an export
+                    // still being written AppKit waits for it (`terminateReply`)
+                    // in a run loop nested in the caller, and nested in a
+                    // main-actor job that loop does not drain the main queue, so
+                    // the export could never finish and the app would hang.
+                    RunLoop.main.perform(inModes: [.default]) {
+                        MainActor.assumeIsolated { NSApp.terminate(nil) }
+                    }
                 }
             } catch {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    /// File writes in flight, a save's or an inspector export's. They run off
+    /// the main actor, so without this ⌘Q or closing the window would end the
+    /// process half way through one (review 2026-10-03, #40).
+    private var writesInFlight = 0
+    private var quitWaitsForWrites = false
+
+    /// Runs `body`, holding off a quit until it is over.
+    func whileWriting<T>(_ body: () async throws -> T) async rethrows -> T {
+        writesInFlight += 1
+        defer {
+            writesInFlight -= 1
+            if writesInFlight == 0, quitWaitsForWrites {
+                quitWaitsForWrites = false
+                NSApp.reply(toApplicationShouldTerminate: true)
+            }
+        }
+        return try await body()
+    }
+
+    /// For `applicationShouldTerminate`: quit now, or once the writes in flight are over.
+    func terminateReply() -> NSApplication.TerminateReply {
+        guard writesInFlight > 0 else { return .terminateNow }
+        quitWaitsForWrites = true
+        return .terminateLater
     }
 }
 

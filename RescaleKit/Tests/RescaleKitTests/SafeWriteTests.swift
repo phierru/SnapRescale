@@ -10,11 +10,17 @@ import Testing
 
     /// A disposable folder, removed when the test ends.
     private func withFolder(_ body: (URL) throws -> Void) throws {
+        let dir = try makeFolder()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try body(dir)
+    }
+
+    /// A disposable folder for an async test, which removes it.
+    private func makeFolder() throws -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("SafeWriteTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
-        try body(dir)
+        return dir
     }
 
     private func names(in dir: URL) throws -> [String] {
@@ -176,5 +182,71 @@ import Testing
             #expect(try names(in: locked) == ["out.jpg"])
             #expect(!FileManager.default.fileExists(atPath: try #require(staged).path))
         }
+    }
+
+    // MARK: Off the main actor (review 2026-10-03, #40)
+
+    /// Queues a job on the main actor and waits for it. That fails when the
+    /// caller is itself on the main actor, however its job was scheduled.
+    private static func mainActorIsFree() -> Bool {
+        let ran = DispatchSemaphore(value: 0)
+        Task { @MainActor in ran.signal() }
+        return ran.wait(timeout: .now() + 2) == .success
+    }
+
+    /// The test only awaits on the main actor, so the staging finds it free
+    /// unless the write itself runs there.
+    @MainActor @Test func detachedWriteLeavesTheMainActorFree() async throws {
+        let dir = try makeFolder()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("out.jpg")
+        try await SafeWrite.writeDetached(Data("fresh".utf8), to: url) { data, temp in
+            #expect(Self.mainActorIsFree())
+            try data.write(to: temp)
+        }
+        #expect(try Data(contentsOf: url) == Data("fresh".utf8))
+        #expect(try names(in: dir) == ["out.jpg"])
+    }
+
+    @MainActor @Test func detachedCreateLeavesTheMainActorFree() async throws {
+        let dir = try makeFolder()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = try await SafeWrite.createDetached(Data("fresh".utf8), firstFreeOf: candidates(in: dir)) { data, temp in
+            #expect(Self.mainActorIsFree())
+            try data.write(to: temp)
+        }
+        #expect(url == dir.appendingPathComponent("out.jpg"))
+        #expect(try Data(contentsOf: url) == Data("fresh".utf8))
+        #expect(try names(in: dir) == ["out.jpg"])
+    }
+
+    /// A failure off the main actor still reaches the caller, which reports it.
+    @Test func failedDetachedWriteKeepsTheOriginal() async throws {
+        let dir = try makeFolder()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("out.jpg")
+        let original = Data("original".utf8)
+        try original.write(to: url)
+        await #expect(throws: Injected.self) {
+            try await SafeWrite.writeDetached(Data("replacement".utf8), to: url) { data, temp in
+                try data.prefix(data.count / 2).write(to: temp)
+                throw Injected()
+            }
+        }
+        #expect(try Data(contentsOf: url) == original)
+        #expect(try names(in: dir) == ["out.jpg"])
+    }
+
+    @Test func failedDetachedCreateLeavesNothing() async throws {
+        let dir = try makeFolder()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let urls = candidates(in: dir)
+        await #expect(throws: Injected.self) {
+            try await SafeWrite.createDetached(Data("fresh".utf8), firstFreeOf: urls) { data, temp in
+                try data.prefix(2).write(to: temp)
+                throw Injected()
+            }
+        }
+        #expect(try names(in: dir).isEmpty)
     }
 }

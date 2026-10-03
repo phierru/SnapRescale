@@ -22,22 +22,23 @@ enum FolderAccess {
     /// Runs `commit`, which writes into `folder` and returns the URL it wrote,
     /// asking for the folder once if the sandbox refuses. `commit` may run
     /// again after a failure, so a failed attempt must leave nothing behind
-    /// and any existing file as it was (`SafeWrite`).
-    static func write(in folder: URL, _ commit: () throws -> URL) -> Outcome {
+    /// and any existing file as it was (`SafeWrite`). The write itself may
+    /// leave the main actor; a grant's scope stays open until it is done.
+    static func write(in folder: URL, _ commit: () async throws -> URL) async -> Outcome {
         // 1. A stored grant for this folder.
         if let granted = resolveBookmark(for: folder) {
             defer { granted.stopAccessingSecurityScopedResource() }
-            do { return .written(try commit()) } catch { /* fall through to re-ask */ }
+            do { return .written(try await commit()) } catch { /* fall through to re-ask */ }
         }
 
         // 2. Plain write: works unsandboxed, or when the folder is already reachable.
         do {
-            return .written(try commit())
+            return .written(try await commit())
         } catch let error as NSError where isPermissionDenied(error) {
             // 3. Ask once for the folder.
             guard let granted = askForFolder(folder) else { return .cancelled }
             defer { granted.stopAccessingSecurityScopedResource() }
-            do { return .written(try commit()) } catch { return .failed(error) }
+            do { return .written(try await commit()) } catch { return .failed(error) }
         } catch {
             return .failed(error)
         }

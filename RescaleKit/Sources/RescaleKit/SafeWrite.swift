@@ -61,6 +61,24 @@ public enum SafeWrite {
         }
     }
 
+    /// `write`, run off the caller's actor, so a large file on a slow volume
+    /// does not freeze the window (review 2026-10-03, #40).
+    public static func writeDetached(_ data: Data, to url: URL,
+                                     stage: @escaping @Sendable (Data, URL) throws -> Void = { try $0.write(to: $1) }) async throws {
+        try await Task.detached(priority: .userInitiated) {
+            try write(data, to: url, stage: stage)
+        }.value
+    }
+
+    /// `create`, run off the caller's actor.
+    @discardableResult
+    public static func createDetached(_ data: Data, firstFreeOf candidates: some Sequence<URL> & Sendable,
+                                      stage: @escaping @Sendable (Data, URL) throws -> Void = { try $0.write(to: $1) }) async throws -> URL {
+        try await Task.detached(priority: .userInitiated) {
+            try create(data, firstFreeOf: candidates, stage: stage)
+        }.value
+    }
+
     /// Stages `data` for `url` and hands the staged item to `commit`.
     ///
     /// The temporary item lives in the volume's item-replacement directory,
