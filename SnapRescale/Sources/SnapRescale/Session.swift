@@ -262,6 +262,7 @@ final class Session {
 
     private(set) var isLoading = false
     /// Each load gets a number; only the latest may commit (review 2026-09-06, C1).
+    /// A save keeps the number of its image (review 2026-10-03, G1).
     private var loadGeneration = 0
 
     /// Saving needs a settled source: not while a replacement is decoding.
@@ -466,18 +467,22 @@ final class Session {
 
     func saveNextToOriginal() {
         guard canSave, let source, let spec else { return }
-        write(to: .nextToOriginal, source: source, spec: spec)
+        write(to: .nextToOriginal, source: source, spec: spec, generation: loadGeneration)
     }
 
     func saveAs() {
         guard canSave, let source, let spec else { return }
+        // Taken before the panel. The panel runs inside a main-actor job
+        // (`deferred`), so an image opened while it is up loads only once it
+        // closes, which can still be before the save's task starts.
+        let generation = loadGeneration
         let suggested = OutputNaming.url(for: source, spec: spec)
         let panel = NSSavePanel()
         panel.directoryURL = suggested.deletingLastPathComponent()
         panel.nameFieldStringValue = suggested.lastPathComponent
         panel.allowedContentTypes = spec.format.resolvedType(for: source.type).map { [$0] } ?? []
         if panel.runModal() == .OK, let url = panel.url {
-            write(to: .chosen(url), source: source, spec: spec)
+            write(to: .chosen(url), source: source, spec: spec, generation: generation)
         }
     }
 
@@ -496,7 +501,13 @@ final class Session {
     /// confirmed that, or not at all (`SafeWrite`). The encode and the write
     /// run off the main actor; the window shows a saving state until the save
     /// is over, and a quit waits for the write (`whileWriting`).
-    private func write(to destination: Destination, source: SourceImage, spec: RenderSpec) {
+    ///
+    /// `generation` is the load the save was started for. Open, drops and
+    /// Open With stay available meanwhile, so a newer image may have been
+    /// requested by the end: the file, its reveal and any error still belong
+    /// to this save, the session's status and the one-shot quit only while
+    /// its image is the latest one (review 2026-10-03, G1).
+    private func write(to destination: Destination, source: SourceImage, spec: RenderSpec, generation: Int) {
         isSaving = true
         Task {
             defer { isSaving = false }
@@ -520,11 +531,13 @@ final class Session {
                     case .failed(let error): throw error
                     }
                 }
+                if revealAfterSave { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                guard generation == loadGeneration else { return }
                 // Only a committed file is reported as saved (review 2026-09-30, G1).
                 lastSaved = url
-                if revealAfterSave { NSWorkspace.shared.activateFileViewerSelecting([url]) }
                 if quitsAfterSave {
-                    // Let the Finder reveal go out first, then finish the one-shot session.
+                    // Let the Finder reveal go out first, then finish the one-shot
+                    // session, unless another image arrived meanwhile.
                     try? await Task.sleep(for: .milliseconds(300))
                     // From a run-loop block, not from this task: with an export
                     // still being written AppKit waits for it (`terminateReply`)
@@ -532,7 +545,9 @@ final class Session {
                     // main-actor job that loop does not drain the main queue, so
                     // the export could never finish and the app would hang.
                     RunLoop.main.perform(inModes: [.default]) {
-                        MainActor.assumeIsolated { NSApp.terminate(nil) }
+                        MainActor.assumeIsolated {
+                            if generation == self.loadGeneration { NSApp.terminate(nil) }
+                        }
                     }
                 }
             } catch {
