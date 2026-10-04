@@ -1,6 +1,6 @@
 # SnapRescale — Product Requirements Document
 
-**Status:** Draft v0.14 · 2026-09-06 · current milestone **M5** · deferred work in [`ROADMAP.md`](ROADMAP.md) · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
+**Status:** Draft v0.15 · 2026-10-04 · current milestone **Metadata (1.2)**, merged, not released · deferred work in [`ROADMAP.md`](ROADMAP.md) · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
 **Name:** SnapRescale — *Resize to any ratio, snapped to multiples of 8, 16 and 32* · bundle ID `com.phierru.SnapRescale`
 **Platform:** macOS 26+ (Apple Silicon), Swift 6 / SwiftUI
 
@@ -348,9 +348,9 @@ icon) and it becomes the session. The same window offers ⌘O and a *Choose
 Image…* button for people who do not drag. Dropping a second image while one is
 open **replaces it immediately** — this is a disposable one-shot session, not a
 document, so there is no dirty check (decided 2026-09-05). v1 never holds two
-in one window; **multiple windows**, one image each, are planned for v1.1 (see
-[`ROADMAP.md`](ROADMAP.md)), and a drop on a window that already has an image
-will still replace it rather than open another.
+in one window; **multiple windows**, one image each, are planned for later
+(#35, see [`ROADMAP.md`](ROADMAP.md)), and a drop on a window that already
+has an image will still replace it rather than open another.
 
 Drop accepts the image UTIs in §9. A folder, a multi-selection or a non-image
 is refused with a plain message rather than taking the first file silently.
@@ -590,7 +590,7 @@ those settings do not exist yet (§11, roadmap).
 Shipped defaults: **Web (Original ratio, 1.5 MP, JPEG q80)** · **Thumbnail
 (1:1, 320 px, crop)** · **Social 16:9 (1920 px, ×8, crop)** · **SDXL 1024 (1:1,
 1024 px, ×16, PNG)**. **Email (≤ 1 MB)** and **Discord/Slack (≤ 8 MB)** follow
-with the target-file-size search (roadmap v1.2); "strip GPS" joins Web with the
+with the target-file-size search (roadmap v1.3); "strip GPS" joins Web with the
 §10 switches: its policy is *strip EXIF, GPS, IPTC and XMP* — which is also the default.
 
 The picker sits at the top of the panel: choose one, *Save Current as
