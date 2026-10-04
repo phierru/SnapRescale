@@ -44,9 +44,12 @@ final class Session {
     var metadataPolicy: MetadataPolicy = .default
 
     // Presets (PRD §12)
-    let presets = PresetStore()
+    let presets: PresetStore
     /// Name of the preset the current settings came from; nil once anything changed.
     private(set) var activePreset: String?
+
+    /// The user's presets folder, unless a test passes a store of its own.
+    init(presets: PresetStore = PresetStore()) { self.presets = presets }
 
     func apply(_ preset: Preset) {
         aspect = preset.aspect
@@ -77,7 +80,19 @@ final class Session {
         guard let name = activePreset, let p = presets.presets.first(where: { $0.name == name }) else {
             activePreset = nil; return
         }
-        if currentPreset(named: name) != p { activePreset = nil }
+        if currentPreset(named: name) != Self.asApplied(p) { activePreset = nil }
+    }
+
+    /// `preset` as `apply` leaves the settings: quality to a whole percent and
+    /// a scale through the field's percent (0.123 × 100 ÷ 100 is not 0.123),
+    /// read back as `sizeParameter` does. Compared as stored, a preset that
+    /// does not survive this showed Custom with no edit (#60).
+    private static func asApplied(_ preset: Preset) -> Preset {
+        var p = preset
+        p.quality = Double(Preset.percent(p.quality)) / 100
+        if case .scale(let k) = p.size { p.size = .scale(k * 100 / 100) }
+        p.size = p.size.clamped
+        return p
     }
 
     // Display only
