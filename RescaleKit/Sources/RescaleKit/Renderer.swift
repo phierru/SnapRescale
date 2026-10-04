@@ -77,7 +77,8 @@ public enum Renderer {
         guard t.width >= 1, t.height >= 1, t.width <= Limits.maxDimension, t.height <= Limits.maxDimension,
               t.pixelCount <= Limits.maxPixels else { throw RenderError.targetTooLarge(t) }
         let wantsAlpha = spec.padNeedsAlpha(sourceType: source.type)
-        // Colour space, depth and alpha follow the ICC policy (PRD §10.2).
+        // The colour space follows the ICC policy (PRD §10.2); depth follows the
+        // source and the format, alpha the source and the padding (`ColorPlan`).
         let plan = ColorPlan(source: source, spec: spec)
         guard let ctx = plan.makeContext(width: t.width, height: t.height) else { throw RenderError.contextFailed }
         ctx.interpolationQuality = .high
