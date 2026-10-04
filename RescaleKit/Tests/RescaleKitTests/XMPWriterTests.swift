@@ -512,6 +512,43 @@ struct AIWorkflowInEXIFTests {
         #expect(!both.contains("Holiday, day 3"))
     }
 
+    // MARK: Outside ASCII into PNG (issue #33)
+
+    /// A JPEG's own comment outside ASCII, saved as PNG, reads back the same:
+    /// A1111's form in the `eXIf` chunk, the text in ImageIO's XMP mirror, and
+    /// a valid PNG around them.
+    @Test(arguments: ["un café au bord du lac, déjà vu", "湖畔の灯台、夕暮れ"])
+    func ownCommentSurvivesOutsideASCIIInPNG(_ prompt: String) throws {
+        let parameters = "\(prompt)\nNegative prompt: <flou> & \"bruit\"\nSteps: 20, Sampler: Euler a, CFG scale: 7"
+        // The JPEG holds it as A1111 does, moved there from a PNG chunk (G2).
+        let jpeg = try XMPWriterTests.render(try PNGSplicerTests.source(holding: [PNGSplicerTests.text("parameters", parameters)]),
+                                             .jpeg, .default)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("comment-\(UUID().uuidString).jpg")
+        try jpeg.data.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let source = try SourceImage.load(url)
+        #expect(source.metadata.aiPayloads.map(\.location) == ["EXIF UserComment"])
+
+        let out = try XMPWriterTests.render(source, .png, .default)
+        #expect(Self.userComment(out) == parameters && out.metadata.provenance == [.a1111])
+        #expect(out.contains("UNICODE\0") && !out.contains("ASCII\0\0\0"))
+        // ImageIO's mirror in the XMP packet has the text, not the stand-in.
+        let packet = try #require(PNGScanner.textChunks(in: out.data).first { $0.keyword == "XML:com.adobe.xmp" }?.text)
+        let mirror = try #require(CGImageMetadataCreateFromXMPData(Data(packet.utf8) as CFData))
+        #expect(CGImageMetadataCopyStringValueWithPath(mirror, nil, "exif:UserComment" as CFString) as String? == parameters)
+        let chunks = try #require(PNGSplicerTests.walk(out.data))
+        #expect(chunks.map(\.type).contains("eXIf") && chunks.allSatisfy(\.crcValid))
+    }
+
+    /// An ASCII comment is ImageIO's to write, as before.
+    @Test func asciiCommentIsUnchangedInPNG() throws {
+        let parameters = try #require(try Fixture.load(.a1111JPEG).metadata.aiPayloads.first?.text)
+        let out = try MetadataWriterTests.render(.a1111JPEG, .png, .default)
+        #expect(Self.userComment(out) == parameters && out.metadata.provenance == [.a1111])
+        #expect(out.contains("ASCII\0\0\0") && !out.contains("UNICODE\0"))
+        #expect(try #require(PNGSplicerTests.walk(out.data)).allSatisfy(\.crcValid))
+    }
+
     /// One comment holds one text: the source's own AI comment stays, else the
     /// first `parameters` chunk goes in; the capability says what is left out.
     @Test func severalCandidatesKeepTheFirst() throws {
