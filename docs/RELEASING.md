@@ -40,8 +40,9 @@ images. After each step no staged file may be left: nothing named
 `.name.UUID.tmp` next to the outputs, and nothing inside a volume's
 `.TemporaryItems` (the empty folders themselves are the system's).
 
-1. **Save As…** to a new name, then over an existing file (confirm Replace):
-   on the internal disk and on an external or disk-image volume.
+1. **Save…** (⌘S, default mode) or **Save As…** (⇧⌘S, silent-save mode) to a
+   new name, then over an existing file (confirm Replace): on the internal
+   disk and on an external or disk-image volume.
 2. **Inspector Export… and Export All…** to the same two places, new and
    existing names; an export to a read-only volume shows an error.
 3. **Save next to the original without asking** (Settings): the first save

@@ -182,7 +182,9 @@ in the rest.
 Details:
 
 - **Range** 128–8192 by default, extending upward if a source image exceeds it.
-- **⌘1–⌘5** jump to the five detents; ← / → step; ⇧← / ⇧→ step by ten.
+- ~~**⌘1–⌘5** jump to the five detents; ← / → step; ⇧← / ⇧→ step by ten.~~
+  *Dropped with the slider 2026-09-06*: the ladder row picks a size in one
+  click, and the − / + buttons step (⇧-click for ×10).
 - **The ladder is editable** in Settings (2–6 values; entries not divisible by
   32 are flagged there because snapping can move them). The default is the
   ML/diffusion ladder; web work wants something nearer 640 · 1280 · 1920 · 2560.
@@ -702,7 +704,9 @@ shipped CLI, and the Shortcuts action (§13).
    count (§8). Revisit when batch arrives.
 7. **Does the ladder need 1536?** **Decided 2026-09-05: yes**, as the fifth
    detent — SDXL-era workflows land there often, and it is divisible by 8 and 16.
-   Shortcuts are ⌘1–⌘5.
+   ~~Shortcuts are ⌘1–⌘5.~~ The shortcuts were dropped with the slider
+   (2026-09-06): the ladder row and the − / + buttons (⇧-click ×10) take their
+   place.
 8. **Should aspect presets auto-flip to match source orientation?** Choosing 16:9
    for a folder of portrait photographs crops them to ribbons. The list carries
    both orientations explicitly (2:3 *and* 3:2), so the user can already say what

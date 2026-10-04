@@ -101,7 +101,7 @@ struct HelpView: View {
             "SnapRescale does not edit metadata. For that, use ExifTool or Photos.",
         ]),
         Section(title: "Shortcuts", lines: [
-            "**⌘O** open · **⌘S** save · **⇧⌘S** save as · **⌥⌘I** metadata inspector · **⌘,** settings · **⌘?** this help",
+            "**⌘O** open · **⌘S** save · **⇧⌘S** save as (when *Save next to the original without asking* is on; otherwise ⌘S opens the save panel) · **⌥⌘I** metadata inspector · **⌘,** settings · **⌘?** this help",
         ]),
     ]
 

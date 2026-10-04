@@ -80,7 +80,8 @@ open the metadata inspector at that section. Full list:
 
 ## Shortcuts
 
-**⌘O** open · **⌘S** save · **⇧⌘S** save as · **⌥⌘I** metadata inspector ·
-**⌘,** settings · **⌘?** help
+**⌘O** open · **⌘S** save · **⇧⌘S** save as (when *Save next to the original
+without asking* is on; otherwise ⌘S opens the save panel) · **⌥⌘I** metadata
+inspector · **⌘,** settings · **⌘?** help
 
 Problems or ideas: [github.com/phierru/SnapRescale/issues](https://github.com/phierru/SnapRescale/issues).
