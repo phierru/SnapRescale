@@ -95,10 +95,20 @@ each is then rounded to the nearest multiple.
 
 Note `1 MP` here means 1024² = 1,048,576 px, not 1,000,000. Worth being explicit
 about in our UI, because photographers read "12 MP" as the decimal kind.
+*Historical: SnapRescale settled on the decimal kind, 1 MP = 10⁶ px
+(2026-09-05, PRD §15.1).*
 
 ---
 
-## What Rescale takes from this
+## What Rescale takes from this (historical)
+
+*The design ideas as first drawn from this review, kept as written. The PRD
+and the roadmap have since settled the model, and they win where the two
+differ: the aspect ratio is always set and one number completes it, written
+as width, height, megapixels or scale, so long and short edge and the `0`
+convention are gone (PRD §5); a megapixel is 10⁶ px (PRD §15.1); the
+resampling choice is deferred (ROADMAP); and stretch was dropped from the
+app, which leaves crop and pad (PRD §7).*
 
 1. **Mode-as-discriminated-union.** One "Resize by:" selector that swaps the
    parameter row. Beats Parallels Toolbox's two fixed tabs and Apple's

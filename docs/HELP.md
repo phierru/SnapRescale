@@ -6,7 +6,8 @@ The same text as the in-app help (⌘?). Deliberately brief; the
 ## Getting an image in
 
 - Right-click an image in Finder → **Open With → SnapRescale**, or **Services →
-  Resize with SnapRescale**. The window then quits after saving.
+  Resize with SnapRescale**. If that launches SnapRescale, it quits after
+  saving.
 - Or open SnapRescale from Applications and **drop an image** on the window, or
   press **⌘O**. The window stays open.
 - One image at a time. Dropping another replaces it.

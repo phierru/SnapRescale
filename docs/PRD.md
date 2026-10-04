@@ -573,9 +573,11 @@ same background encoder that produces the live byte count.
 
 **Deferred to batch (v2):** destination folder choice, a `./resized/` subfolder,
 replace-in-place with Trash-the-original, recursion preserving directory
-structure, and the full filename template (`{name}` `{ext}` `{w}` `{h}`
-`{preset}` `{n}` `{date}`). The v1 name is that template with the default value,
-so the mechanism ships early even though the UI for it does not.
+structure, and a filename template (`{name}` `{ext}` `{w}` `{h}` `{preset}`
+`{n}` `{date}`). The name v1 writes is a fixed scheme, not a template:
+`name_WxH[_n].ext`, where the counter starts at `_2` and `ext` is the output
+format's extension, so a `.jpg` source kept as JPEG is saved as `.jpeg`. The
+template engine is future work.
 
 ## 12. Presets
 

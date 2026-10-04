@@ -68,7 +68,7 @@ struct HelpView: View {
 
     static let sections: [Section] = [
         Section(title: "Getting an image in", lines: [
-            "Right-click an image in Finder → **Open With → SnapRescale**, or **Services → Resize with SnapRescale**. The window then quits after saving.",
+            "Right-click an image in Finder → **Open With → SnapRescale**, or **Services → Resize with SnapRescale**. If that launches SnapRescale, it quits after saving.",
             "Or open SnapRescale from Applications and **drop an image** on the window, or press **⌘O**. The window stays open.",
             "One image at a time. Dropping another replaces it.",
         ]),
