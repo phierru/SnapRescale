@@ -12,7 +12,7 @@
     <key>LSMinimumSystemVersion</key>  <string>26.0</string>
     <key>NSHighResolutionCapable</key> <true/>
     <key>NSHumanReadableCopyright</key><string>© 2026 Francesco Lardieri. MIT licence.</string>
-    <key>LSApplicationCategoryType</key><string>public.app-category.photography</string>
+    <key>LSApplicationCategoryType</key><string>public.app-category.graphics-design</string>
     <key>ITSAppUsesNonExemptEncryption</key><false/>
     <key>CFBundleIconName</key><string>AppIcon</string>
     <key>NSServices</key>
