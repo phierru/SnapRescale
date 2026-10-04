@@ -1,7 +1,7 @@
 # SnapRescale — Product Requirements Document
 
-**Status:** Draft v0.14 · 2026-09-06 · current milestone **M5** · deferred work in [`ROADMAP.md`](ROADMAP.md) · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
-**Name:** SnapRescale — *Resize to any ratio, snapped to multiples of 8 and 16* · bundle ID `com.phierru.SnapRescale`
+**Status:** Draft v0.15 · 2026-10-04 · current milestone **Metadata (1.2)**, merged, not released · deferred work in [`ROADMAP.md`](ROADMAP.md) · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
+**Name:** SnapRescale — *Resize to any ratio, snapped to multiples of 8, 16 and 32* · bundle ID `com.phierru.SnapRescale`
 **Platform:** macOS 26+ (Apple Silicon), Swift 6 / SwiftUI
 
 ---
@@ -115,8 +115,10 @@ is the whole of the state model.
 carried across at full precision (only the field's text is rounded), and the
 solver re-solves for that view. Pinning width holds one axis; megapixels frees
 both. So at multiple 16 the derived axis can legally move by one lattice step
-on a view switch, and the notes under Output say so. At multiple 1 nothing
-moves.
+on a view switch, and the notes under Output say so. At multiple 1 a side can
+still move by a pixel, because sizes are whole pixels: from 6000×4000 under
+Original, width 1031 gives 1031×687, and switching to Height (687) gives
+1030×687. No note says so; the notes cover only what the multiple forces.
 
 **Original is exact up to the multiple.** With a multiple of 8, 16 or 32 the
 snapped size can differ from the source ratio by a few pixels; the renderer
@@ -170,19 +172,21 @@ the slider exists (M2) the same ladder is a row of buttons under the field. They
 bypasses them entirely. A second, unlabelled detent grid sits at every multiple,
 so a free drag still lands on a legal value.
 
-All five detent values are divisible by **8 and 16**, so a detent is never
-displaced by snapping (§6) at any multiple. Any custom entry failing that test is
-flagged in preferences, because it quietly loses the guarantee. Combined with
-steppers that move by the multiple, the pinned axis is essentially always already
-on the lattice — which makes §6 a no-op in normal use and a safety net in the
-rest.
+All five detent values are divisible by **32**, and so by 8 and 16: a detent is
+never displaced by snapping (§6) at any multiple. Any custom entry failing that
+test is flagged in preferences, because it quietly loses the guarantee. Combined
+with steppers that move by the multiple, the pinned axis is essentially always
+already on the lattice — which makes §6 a no-op in normal use and a safety net
+in the rest.
 
 Details:
 
 - **Range** 128–8192 by default, extending upward if a source image exceeds it.
-- **⌘1–⌘5** jump to the five detents; ← / → step; ⇧← / ⇧→ step by ten.
+- ~~**⌘1–⌘5** jump to the five detents; ← / → step; ⇧← / ⇧→ step by ten.~~
+  *Dropped with the slider 2026-09-06*: the ladder row picks a size in one
+  click, and the − / + buttons step (⇧-click for ×10).
 - **The ladder is editable** in Settings (2–6 values; entries not divisible by
-  16 are flagged there because snapping can move them). The default is the
+  32 are flagged there because snapping can move them). The default is the
   ML/diffusion ladder; web work wants something nearer 640 · 1280 · 1920 · 2560.
 - **Upscaling is a warning, not a lock** (decided 2026-09-06): a target larger
   than the source is allowed and flagged under Output with the factor. No
@@ -228,9 +232,15 @@ do, so:
 > value and is then **held fixed**. Only the axis derived from the aspect ratio
 > is searched.
 
-Restricting the multiple to 1/8/16 keeps the cost of this trivial: worst observed
-aspect deviation is **0.74%**, against 0.35% for the objective that betrays the
-user. That is a good trade.
+Restricting the multiple to 1/8/16 keeps the cost of this small: for outputs
+from 1920 px up, the worst observed aspect deviation is **0.74%**, against 0.35%
+for the objective that betrays the user. That is a good trade. Smaller outputs
+pay more for the same step: `width 784 + 16:9` at multiple 16 gives 784×448,
+1.6% off the ratio. Multiple 32, added in 1.1 for image-editing models
+such as Qwen Image, doubles the step and with it the cost: `width 768 + 16:9`
+gives 768×448, 3.6% off the ratio, where aspect priority would give 800×448
+(0.45%). The rule holds at 32 as well; the note under Output says what the
+multiple forced.
 
 **Hold first, then derive.** When the typed value is off the lattice, the
 snapped value is what gets written, so the derived axis is computed from *that*,
@@ -241,7 +251,7 @@ move the derived axis by one lattice step, so the solution was not a fixed point
 of itself.
 
 In practice this section rarely fires at all: the steppers move by the multiple
-and every slider detent is divisible by 8 and 16 (§5), so the axis you set is
+and every default ladder value is divisible by 32 (§5), so the axis you set is
 almost always on the lattice already. This is the safety net for typed values and
 for **Original** ratios, not the everyday path.
 
@@ -338,9 +348,9 @@ icon) and it becomes the session. The same window offers ⌘O and a *Choose
 Image…* button for people who do not drag. Dropping a second image while one is
 open **replaces it immediately** — this is a disposable one-shot session, not a
 document, so there is no dirty check (decided 2026-09-05). v1 never holds two
-in one window; **multiple windows**, one image each, are planned for v1.1 (see
-[`ROADMAP.md`](ROADMAP.md)), and a drop on a window that already has an image
-will still replace it rather than open another.
+in one window; **multiple windows**, one image each, are planned for later
+(#35, see [`ROADMAP.md`](ROADMAP.md)), and a drop on a window that already
+has an image will still replace it rather than open another.
 
 Drop accepts the image UTIs in §9. A folder, a multi-selection or a non-image
 is refused with a plain message rather than taking the first file silently.
@@ -429,7 +439,7 @@ switches.)*
 
 **What the source carries is shown up front.** The header row above the
 preview — name, dimensions, file size, format — ends with one badge per
-metadata block found: **ICC** (profile name on hover; only when the file
+metadata block read (§10.2): **ICC** (profile name on hover; only when the file
 embeds a profile — an sRGB that macOS merely assumes gets no badge), **EXIF**, **GPS** (in a
 warning colour), **IPTC**, **XMP**, **Alpha**, **16-bit**, **HDR**, **Depth**,
 **Rotated**, **Animated ·N**, and one per AI-generation source detected:
@@ -451,13 +461,21 @@ window. It has the same fixed width as the sidebar. Opened by a badge click,
 the sidebar's Metadata row or **⌥⌘I** (View ▸ Metadata Inspector); closed by
 the same, or by the close button in its header.
 
-It lists everything the source carries in **collapsible sections**, each
+It lists the metadata it could read in **collapsible sections**, each
 showing its fields as label / value rows. A section's title row holds, right
 aligned, its switch and then icon buttons (§10.5). The main fields come first,
 the rest behind **More (N)**; the AI workflow shows a summary (prompt,
 negative prompt, model, seed, steps, CFG, sampler, scheduler) above the raw
 payloads; the ICC section of a file with no embedded profile is collapsed and
 reads *macOS default (sRGB assumed)*.
+
+**What is read has limits.** PNG text chunks and XMP packets are read within a
+budget per image: 64 MiB of retained data, 4,096 elements and 128 MiB of
+decompression work, and no XMP packet over 64 MiB. That is far above what real
+files carry (a ComfyUI graph runs from tens of kB to a few MB). Anything over
+it is left out: it adds no badge, is neither listed nor exported, and is not
+written on save, even under *Keep all*. The Structure section notes what was
+skipped (the XMP section, for JPEG extended XMP).
 
 | Section | Control | Notes |
 |---|---|---|
@@ -525,8 +543,11 @@ Read-only, and available whatever the switches say:
 - **AI workflow ▸ Export…** writes the ComfyUI / InvokeAI graph as `.json`
   (droppable straight into ComfyUI) and A1111-style parameters as `.txt`.
   **Copy Prompt** puts the positive prompt on the clipboard.
-- **Export All…**, in the same menu, writes every section as one JSON file,
-  for archiving before stripping.
+- **Export All…**, in the same menu, writes the fields the inspector shows as
+  one JSON file, with raw keys and stored values. It is not a lossless
+  archive: section notes are left out, Apple's MakerNote and C2PA appear as
+  summaries, and the ICC profile as its fields, not its bytes. To keep
+  everything, keep the original.
 
 ### 10.6 Build order
 
@@ -552,30 +573,40 @@ same background encoder that produces the live byte count.
 
 **Deferred to batch (v2):** destination folder choice, a `./resized/` subfolder,
 replace-in-place with Trash-the-original, recursion preserving directory
-structure, and the full filename template (`{name}` `{ext}` `{w}` `{h}`
-`{preset}` `{n}` `{date}`). The v1 name is that template with the default value,
-so the mechanism ships early even though the UI for it does not.
+structure, and a filename template (`{name}` `{ext}` `{w}` `{h}` `{preset}`
+`{n}` `{date}`). The name v1 writes is a fixed scheme, not a template:
+`name_WxH[_n].ext`, where the counter starts at `_2` and `ext` is the output
+format's extension, so a `.jpg` source kept as JPEG is saved as `.jpeg`. The
+template engine is future work.
 
 ## 12. Presets
 
-A named bundle of *every* setting above — mode, parameters, fit, resampling,
-format, quality, metadata, destination, template. Presets are the point: they
-turn a twelve-control dialog into a one-click action.
+A named bundle of the size and export settings above: aspect ratio, the one
+size parameter, multiple, fit, pad colour, format, quality and metadata
+policy. Presets are the point: they turn a twelve-control dialog into a
+one-click action. Framing (where the crop frame or the padded image sits) is
+not part of a preset, and neither are the app's preferences in Settings.
+Resampling, destination folder and filename template are future schema work:
+those settings do not exist yet (§11, roadmap).
 
 Shipped defaults: **Web (Original ratio, 1.5 MP, JPEG q80)** · **Thumbnail
 (1:1, 320 px, crop)** · **Social 16:9 (1920 px, ×8, crop)** · **SDXL 1024 (1:1,
 1024 px, ×16, PNG)**. **Email (≤ 1 MB)** and **Discord/Slack (≤ 8 MB)** follow
-with the target-file-size search (roadmap v1.2); "strip GPS" joins Web with the
+with the target-file-size search (roadmap v1.3); "strip GPS" joins Web with the
 §10 switches: its policy is *strip EXIF, GPS, IPTC and XMP* — which is also the default.
 
 The picker sits at the top of the panel: choose one, *Save Current as
-Preset…*, delete the active one, or reveal the folder. Any edit after applying
-a preset shows **Custom**. A preset is also a launch argument, `--preset "Social
+Preset…*, delete the active one, or reveal the folder. Changing a stored
+setting after applying a preset shows **Custom** once the output changes;
+moving the crop frame does not. A preset is also a launch argument, `--preset "Social
 16:9"`, for scripts and for the v2 headless Quick Action.
 
-A preset stores the aspect ratio and the one size parameter, so it replays
-exactly. Presets whose aspect is a preset rather than Original will crop, and the
-preset editor says which.
+A preset stores the aspect ratio and the one size parameter, so the target
+size replays exactly. The framing does not: applying a preset leaves the crop
+frame where it is, and a new image starts centred. Presets whose aspect is a
+fixed ratio rather than Original crop or pad an image of another ratio. There
+is no preset editor: a preset is saved from the current settings, and its
+file can be edited by hand.
 
 Stored as JSON in `~/Library/Application Support/SnapRescale/presets/` (inside
 the container when sandboxed), one file per preset, written on first run so the
@@ -588,9 +619,11 @@ hand:
   "format": "keep", "quality": 0.95 }
 ```
 
-`aspect` is `"original"` or `"W:H"`; `size` has exactly one of `width`,
-`height`, `megapixels`, `scale`; `format` is `keep`, `jpeg`, `png`, `heic` or
-`tiff`; `padColor` is `#rrggbb` or `#rrggbbaa`.
+`aspect` is `"W:H"` or `"Original"`, as the app writes it (read in any case);
+`size` has exactly one of `width`, `height`, `megapixels`, `scale`; `format`
+is `keep`, `jpeg`, `png`, `heic` or `tiff`; `padColor` is `#rrggbb` or
+`#rrggbbaa`. These keys and `metadata` below are the whole schema: a key the
+app does not know is ignored when a preset is read.
 
 `metadata` is optional — a preset without it takes the default policy (§10.2):
 
@@ -657,7 +690,7 @@ shipped CLI, and the Shortcuts action (§13).
    wranglers. One constant, `Megapixel.pixels` in `RescaleKit`, if this ever
    needs revisiting.
 2. **Name.** ~~"SnapRescale" is a placeholder.~~ **Decided 2026-09-05: SnapRescale**,
-   tagline "Resize to any ratio, snapped to multiples of 8 and 16". Engine stays `RescaleKit`, CLI stays `rescale`
+   tagline "Resize to any ratio, snapped to multiples of 8, 16 and 32". Engine stays `RescaleKit`, CLI stays `rescale`
    (short in pipelines). No exact-match collisions found; nearest neighbours are
    SnapResizer (web/iPad) and Snap Converter (Mac App Store).
 3. **Distribution.** **Decided 2026-09-06: free on the Mac App Store, source
@@ -673,7 +706,9 @@ shipped CLI, and the Shortcuts action (§13).
    count (§8). Revisit when batch arrives.
 7. **Does the ladder need 1536?** **Decided 2026-09-05: yes**, as the fifth
    detent — SDXL-era workflows land there often, and it is divisible by 8 and 16.
-   Shortcuts are ⌘1–⌘5.
+   ~~Shortcuts are ⌘1–⌘5.~~ The shortcuts were dropped with the slider
+   (2026-09-06): the ladder row and the − / + buttons (⇧-click ×10) take their
+   place.
 8. **Should aspect presets auto-flip to match source orientation?** Choosing 16:9
    for a folder of portrait photographs crops them to ribbons. The list carries
    both orientations explicitly (2:3 *and* 3:2), so the user can already say what

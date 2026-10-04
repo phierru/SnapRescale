@@ -1,8 +1,8 @@
 import Foundation
 
-/// A named bundle of every geometry and encoder setting (PRD §12): the thing
-/// that turns the panel into one click. Stored as JSON so it is editable,
-/// diffable and shareable.
+/// A named bundle of the size and export settings (PRD §12): the thing that
+/// turns the panel into one click. Not the framing (the crop anchor), nor the
+/// app's preferences. Stored as JSON so it is editable, diffable and shareable.
 public struct Preset: Hashable, Sendable, Codable, Identifiable {
     public var name: String
     public var aspect: AspectRatio
@@ -87,7 +87,7 @@ public struct Preset: Hashable, Sendable, Codable, Identifiable {
     }
 
     /// The presets that ship (PRD §12). Email and Discord/Slack wait for the
-    /// target-file-size search (roadmap v1.2). Web states its policy — strip
+    /// target-file-size search (roadmap v1.3). Web states its policy — strip
     /// EXIF, GPS, IPTC and XMP — although that is also the default the others take.
     public static let shipped: [Preset] = [
         Preset(name: "Web", aspect: .original, size: .megapixels(1.5), multiple: .one, format: .jpeg, quality: 0.8,

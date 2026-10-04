@@ -3,30 +3,37 @@
 Everything not in the current milestone lives here. The PRD (`PRD.md`) holds the
 requirements; this file holds the order. Dates are decisions, not promises.
 
-**Current milestone: M5 — ship it.** Free on the Mac App Store, source public
-under MIT. See §14 of the PRD and the M5 section below.
+**Current milestone: the Metadata release, 1.2.** Implemented and merged, not
+yet released. The release is gated on the sandbox checks in
+[`RELEASING.md`](RELEASING.md): they passed on fa50d19 on 2026-10-03 and are
+repeated on the release build before upload. M5, which shipped 1.0 and 1.1,
+is kept at the end as history.
 
 ## Deferred from v1 (2026-09-06)
 
 These were in the v1 cut and were moved out so M5 could start. 1.1 shipped
 (2026-09-28) without them. The two metadata items — the §10 switches and
 "keep AI workflow" — were redesigned on 2026-09-30 and are now the **Metadata**
-milestone below (implemented, in review); what remains here is still open.
+milestone below (implemented and merged, not released); what remains here is
+still open.
 
 | Item | PRD | Notes |
 |---|---|---|
 | Resampling choice: area for downscale, Lanczos for upscale, nearest for pixel art | §1, ComfyUI review | CoreGraphics high-quality interpolation today; Core Image filters are the likely route. |
 
-## Metadata — implemented, in review (decided 2026-09-30)
+## Metadata (1.2) — merged, not released (decided 2026-09-30)
 
 PRD §10: a metadata inspector in the window's trailing panel, opened from the
 badges. Keep / strip per section, copy / export, **no editing**. Default policy:
 strip EXIF, GPS, IPTC and XMP, preserve ICC, keep the AI workflow (changed from
 "keep everything except GPS" after trying the app).
 
-**Status: implemented, in review — not released.** Waves 0, 1 and 2 are done
-and merged (PRs #23, #24, #27); wave 3 is done and in review (PR #28). 1.1,
-the version on the store, still writes 8-bit sRGB with everything stripped.
+**Status: implemented and merged — not released.** All four waves are merged
+(PRs #23, #24, #27, #28), with the fixes from the reviews of 2026-09-30 and
+2026-10-03 (#31, #46) and a follow-up (#34). The release, 1.2, is gated on
+the sandbox checks in `RELEASING.md`, which passed on fa50d19 on 2026-10-03
+and are repeated on the release build before upload. 1.1, the version on the
+store, still writes 8-bit sRGB with everything stripped.
 The owner has checked that a resized ComfyUI PNG dropped into ComfyUI opens
 its workflow; what has not been checked is under *Open verification*.
 
@@ -57,10 +64,22 @@ where two items of a wave meet in one file are listed under the table.
 #13 and #15 both edit `Renderer.swift` but different functions (`encode` vs
 `render`); #17 and #19 both edit the inspector and should land one after the
 other; #15 and #16 both edit `Session.swift` (preview colour vs policy state).
-New sidebar and inspector controls must use `Binding.deferred` (the
-macOS 27 Form width bug, `docs/apple-feedback-macos27-form-width.md`).
+New sidebar and inspector controls must write through `deferred` /
+`Binding.deferred`, or `deferredLive` for continuous ones such as sliders and
+drags (the macOS 27 Form width bug, `docs/apple-feedback-macos27-form-width.md`).
 
-## Also next — multiple windows (decided 2026-09-06)
+## v1.3 — M4, formats and encoding
+
+| Item | PRD |
+|---|---|
+| WebP writing via bundled `libwebp` (the one native dependency; affects sandbox and notarisation) | §9 |
+| Per-format encoder options: JPEG progressive + chroma subsampling, PNG interlace, HEIC/AVIF lossless, TIFF compression | §9 |
+| Target file size: a byte ceiling met by searching quality downward with the background encoder | §11 |
+| JPEG XL writing | §9, deferred again |
+
+## Later — multiple windows (#35, decided 2026-09-06)
+
+Not scheduled: it comes after the formats release (review 2026-10-03).
 
 One session per window instead of the single shared session. Open With,
 Services and Dock drops open a **new window per image** (two files selected in
@@ -71,20 +90,11 @@ rule moves to the window: a window opened from Finder closes after its save,
 and the app quits when its last window closes. Commands act on the focused
 window. PRD §8 "v1 never holds two" is superseded by this.
 
-## v1.2 — M4, formats and encoding
-
-| Item | PRD |
-|---|---|
-| WebP writing via bundled `libwebp` (the one native dependency; affects sandbox and notarisation) | §9 |
-| Per-format encoder options: JPEG progressive + chroma subsampling, PNG interlace, HEIC/AVIF lossless, TIFF compression | §9 |
-| Target file size: a byte ceiling met by searching quality downward with the background encoder | §11 |
-| JPEG XL writing | §9, deferred again |
-
 ## v2 — many images, headless
 
 | Item | PRD |
 |---|---|
-| Batch: file list, queue with progress and cancel, recursion, collision counters, "reframes 14 of 22" warning — for folders and dozens; a few images are covered by multiple windows (v1.1) | §8 |
+| Batch: file list, queue with progress and cancel, recursion, collision counters, "reframes 14 of 22" warning — for folders and dozens; a few images will be covered by multiple windows (later, #35) | §8 |
 | Headless preset Quick Action (Action Extension or Shortcut) so `right-click → SnapRescale → ‹preset›` works without a window | §13 |
 | Real CLI: presets, globs, `--json`, exit codes; the current `rescale` stays a test harness | §13 |
 | Shortcuts action | §13 |
@@ -123,12 +133,14 @@ Metadata milestone — not yet exercised by running the app:
 
 - The HDR note, on a real gain-map photo.
 - The C2PA section, with a really signed file.
-- Export… and Export All… in a sandboxed release build (part of the sandbox
-  checks in `RELEASING.md`).
+- ~~Export… and Export All… in a sandboxed release build~~: checked on
+  2026-10-03 with the sandbox checks in `RELEASING.md`, which are repeated on
+  the release build before upload.
 
-## M5 — ship it (current)
+## M5 — ship it (history)
 
-Ordered so that each step leaves something usable.
+Done: 1.0 and 1.1 shipped on the Mac App Store. The steps are kept as they
+were recorded. Ordered so that each step leaves something usable.
 
 1. **Licence and credits** — MIT, ComfyUI acknowledged. *(done 2026-09-06)*
 2. **Xcode project** via `xcodegen`, wrapping the SwiftPM packages, because the
@@ -144,11 +156,11 @@ Ordered so that each step leaves something usable.
    Settings. `--save` scripting stays dev-build only.)*
 4. **Presets** — JSON in Application Support, shipped defaults, a picker.
    *(done 2026-09-06: Web, Thumbnail, Social 16:9, SDXL 1024; hand-editable
-   JSON; `--preset` launch argument. Email and Discord/Slack wait for v1.2.)*
+   JSON; `--preset` launch argument. Email and Discord/Slack wait for v1.3.)*
 5. **Settings** (⌘,) — default grid, ladder values, default multiple and quality,
    *Save next to the original without asking*, *Show the saved image in Finder*.
    *(done 2026-09-06; the ladder editor flags values not divisible by 16, as
-   PRD §5 asks; `--settings` launch argument opens the window for tests)*
+   PRD §5 then asked, 32 since 1.1; `--settings` launch argument opens the window for tests)*
 6. **Icon, About box with credits, help page.** *(done 2026-09-06. Icon:
    Liquid Glass `SnapRescale/AppIcon.icon` — three vector layers, frame + thirds
    grid + resize arrow on a blue gradient; the system derives light, dark,
@@ -163,4 +175,5 @@ Ordered so that each step leaves something usable.
    `docs/APP-STORE.md` holds the listing copy, keywords, review notes and the
    checklist; `docs/PRIVACY.md` is the policy. **Submitted 2026-09-06 16:29: SnapRescale 1.0 (1), submission
    d3af19ad-35c0-4d7b-9ace-08a9658378bd, Waiting for Review.** GitHub DMG still
-   needs a Developer ID Application certificate.)*
+   needs a Developer ID Application certificate.)* Both since settled: 1.0 was
+   approved, and the 1.1 DMG is signed with Developer ID and notarised.
