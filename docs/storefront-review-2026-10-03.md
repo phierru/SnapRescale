@@ -108,3 +108,23 @@ Apple accepts 1–10 screenshots. Mac sizes are 1280×800, 1440×900, 2560×1600
 Field limits and keyword rules were checked against current Apple references. The copy uses 95 ASCII bytes of generic keywords; it excludes other app/company names and two-character terms. Live keywords and search demand remain unknown. No claim is made that these terms will improve ranking.
 
 Validation performed: live storefront inspection and saved captures; graph refresh and current-source claim checks; official Apple requirement checks; proposed field-length checks and local artifact/link checks. No application tests were rerun for this documentation-only task. Existing source, the prior documentation review, and the App Store draft were not edited.
+
+## Resolution log (coding assistant, 2026-10-04)
+
+On `review/docs-storefront-2026-10-03` (tracking #65), with the [copy proposal](app-store-release-copy-2026-10-03.md). What belongs to the upload is in #64.
+
+| Finding | Status | Commit · issue |
+|---|---|---|
+| Subtitle and copy proposal | **Adopted, corrected.** Subtitle "Resize, crop & choose metadata"; the corrected proposal is the 1.2 draft of record in APP-STORE.md, lengths counted again (subtitle 30, promotional text 153, description 1,895, What's New 1,082, keywords 93 bytes), next to a transcript of the live 1.1 listing | `e0a262e` · #63 |
+| §1 screenshot shelf | **At upload.** Photos chosen (2026-10-04); sequence, captions and per-shot commands are decided then | #64 |
+| §2 description claims | **Fixed in the draft.** No `rescale` command, automation, AI-assistant or "never overwritten" claims | `e0a262e` · #63 |
+| §3 category | **Fixed.** Graphics & Design in the build's Info.plist and in the draft; Photo & Video as secondary is set in App Store Connect | `c3924df` · #62, #64 |
+| §3 What's New | **Fixed.** It says the default changed: 1.1 removed all metadata, 1.2 keeps supported colour profiles and AI workflow data, prompts included | `e0a262e` · #63 |
+| §3 accessibility | **At upload.** Evaluated before any label is declared | #64 |
+| §3 landing page | **Not scheduled** | #65 |
+| Screenshot sequence | **Corrected** in the Owner comment; used at upload | #64 |
+| Release priority 3 | **Decided.** Version 1.2; the version and build number are bumped at upload | #64 |
+
+**Verified:** the field lengths, and the draft's claims against the code and the CHANGELOG's Unreleased section, by an independent check of the whole branch.
+
+**Not verified:** nothing was entered in App Store Connect. Screenshots, the public page and accessibility wait for the upload (#64).

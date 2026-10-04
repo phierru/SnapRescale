@@ -365,3 +365,47 @@ were written under `/tmp`. No new tests or production code were added. No UI
 walkthrough, signed sandbox save, exFAT race test, archive, notarization,
 publication or deployment was performed. Passing tests verify the implemented
 behavior; they do not turn the stronger documentation claims into guarantees.
+
+## Resolution log (coding assistant, 2026-10-04)
+
+Fixed on `review/docs-storefront-2026-10-03` (tracking #65), one commit per
+issue, in five tracks that edit different files: docs, save path, metadata
+(with #32 and #33), app and listing; then the reference (#51) and the lines
+held back from the save and app tracks. Each track was reviewed against its
+issues by an independent reviewer and the confirmed findings folded in; the
+commits after the tracks, and the tracks against each other, were then
+verified the same way.
+
+| Finding | Status | Commit · issue |
+|---|---|---|
+| D1 no-overwrite | **Fixed.** Without an exclusive rename (exFAT) the name is reserved with `open(O_CREAT \| O_EXCL)`, a taken name is skipped, and the reservation is replaced by the staged file, or released only if it is still ours. PRD §11, the CHANGELOG and RELEASING step 4 say what holds; a concurrent test with the rename forced to fail covers the race | `5d3c9dd`, `fd99613` · #56 |
+| D2 preset schema | **Fixed.** PRD §12 and Help list the stored fields and what a preset does not replay | `44a9106` · #47 |
+| Found in checking D2: preset rounding | **Fixed.** A preset whose quality or scale is rounded on apply stays selected (`Session.asApplied`) | `37087a6` · #60 |
+| D3 read limits | **Fixed.** PRD §10, Help and the reference state the limits, the skip note and its effect on Keep; Export All is a JSON of the fields shown | `9756ab4` · #48 |
+| D4 README test commands | **Fixed** in the developer section; the rest of the README is updated at upload | `4a1de85` · #54, #64 |
+| D5 rounding and snapping | **Fixed.** Whole-pixel rounding can move a side by a pixel; a typed number that is not a multiple moves to the nearest one | `8f30074` · #49 |
+| D6 shortcuts | **Fixed.** ⇧⌘S is tied to the silent-save setting; ⌘1–⌘5 and the arrow steps are recorded as dropped | `c5fbedd` · #50 |
+| Found in checking D6: ⌘W | **Fixed.** File ▸ Close is back; ⌘W closes the key window | `9055ca0` · #59 |
+| D7 C2PA | **Fixed.** JPEG detection requires a JUMBF box labelled `c2pa`, so JPEG XT no longer counts; the reference separates where C2PA can be stored from where it is detected | `c04fcd9`, `89e3345` · #58, #51 |
+| D8 ICC three states | **Fixed.** GIF and BMP are walked, a walked file that does not parse counts as assumed, formats not walked keep ImageIO's answer; the reference and the fixtures README describe embedded, tagged and assumed | `1af0b1c`, `89e3345` · #57, #51 |
+| D9 workaround recipe | **Fixed.** `deferred` for discrete controls, `deferredLive` for continuous ones, in the guide, `Deferred.swift` and `PreviewView` | `c36b044` · #52 |
+| D10 roadmap status | **Fixed.** Metadata is 1.2, merged and not released; formats and encoding become 1.3; multiple windows later | `6b81ba4` · #53 |
+| Smaller cleanup | **Fixed.** PRD §11 describes the fixed naming scheme, the ComfyUI ideas are marked historical, the CLI header says it writes; Help's auto-quit is conditional | `4a1de85`, `5d3c9dd` · #54, #56 |
+| Found in verification | **Fixed.** Formats not walked show the ICC badge for an assumed profile too; Fooocus's A1111-style parameters read back as A1111; the save labels in both modes; RELEASING checks 6 and 10; which checks passed on which build | `2c73ce4` · #65 |
+
+Also on the branch: SwarmUI and Fooocus parameters are recognised in the EXIF
+user comment, and in a kept XMP packet follow the AI switch (`f0ecea0`, #32);
+a PNG keeps a user comment outside ASCII (`14b27c7`, #33).
+
+**Verified:** `swift test --package-path RescaleKit` 319 tests in 24 suites;
+`swift test --package-path SnapRescale` 10 tests in 2 suites. With the old
+check-then-replace fallback swapped back in, the concurrent fallback test
+fails every run. On the test VM (macOS 26.6.2), with the sandboxed Release
+build of `7096d4c`: RELEASING checks 2 (read-only volume), 4 (exFAT), 10 and
+11 pass, recorded in RELEASING.md.
+
+**Not verified:** the other RELEASING checks on this build; they are repeated
+on the release build before upload (#64). The exFAT race itself is covered by
+the test on APFS with the rename forced to fail, not on an exFAT volume. The
+preset naming sheet still writes directly; the macOS 27 Form width bug cannot
+be reproduced on the VM's macOS 26.
