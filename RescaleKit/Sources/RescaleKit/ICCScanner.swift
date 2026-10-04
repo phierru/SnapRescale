@@ -15,22 +15,36 @@ public enum ICCOrigin: Hashable, Sendable {
 }
 
 /// Looks for the profile in the container itself: PNG `iCCP`, JPEG APP2
-/// `ICC_PROFILE`, TIFF tag 34675, WebP `ICCP`, HEIC / HEIF / AVIF `colr` box.
-/// Nil for containers it does not walk, or cannot.
+/// `ICC_PROFILE`, TIFF tag 34675, WebP `ICCP`, HEIC / HEIF / AVIF `colr` box,
+/// GIF `ICCRGBG1` extension, BMP V5 header. Nil for containers it does not
+/// walk, or cannot.
 enum ICCScanner {
     typealias Bytes = XMPScanner.Bytes
 
     static let jpegSignature = Array("ICC_PROFILE".utf8) + [0]
     static let tiffTag = 34675
+    /// Block size, application identifier and authentication code.
+    static let gifApplication = [11] + Array("ICCRGBG1012".utf8)
+    /// `PROFILE_EMBEDDED`, "MBED", the V5 header's colour space type.
+    static let bmpEmbedded = 0x4D42_4544
 
     static func origin(in data: Data, type: UTType) -> ICCOrigin? {
+        guard walks(type) else { return nil }
         let bytes = Bytes(data)
         if type.conforms(to: .png) { return png(data, bytes) }
         if type.conforms(to: .jpeg) { return jpeg(bytes) }
         if type.conforms(to: .tiff) { return tiff(bytes) }
         if type.conforms(to: .webP) { return webP(bytes) }
-        if type.conforms(to: .heic) || type.conforms(to: .heif) || type.identifier == "public.avif" { return isoBMFF(bytes) }
-        return nil
+        if type.conforms(to: .gif) { return gif(bytes) }
+        if type.conforms(to: .bmp) { return bmp(bytes) }
+        return isoBMFF(bytes)
+    }
+
+    /// Whether `origin` walks this kind of container. One it walks but cannot
+    /// parse has no profile it could find: the caller counts it as assumed.
+    static func walks(_ type: UTType) -> Bool {
+        [.png, .jpeg, .tiff, .webP, .gif, .bmp, .heic, .heif].contains { type.conforms(to: $0) }
+            || type.identifier == "public.avif"
     }
 
     /// `iCCP` is a profile; `sRGB`, `cICP` and `gAMA` + `cHRM` only name a colour space.
@@ -60,7 +74,7 @@ enum ICCScanner {
         return .assumed
     }
 
-    /// Tag 34675 (ICCProfile) of the first IFD. BigTIFF is not walked.
+    /// Tag 34675 (ICCProfile) of the first IFD, in a TIFF or a BigTIFF.
     static func tiff(_ d: Bytes) -> ICCOrigin? {
         guard d.count >= 8 else { return nil }
         let little: Bool
@@ -69,12 +83,19 @@ enum ICCScanner {
         case (0x4D, 0x4D): little = false
         default: return nil
         }
-        guard d.u16(2, little: little) == 42 else { return nil }
-        let ifd = d.u32(4, little: little)
-        guard ifd >= 8, ifd + 2 <= d.count else { return nil }
-        let entries = d.u16(ifd, little: little)
-        guard ifd + 2 + entries * 12 <= d.count else { return nil }
-        for k in 0..<entries where d.u16(ifd + 2 + k * 12, little: little) == tiffTag { return .embedded }
+        // BigTIFF (43) has 64-bit offsets and entry counts, and 20-byte entries.
+        let version = d.u16(2, little: little), big = version == 43
+        guard version == 42 || (big && d.count >= 16) else { return nil }
+        func u64(_ i: Int) -> Int {
+            let (low, high) = little ? (d.u32(i, little: true), d.u32(i + 4, little: true)) : (d.u32(i + 4), d.u32(i))
+            return high > 0xFFFF ? 1 << 48 : high << 32 | low
+        }
+        let (countSize, entrySize) = big ? (8, 20) : (2, 12)
+        let ifd = big ? u64(8) : d.u32(4, little: little)
+        guard ifd >= 8, ifd + countSize <= d.count else { return nil }
+        let entries = big ? u64(ifd) : d.u16(ifd, little: little)
+        guard ifd + countSize + entries * entrySize <= d.count else { return nil }
+        for k in 0..<entries where d.u16(ifd + countSize + k * entrySize, little: little) == tiffTag { return .embedded }
         return .assumed
     }
 
@@ -104,6 +125,36 @@ enum ICCScanner {
         if kinds.contains("prof") || kinds.contains("rICC") { return .embedded }
         if kinds.contains("nclx") { return .tagged("nclx colour box") }
         return .assumed
+    }
+
+    /// An `ICCRGBG1` application extension, before or between the images.
+    static func gif(_ d: Bytes) -> ICCOrigin? {
+        guard d.count >= 13, d.starts(with: Array("GIF8".utf8), at: 0, end: d.count) else { return nil }
+        func colourTable(_ flags: UInt8) -> Int { flags & 0x80 == 0 ? 0 : 3 << (Int(flags & 7) + 1) }
+        var i = 13 + colourTable(d[10])
+        while i < d.count {
+            if d[i] == 0x21, i + 2 < d.count {                            // extension: label, then sub-blocks
+                if d[i + 1] == 0xFF, d.starts(with: gifApplication, at: i + 2, end: d.count) { return .embedded }
+                i += 2
+            } else if d[i] == 0x2C, i + 10 <= d.count {                   // image: descriptor, colour table, LZW size
+                i += 10 + colourTable(d[i + 9]) + 1
+            } else {
+                break                                                     // trailer, or not a block
+            }
+            while i < d.count, d[i] != 0 { i += 1 + Int(d[i]) }           // sub-blocks up to the terminator
+            i += 1
+        }
+        return .assumed
+    }
+
+    /// A V5 header whose colour space is an embedded profile, and the profile
+    /// it points to. Older headers cannot carry one.
+    static func bmp(_ d: Bytes) -> ICCOrigin? {
+        guard d.count >= 18, d[0] == 0x42, d[1] == 0x4D else { return nil }          // "BM"
+        guard d.u32(14, little: true) >= 124, d.count >= 14 + 124 else { return .assumed }
+        let profile = 14 + d.u32(14 + 112, little: true), size = d.u32(14 + 116, little: true)
+        guard d.u32(14 + 56, little: true) == bmpEmbedded, size > 0, profile + size <= d.count else { return .assumed }
+        return .embedded
     }
 }
 

@@ -231,9 +231,11 @@ public struct ImageMetadata: Hashable, Sendable {
         let profile = CGImageSourceCreateImageAtIndex(source, 0, nil)?.colorSpace?.copyICCData() as Data?
         var icc = MetadataSection(kind: .icc, fields: m.iccProfileName == nil && profile == nil ? []
             : ICCReader.fields(name: m.iccProfileName, colorModel: m.colorModel, profile: profile))
-        // Embedded or assumed is read off the container; ImageIO answers for the ones not walked.
+        // Embedded, tagged or assumed is read off the container; one the scanner
+        // walks but cannot parse is assumed. ImageIO answers for the ones not
+        // walked (PSD, JPEG XL, RAW, …), which can embed a real profile.
         m.iccOrigin = data.flatMap { ICCScanner.origin(in: $0, type: type) }
-            ?? (m.iccProfileName != nil ? .embedded : .assumed)
+            ?? (m.iccProfileName != nil && !ICCScanner.walks(type) ? .embedded : .assumed)
         if !icc.fields.isEmpty {
             icc.fields.insert(MetadataField(key: "Embedded", value: m.iccEmbeddedValue), at: 0)
             icc.note = m.iccNote
