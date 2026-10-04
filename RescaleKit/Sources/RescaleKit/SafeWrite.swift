@@ -103,7 +103,7 @@ public enum SafeWrite {
         // After a successful commit the staged item has moved; this removes
         // what is left of it, which after a failure is everything.
         defer { try? fm.removeItem(at: cleanup) }
-        try stage(data, staged)
+        do { try stage(data, staged) } catch { throw Self.error(error, at: url) }
         return try commit(staged)
     }
 
@@ -126,5 +126,17 @@ public enum SafeWrite {
         }
         return CocoaError(kind, userInfo: [NSURLErrorKey: url, NSFilePathErrorKey: url.path,
                                            NSUnderlyingErrorKey: NSError(domain: NSPOSIXErrorDomain, code: Int(code))])
+    }
+
+    /// A staging error as it would read for `url`: a Cocoa error names the
+    /// staged item, which the user never sees (#55). Its domain, code and
+    /// underlying error stay, so a refusal is still recognised as one.
+    private static func error(_ error: any Error, at url: URL) -> any Error {
+        let ns = error as NSError
+        guard ns.domain == NSCocoaErrorDomain else { return error }
+        var info = ns.userInfo
+        info[NSURLErrorKey] = url
+        info[NSFilePathErrorKey] = url.path
+        return CocoaError(CocoaError.Code(rawValue: ns.code), userInfo: info)
     }
 }

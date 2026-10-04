@@ -249,4 +249,51 @@ import Testing
         }
         #expect(try names(in: dir).isEmpty)
     }
+
+    // MARK: Errors (#55)
+
+    /// The folder is gone (renamed while its image was open), so the staging
+    /// fails first: the error names the destination, not the staged file.
+    @Test func failureNamesTheDestination() throws {
+        try withFolder { dir in
+            let url = dir.appendingPathComponent("gone/out.jpg")
+            let errors = [
+                #expect(throws: CocoaError.self) { try SafeWrite.write(Data("fresh".utf8), to: url) },
+                #expect(throws: CocoaError.self) { try SafeWrite.create(Data("fresh".utf8), firstFreeOf: [url]) },
+            ]
+            for error in errors {
+                #expect(error?.code == .fileNoSuchFile)
+                #expect(error?.url == url)
+                #expect(error?.filePath == url.path)
+                #expect(error?.localizedDescription.contains("“out.jpg”") == true)
+                #expect(error?.localizedDescription.contains(".tmp") == false)
+            }
+            let left = try names(in: dir)
+            #expect(left.isEmpty)
+        }
+    }
+
+    /// The staged copy is refused: the error keeps the code and the POSIX
+    /// error under it, which `FolderAccess` asks for the folder on.
+    @Test func refusedStagingKeepsTheCode() throws {
+        try withFolder { dir in
+            let url = dir.appendingPathComponent("out.jpg")
+            let error = #expect(throws: CocoaError.self) {
+                try SafeWrite.write(Data("fresh".utf8), to: url) { data, temp in
+                    let folder = temp.deletingLastPathComponent()
+                    try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path)
+                    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path) }
+                    try data.write(to: temp)
+                }
+            }
+            #expect(error?.code == .fileWriteNoPermission)
+            let underlying = error?.userInfo[NSUnderlyingErrorKey] as? NSError
+            #expect(underlying?.domain == NSPOSIXErrorDomain)
+            #expect(underlying?.code == Int(EACCES))
+            #expect(error?.filePath == url.path)
+            #expect(error?.localizedDescription.contains("“\(dir.lastPathComponent)”") == true)
+            let left = try names(in: dir)
+            #expect(left.isEmpty)
+        }
+    }
 }
