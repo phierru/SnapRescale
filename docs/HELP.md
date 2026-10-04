@@ -39,8 +39,8 @@ The same text as the in-app help (⌘?). Deliberately brief; the
 - **⌘S** opens the save panel, pre-filled with *name_WxH*. In Settings you can
   make ⌘S save beside the original without asking; the first save into a folder
   asks for permission once.
-- **Presets** bundle every setting. Save your own from the Preset menu; the
-  files are plain JSON.
+- **Presets** store size and export settings. Save your own from the Preset
+  menu; the files are plain JSON.
 
 ## The badges
 

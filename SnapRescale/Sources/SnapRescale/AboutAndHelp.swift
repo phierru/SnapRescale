@@ -86,7 +86,7 @@ struct HelpView: View {
             "Only the **first frame** of an animation is used, and a CMYK image is converted to sRGB.",
             "The **file size** shown is a real encode, not an estimate.",
             "**⌘S** opens the save panel, pre-filled with *name_WxH*. In Settings you can make ⌘S save beside the original without asking; the first save into a folder asks for permission once.",
-            "**Presets** bundle every setting. Save your own from the Preset menu; the files are plain JSON.",
+            "**Presets** store size and export settings. Save your own from the Preset menu; the files are plain JSON.",
         ]),
         Section(title: "The badges", lines: [
             "Next to the file name: what the source carries — an embedded colour profile, EXIF, GPS, IPTC, XMP, HDR, alpha — and where an AI image came from (ComfyUI, A1111, InvokeAI, …). Hover for details; click one to open the metadata inspector at that section.",

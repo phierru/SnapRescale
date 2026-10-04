@@ -1,8 +1,8 @@
 import Foundation
 
-/// A named bundle of every geometry and encoder setting (PRD §12): the thing
-/// that turns the panel into one click. Stored as JSON so it is editable,
-/// diffable and shareable.
+/// A named bundle of the size and export settings (PRD §12): the thing that
+/// turns the panel into one click. Not the framing (the crop anchor), nor the
+/// app's preferences. Stored as JSON so it is editable, diffable and shareable.
 public struct Preset: Hashable, Sendable, Codable, Identifiable {
     public var name: String
     public var aspect: AspectRatio

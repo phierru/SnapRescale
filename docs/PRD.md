@@ -558,9 +558,13 @@ so the mechanism ships early even though the UI for it does not.
 
 ## 12. Presets
 
-A named bundle of *every* setting above — mode, parameters, fit, resampling,
-format, quality, metadata, destination, template. Presets are the point: they
-turn a twelve-control dialog into a one-click action.
+A named bundle of the size and export settings above: aspect ratio, the one
+size parameter, multiple, fit, pad colour, format, quality and metadata
+policy. Presets are the point: they turn a twelve-control dialog into a
+one-click action. Framing (where the crop frame or the padded image sits) is
+not part of a preset, and neither are the app's preferences in Settings.
+Resampling, destination folder and filename template are future schema work:
+those settings do not exist yet (§11, roadmap).
 
 Shipped defaults: **Web (Original ratio, 1.5 MP, JPEG q80)** · **Thumbnail
 (1:1, 320 px, crop)** · **Social 16:9 (1920 px, ×8, crop)** · **SDXL 1024 (1:1,
@@ -569,13 +573,17 @@ with the target-file-size search (roadmap v1.2); "strip GPS" joins Web with the
 §10 switches: its policy is *strip EXIF, GPS, IPTC and XMP* — which is also the default.
 
 The picker sits at the top of the panel: choose one, *Save Current as
-Preset…*, delete the active one, or reveal the folder. Any edit after applying
-a preset shows **Custom**. A preset is also a launch argument, `--preset "Social
+Preset…*, delete the active one, or reveal the folder. Changing a stored
+setting after applying a preset shows **Custom** once the output changes;
+moving the crop frame does not. A preset is also a launch argument, `--preset "Social
 16:9"`, for scripts and for the v2 headless Quick Action.
 
-A preset stores the aspect ratio and the one size parameter, so it replays
-exactly. Presets whose aspect is a preset rather than Original will crop, and the
-preset editor says which.
+A preset stores the aspect ratio and the one size parameter, so the target
+size replays exactly. The framing does not: applying a preset leaves the crop
+frame where it is, and a new image starts centred. Presets whose aspect is a
+fixed ratio rather than Original crop or pad an image of another ratio. There
+is no preset editor: a preset is saved from the current settings, and its
+file can be edited by hand.
 
 Stored as JSON in `~/Library/Application Support/SnapRescale/presets/` (inside
 the container when sandboxed), one file per preset, written on first run so the
@@ -588,9 +596,11 @@ hand:
   "format": "keep", "quality": 0.95 }
 ```
 
-`aspect` is `"original"` or `"W:H"`; `size` has exactly one of `width`,
-`height`, `megapixels`, `scale`; `format` is `keep`, `jpeg`, `png`, `heic` or
-`tiff`; `padColor` is `#rrggbb` or `#rrggbbaa`.
+`aspect` is `"W:H"` or `"Original"`, as the app writes it (read in any case);
+`size` has exactly one of `width`, `height`, `megapixels`, `scale`; `format`
+is `keep`, `jpeg`, `png`, `heic` or `tiff`; `padColor` is `#rrggbb` or
+`#rrggbbaa`. These keys and `metadata` below are the whole schema: a key the
+app does not know is ignored when a preset is read.
 
 `metadata` is optional — a preset without it takes the default policy (§10.2):
 
