@@ -184,6 +184,58 @@ import Testing
         }
     }
 
+    // MARK: Without an exclusive rename (exFAT, #56)
+
+    /// The name is taken when the fallback tries to reserve it: that file
+    /// keeps its bytes, and the output goes to the next name.
+    @Test func fallbackSkipsATakenName() throws {
+        try withFolder { dir in
+            let urls = candidates(in: dir)
+            let theirs = Data("theirs".utf8)
+            try theirs.write(to: urls[0])
+            let written = try SafeWrite.create(Data("ours".utf8), firstFreeOf: urls, rename: { _, _ in ENOTSUP })
+            #expect(written == urls[1])
+            #expect(try Data(contentsOf: urls[0]) == theirs)
+            #expect(try Data(contentsOf: urls[1]) == Data("ours".utf8))
+            #expect(try names(in: dir) == ["out.jpg", "out_2.jpg"])
+        }
+    }
+
+    /// The race the reservation closes: writers that all chose the same name
+    /// each keep their output, as with the exclusive rename.
+    @Test func concurrentFallbackKeepsEveryOutput() throws {
+        try withFolder { dir in
+            let urls = candidates(in: dir)
+            let results = Mutex<[Result<URL, any Error>]>([])
+            DispatchQueue.concurrentPerform(iterations: 8) { i in
+                let result = Result {
+                    try SafeWrite.create(Data("writer \(i)".utf8), firstFreeOf: urls, rename: { _, _ in ENOTSUP })
+                }
+                results.withLock { $0.append(result) }
+            }
+            let written = try results.withLock { $0 }.map { try $0.get() }
+            #expect(Set(written) == Set(urls.prefix(8)))
+            let contents = try written.map { String(decoding: try Data(contentsOf: $0), as: UTF8.self) }
+            #expect(Set(contents) == Set((0..<8).map { "writer \($0)" }))
+            #expect(try names(in: dir) == urls.prefix(8).map(\.lastPathComponent).sorted())
+        }
+    }
+
+    /// The staged copy cannot replace the reservation (it has gone): the
+    /// empty file that held the name goes too.
+    @Test func failedFallbackLeavesNoReservation() throws {
+        try withFolder { dir in
+            #expect(throws: CocoaError.self) {
+                try SafeWrite.create(Data("fresh".utf8), firstFreeOf: candidates(in: dir), rename: { staged, _ in
+                    try? FileManager.default.removeItem(at: staged)
+                    return ENOTSUP
+                })
+            }
+            let left = try names(in: dir)
+            #expect(left.isEmpty)
+        }
+    }
+
     // MARK: Off the main actor (review 2026-10-03, #40)
 
     /// Queues a job on the main actor and waits for it. That fails when the
