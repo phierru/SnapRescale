@@ -152,7 +152,7 @@ enum XMPWriter {
 
         // AI payloads belong to the AI workflow switch wherever they sit.
         if namespace == exif && name == "UserComment" {
-            if ImageMetadata.looksLikeA1111(value()) { return kept.aiWorkflow }
+            if ImageMetadata.userCommentSource(value()) != nil { return kept.aiWorkflow }
             if !kept.userComment { return false }
         }
         let isDescription = (namespace == tiff && name == "ImageDescription") || (namespace == dublinCore && name == "description")

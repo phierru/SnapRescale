@@ -73,7 +73,7 @@ extension ImageMetadata.AIPayload {
         switch source {
         case .comfyUI: return name == "workflow" || name == "prompt"
         case .a1111, .invokeAI, .midjourney: return true
-        case .fooocus, .swarmUI: return name == "parameters"
+        case .fooocus, .swarmUI: return name == "parameters" || name == "UserComment"
         case .novelAI: return name == "Comment" || name == "Description"
         case .c2pa: return false
         }
@@ -197,9 +197,9 @@ extension ImageMetadata.AIPayload {
         case .comfyUI:
             prompt = name == "prompt" ? PromptReader.comfyUI(text) : nil
         case .fooocus:
-            prompt = name == "parameters" ? PromptReader.json(text, ["prompt"]) ?? PromptReader.a1111(text) : nil
+            prompt = isExportable ? PromptReader.json(text, ["prompt"]) ?? PromptReader.a1111(text) : nil
         case .swarmUI:
-            prompt = name == "parameters" ? PromptReader.json(text, ["sui_image_params", "prompt"]) : nil
+            prompt = isExportable ? PromptReader.json(text, ["sui_image_params", "prompt"]) : nil
         case .invokeAI:
             prompt = name == "invokeai_metadata" ? PromptReader.json(text, ["positive_prompt"]) : nil
         case .novelAI:

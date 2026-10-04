@@ -35,6 +35,32 @@ public enum PNGSplicer {
         return out
     }
 
+    /// `png` with each chunk's body replaced by what `rewrite` makes of it, and
+    /// the length and CRC of a changed one written anew; every other byte is
+    /// unchanged. Nil when `png` has no well-formed chunk run ending in `IEND`,
+    /// or `rewrite` returns nil for a chunk.
+    static func rewritingChunks(in png: Data, _ rewrite: (_ type: String, _ body: Data) -> Data?) -> Data? {
+        guard let iend = iendOffset(in: png) else { return nil }
+        var out = Data(png[png.startIndex..<png.startIndex + 8])
+        var i = png.startIndex + 8
+        while i < iend {
+            let length = png[i..<i + 4].reduce(0) { $0 << 8 | Int($1) }
+            let type = png[i + 4..<i + 8], body = png[i + 8..<i + 8 + length]
+            guard let new = rewrite(String(decoding: type, as: UTF8.self), body) else { return nil }
+            if new == body {
+                out.append(png[i..<i + 12 + length])
+            } else {
+                let raw = Data(type) + new
+                withUnsafeBytes(of: UInt32(new.count).bigEndian) { out.append(contentsOf: $0) }
+                out.append(raw)
+                withUnsafeBytes(of: PNGScanner.crc32(raw).bigEndian) { out.append(contentsOf: $0) }
+            }
+            i += 12 + length
+        }
+        out.append(png[iend...])
+        return out
+    }
+
     /// The post-encode step of `Renderer.produce`: carries the source's AI
     /// workflow into `encoded` when the policy keeps it, the output is PNG and
     /// the source is a PNG holding such chunks; otherwise `encoded` as it came.

@@ -414,7 +414,7 @@ struct MetadataReadableTests {
                                   "CFG=7.5", "Scheduler=karras", "Size=1024 × 768"])
     }
 
-    // MARK: ICC: embedded or assumed
+    // MARK: ICC: embedded, tagged or assumed
 
     @Test(arguments: [Fixture.displayP3, .cmyk, .sixteenBit])
     func fixturesWithAProfileEmbedIt(_ fixture: Fixture) throws {
@@ -465,6 +465,52 @@ struct MetadataReadableTests {
         return Data(box("ftyp", Array("heic".utf8) + [0, 0, 0, 0]) + box("meta", [0, 0, 0, 0] + box("hdlr", [0, 0, 0, 0]) + box("iprp", ipco)))
     }
 
+    static func profile(_ name: CFString) -> [UInt8] { [UInt8](CGColorSpace(name: name)!.copyICCData()! as Data) }
+
+    /// ImageIO's GIF with an `ICCRGBG1` application extension after the global
+    /// colour table, built by hand: ImageIO's encoder writes none.
+    static func gif(profile name: CFString) -> Data {
+        var gif = [UInt8](MetadataTests.encode(.gif))
+        gif.replaceSubrange(3..<6, with: Array("89a".utf8))
+        let table = gif[10] & 0x80 == 0 ? 0 : 3 << (Int(gif[10] & 7) + 1)
+        var ext: [UInt8] = [0x21, 0xFF, 11] + Array("ICCRGBG1012".utf8)
+        let icc = profile(name)
+        for start in stride(from: 0, to: icc.count, by: 255) {
+            let block = icc[start..<min(start + 255, icc.count)]
+            ext += [UInt8(block.count)] + block
+        }
+        gif.insert(contentsOf: ext + [0], at: 13 + table)
+        return Data(gif)
+    }
+
+    static func le32(_ n: Int) -> [UInt8] { [UInt8(n & 0xFF), UInt8(n >> 8 & 0xFF), UInt8(n >> 16 & 0xFF), UInt8(n >> 24 & 0xFF)] }
+
+    /// ImageIO's BMP (a V5 header, colour space sRGB) retagged `PROFILE_EMBEDDED`,
+    /// with the profile after the pixels.
+    static func bmp(profile name: CFString) -> Data {
+        var bmp = [UInt8](MetadataTests.encode(.bmp))
+        let at = bmp.count
+        bmp += profile(name)
+        bmp.replaceSubrange(2..<6, with: le32(bmp.count))
+        bmp.replaceSubrange((14 + 56)..<(14 + 60), with: le32(0x4D42_4544))
+        bmp.replaceSubrange((14 + 112)..<(14 + 120), with: le32(at - 14) + le32(bmp.count - at))
+        return Data(bmp)
+    }
+
+    /// A little-endian BigTIFF of 2 × 2 RGB pixels, with the profile as tag 34675 or without one.
+    static func bigTIFF(profile name: CFString?) -> Data {
+        func le(_ n: Int, _ bytes: Int) -> [UInt8] { (0..<bytes).map { UInt8(n >> (8 * $0) & 0xFF) } }
+        let pixels = [UInt8](repeating: 0x80, count: 12), icc = name.map(profile) ?? []
+        var entries: [(tag: Int, type: Int, count: Int, value: Int)] = [
+            (256, 3, 1, 2), (257, 3, 1, 2), (258, 3, 1, 8), (259, 3, 1, 1), (262, 3, 1, 2),
+            (273, 16, 1, 16), (277, 3, 1, 3), (278, 3, 1, 2), (279, 16, 1, pixels.count),
+        ]
+        if !icc.isEmpty { entries.append((34675, 7, icc.count, 16 + pixels.count)) }
+        var out = Array("II".utf8) + le(43, 2) + le(8, 2) + le(0, 2) + le(16 + pixels.count + icc.count, 8) + pixels + icc
+        out += le(entries.count, 8) + entries.flatMap { le($0.tag, 2) + le($0.type, 2) + le($0.count, 8) + le($0.value, 8) }
+        return Data(out + le(0, 8))
+    }
+
     @Test func pngColourChunks() {
         #expect(ICCScanner.origin(in: Self.png(chunks: ["iCCP"]), type: .png) == .embedded)
         #expect(ICCScanner.origin(in: Self.png(chunks: ["sRGB", "iCCP"]), type: .png) == .embedded)
@@ -492,9 +538,51 @@ struct MetadataReadableTests {
         #expect(ICCScanner.origin(in: Data(riff + Array("ICCP".utf8) + [2, 0, 0, 0, 1, 2]), type: .webP) == .embedded)
         #expect(ICCScanner.origin(in: Data(riff), type: .webP) == .assumed)
 
-        // Not walked: left to ImageIO.
-        #expect(ICCScanner.origin(in: MetadataTests.encode(.gif), type: .gif) == nil)
+        #expect(ICCScanner.origin(in: MetadataTests.encode(.gif), type: .gif) == .assumed)
+        #expect(ICCScanner.origin(in: Self.gif(profile: CGColorSpace.displayP3), type: .gif) == .embedded)
+        #expect(ICCScanner.origin(in: MetadataTests.encode(.bmp), type: .bmp) == .assumed)
+        #expect(ICCScanner.origin(in: Self.bmp(profile: CGColorSpace.displayP3), type: .bmp) == .embedded)
+        #expect(ICCScanner.origin(in: Self.bigTIFF(profile: nil), type: .tiff) == .assumed)
+        #expect(ICCScanner.origin(in: Self.bigTIFF(profile: CGColorSpace.displayP3), type: .tiff) == .embedded)
+
+        // Not parsed, or not walked: the caller decides.
         #expect(ICCScanner.origin(in: Data([0xFF, 0xD8, 0xFF]), type: .tiff) == nil)
+        let psd = UTType("com.adobe.photoshop-image")!
+        #expect(ICCScanner.origin(in: MetadataTests.encode(psd), type: psd) == nil)
+    }
+
+    /// ImageIO names sRGB for nearly every image; only the container says
+    /// whether a profile is there (issue #57).
+    @Test func gifAndBMPAreWalked() throws {
+        let gif = MetadataTests.inspect(MetadataTests.encode(.gif), .gif)
+        #expect(gif.iccProfileName == "sRGB IEC61966-2.1")
+        #expect(gif.iccOrigin == .assumed && !gif.badges.contains { $0.label == "ICC" })
+        #expect(try #require(gif.section(.icc))["Embedded"] == "No (macOS default)")
+        let bmp = MetadataTests.inspect(MetadataTests.encode(.bmp), .bmp)
+        #expect(bmp.iccOrigin == .assumed && !bmp.badges.contains { $0.label == "ICC" })
+
+        let p3 = MetadataTests.inspect(Self.gif(profile: CGColorSpace.displayP3), .gif)
+        #expect(p3.iccOrigin == .embedded && p3.badges.first?.detail == "Colour profile: Display P3")
+        // ImageIO does not decode a BMP with an embedded profile: the scanner alone finds it.
+        let embedded = MetadataTests.inspect(Self.bmp(profile: CGColorSpace.displayP3), .bmp)
+        #expect(embedded.iccOrigin == .embedded && embedded.badges.first?.label == "ICC")
+        // A BigTIFF is walked too, so its profile is still found.
+        #expect(MetadataTests.inspect(Self.bigTIFF(profile: CGColorSpace.displayP3), .tiff).iccIsEmbedded)
+    }
+
+    @Test func containersTheScannerCannotAnswerFor() throws {
+        // ImageIO names sRGB for the image; the bytes the scanner gets have a
+        // first segment that runs past the end.
+        let jpeg = MetadataTests.encode(.jpeg)
+        let source = try #require(CGImageSourceCreateWithData(jpeg as CFData, nil))
+        let malformed = jpeg.prefix(4) + [0xFF, 0xFF] + jpeg.dropFirst(6)
+        #expect(ICCScanner.origin(in: malformed, type: .jpeg) == nil)
+        let m = ImageMetadata.inspect(source: source, data: malformed, type: .jpeg)
+        #expect(m.iccProfileName != nil && m.iccOrigin == .assumed && !m.badges.contains { $0.label == "ICC" })
+
+        // A container the scanner does not walk keeps ImageIO's answer: a PSD can embed a profile.
+        let psd = UTType("com.adobe.photoshop-image")!
+        #expect(MetadataTests.inspect(MetadataTests.encode(psd), psd).iccOrigin == .embedded)
     }
 
     @Test func tiffWithoutAProfileIsAssumed() throws {

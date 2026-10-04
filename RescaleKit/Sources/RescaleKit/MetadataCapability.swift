@@ -15,8 +15,9 @@ extension MetadataPolicy {
     /// plain table for XMP read without its packet (GIF, RAW, PSD, …: only
     /// ImageIO's display fields, which the writer cannot copy; review
     /// 2026-09-30, G8), and for the AI workflow: a ComfyUI / InvokeAI graph
-    /// lives in PNG text chunks and survives only in PNG, while A1111-style
-    /// parameters also ride in the EXIF user comment, one text at a time.
+    /// lives in PNG text chunks and survives only in PNG, while generation
+    /// parameters (A1111, SwarmUI, Fooocus) also ride in the EXIF user
+    /// comment, one text at a time.
     /// `type` is the resolved output type; `nil` (a source "Keep original"
     /// cannot keep) carries nothing.
     public static func capability(of section: Section, in type: UTType?, carrying metadata: ImageMetadata) -> Capability {
