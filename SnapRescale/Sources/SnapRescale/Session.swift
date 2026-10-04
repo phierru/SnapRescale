@@ -536,8 +536,19 @@ final class Session {
                     try await whileWriting { try await SafeWrite.writeDetached(data, to: chosen) }
                     url = chosen
                 case .nextToOriginal:
+                    // The session does not follow a folder renamed or moved
+                    // since the image was opened: say so, rather than report
+                    // whatever the write throws or ask to allow a folder that
+                    // is gone (#61).
+                    let folder = source.url.deletingLastPathComponent()
+                    var isFolder: ObjCBool = false
+                    guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isFolder), isFolder.boolValue else {
+                        errorMessage = "The folder “\(folder.lastPathComponent)” is no longer there: it was renamed or moved after the image was opened. "
+                            + "Open the image again from its new place to save next to it; Save As still works."
+                        return
+                    }
                     let candidates = OutputNaming.candidates(for: source, spec: spec)
-                    let outcome = await FolderAccess.write(in: source.url.deletingLastPathComponent()) {
+                    let outcome = await FolderAccess.write(in: folder) {
                         try await whileWriting { try await SafeWrite.createDetached(data, firstFreeOf: candidates) }
                     }
                     switch outcome {
