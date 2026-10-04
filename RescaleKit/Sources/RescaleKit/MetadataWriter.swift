@@ -6,12 +6,12 @@ import UniformTypeIdentifiers
 /// Turns a source's ImageIO properties into what the encoder is handed, for the
 /// EXIF, GPS and IPTC switches of a `MetadataPolicy` (PRD §10.2–10.4). It keeps
 /// or strips whole blocks and never edits a field, other than the three fixes
-/// of §10.4. The exception is the AI payloads stored in EXIF / TIFF (A1111
-/// parameters in UserComment, a Midjourney ImageDescription): the AI workflow
-/// switch owns those, and outside PNG it also puts the `parameters` of a PNG
-/// text chunk into UserComment, where A1111 itself stores them. The XMP packet
-/// is `XMPWriter`'s, ICC is `ColorPlan`'s and PNG workflow chunks are
-/// `PNGSplicer`'s.
+/// of §10.4. The exception is the AI payloads stored in EXIF / TIFF (A1111,
+/// SwarmUI or Fooocus parameters in UserComment, a Midjourney ImageDescription):
+/// the AI workflow switch owns those, and outside PNG it also puts the
+/// `parameters` of a PNG text chunk into UserComment, where A1111 itself
+/// stores them. The XMP packet is `XMPWriter`'s, ICC is `ColorPlan`'s and PNG
+/// workflow chunks are `PNGSplicer`'s.
 enum MetadataWriter {
     /// The property dictionary for `CGImageDestinationAddImage`: the kept blocks
     /// of `source`, fixed up for an output of `size`. A block the policy strips,
@@ -32,7 +32,7 @@ enum MetadataWriter {
         // whatever the EXIF and IPTC switches say (PRD §10.2, issue #18).
         let sourceTIFF = dictionary(source[kCGImagePropertyTIFFDictionary])
         let sourceEXIF = dictionary(source[kCGImagePropertyExifDictionary])
-        let ownUserComment = (sourceEXIF[userCommentKey] as? String).flatMap { ImageMetadata.looksLikeA1111($0) ? $0 : nil }
+        let ownUserComment = (sourceEXIF[userCommentKey] as? String).flatMap { ImageMetadata.userCommentSource($0) != nil ? $0 : nil }
         // `parameters` from a PNG text chunk has no chunk to live in outside
         // PNG (review 2026-09-30, G2).
         let aiUserComment = ownUserComment
@@ -75,7 +75,7 @@ enum MetadataWriter {
             if let aiUserComment {
                 // ImageIO writes the `ASCII` form, as in a file it read, and
                 // turns anything else into question marks: see `PendingUserComment`.
-                if type.conforms(to: .png) || aiUserComment.utf8.allSatisfy({ $0 < 0x80 }) {
+                if aiUserComment.utf8.allSatisfy({ $0 < 0x80 }) {
                     exif[userCommentKey] = aiUserComment
                 } else {
                     let pending = PendingUserComment(aiUserComment)
@@ -133,7 +133,7 @@ enum MetadataWriter {
     /// A comment in the source's EXIF that is not an AI payload: the user's own.
     static func ordinaryUserComment(in source: [CFString: Any]) -> String? {
         let comment = dictionary(source[kCGImagePropertyExifDictionary])[kCGImagePropertyExifUserComment as String] as? String
-        return comment.flatMap { $0.isEmpty || ImageMetadata.looksLikeA1111($0) ? nil : $0 }
+        return comment.flatMap { $0.isEmpty || ImageMetadata.userCommentSource($0) != nil ? nil : $0 }
     }
 
     // MARK: - User comment outside ASCII
@@ -159,8 +159,40 @@ enum MetadataWriter {
         }
 
         /// `data` with the stand-in replaced, or nil when it is not there exactly
-        /// once as an EXIF comment and nowhere else (an XMP mirror, say).
+        /// once as an EXIF comment and nowhere else (an XMP mirror, say). A PNG
+        /// is taken chunk by chunk (issue #33).
         func applied(to data: Data) -> Data? {
+            data.starts(with: PNGScanner.signature) ? applied(toPNG: data) : swapped(in: data)
+        }
+
+        /// In a PNG, ImageIO writes the comment into the `eXIf` chunk and mirrors
+        /// it into the XMP packet it derives. The first takes the same swap, the
+        /// second the text itself, escaped for XML; each changed chunk gets its
+        /// length and CRC anew. Nil when the stand-in is in any other chunk,
+        /// compressed text included.
+        private func applied(toPNG png: Data) -> Data? {
+            let standIn = Data(placeholder.utf8)
+            let xmp = Data("XML:com.adobe.xmp\0\0".utf8)   // the keyword, then the flag: not compressed
+            var swappedEXIF = false
+            let out = PNGSplicer.rewritingChunks(in: png) { type, body in
+                guard body.range(of: standIn) != nil else { return body }
+                if type == "eXIf", !swappedEXIF, let swapped = swapped(in: body) {
+                    swappedEXIF = true
+                    return swapped
+                }
+                if type == "iTXt", body.starts(with: xmp) {
+                    return body.replacing(standIn, with: Data(Self.xmlEscaped(text).utf8))
+                }
+                return nil
+            }
+            guard let out, swappedEXIF,
+                  !PNGScanner.textChunks(in: out).contains(where: { $0.text?.contains(placeholder) == true })
+            else { return nil }
+            return out
+        }
+
+        /// The stand-in, stored as an `ASCII` comment, swapped for the `UNICODE` one.
+        private func swapped(in data: Data) -> Data? {
             let standIn = Data(placeholder.utf8)
             let stored = Data("ASCII\0\0\0".utf8) + standIn
             guard let range = data.range(of: standIn), range.lowerBound - data.startIndex >= 8,
@@ -170,6 +202,25 @@ enum MetadataWriter {
             for unit in text.utf16 { comment.append(contentsOf: [UInt8(unit >> 8), UInt8(unit & 0xFF)]) }
             var out = data
             out.replaceSubrange((range.lowerBound - 8)..<range.upperBound, with: comment)
+            return out
+        }
+
+        /// `text` as XML character data: markup and quotes as entities, tab, line
+        /// feed and carriage return as references, as ImageIO writes them, and a
+        /// space for a character XML cannot hold.
+        private static func xmlEscaped(_ text: String) -> String {
+            var out = ""
+            for scalar in text.unicodeScalars {
+                switch scalar {
+                case "&": out += "&amp;"
+                case "<": out += "&lt;"
+                case ">": out += "&gt;"
+                case "\"": out += "&quot;"
+                case "\t", "\n", "\r": out += "&#x\(String(scalar.value, radix: 16, uppercase: true));"
+                case "\u{0}"..<"\u{20}", "\u{FFFE}", "\u{FFFF}": out += " "
+                default: out.unicodeScalars.append(scalar)
+                }
+            }
             return out
         }
     }

@@ -28,11 +28,21 @@ public enum SafeWrite {
     /// The output is staged once, then takes a name by an exclusive rename,
     /// so a file that appeared after the name was chosen keeps its bytes and
     /// the same staged copy tries the next candidate. A volume without an
-    /// exclusive rename (exFAT) gets the old check, then replace, which
-    /// leaves that window open there. The candidates share one folder.
+    /// exclusive rename (exFAT) has the name reserved instead, by an empty
+    /// file created exclusively (`O_EXCL`), which the staged copy replaces.
+    /// The candidates share one folder.
     @discardableResult
     public static func create(_ data: Data, firstFreeOf candidates: some Sequence<URL>,
                               stage: Stage = { try $0.write(to: $1) }) throws -> URL {
+        try create(data, firstFreeOf: candidates, stage: stage, rename: renameExclusively)
+    }
+
+    /// `create` with the exclusive rename (0, or the errno) replaceable, so
+    /// a test can reach the fallback on a volume that has one.
+    @discardableResult
+    static func create(_ data: Data, firstFreeOf candidates: some Sequence<URL>,
+                       stage: Stage = { try $0.write(to: $1) },
+                       rename: (URL, URL) -> Int32) throws -> URL {
         let fm = FileManager.default
         var names = candidates.makeIterator()
         guard var url = names.next() else { throw CocoaError(.fileWriteUnknown) }
@@ -40,7 +50,7 @@ public enum SafeWrite {
             var exclusive = true
             while true {
                 if exclusive {
-                    switch renameExclusively(staged, to: url) {
+                    switch rename(staged, url) {
                     case 0: return url
                     case EEXIST: break
                     // ENOTSUP: no exclusive rename on this volume (exFAT returns
@@ -49,8 +59,13 @@ public enum SafeWrite {
                     case ENOTSUP, EINVAL, EXDEV: exclusive = false; continue
                     case let code: throw error(code, at: url)
                     }
-                } else if !fm.fileExists(atPath: url.path) {
-                    _ = try fm.replaceItemAt(url, withItemAt: staged)
+                } else if let reserved = try reserve(url) {
+                    do {
+                        _ = try fm.replaceItemAt(url, withItemAt: staged)
+                    } catch {
+                        release(url, reserved)
+                        throw error
+                    }
                     return url
                 }
                 guard let next = names.next() else {
@@ -103,7 +118,7 @@ public enum SafeWrite {
         // After a successful commit the staged item has moved; this removes
         // what is left of it, which after a failure is everything.
         defer { try? fm.removeItem(at: cleanup) }
-        try stage(data, staged)
+        do { try stage(data, staged) } catch { throw Self.error(error, at: url) }
         return try commit(staged)
     }
 
@@ -112,6 +127,37 @@ public enum SafeWrite {
         from.withUnsafeFileSystemRepresentation { src in
             to.withUnsafeFileSystemRepresentation { dst in
                 renamex_np(src, dst, UInt32(RENAME_EXCL)) == 0 ? 0 : errno
+            }
+        }
+    }
+
+    /// Creates `url` empty, failing with EEXIST rather than open a file
+    /// already there, and returns its device and inode; nil when the name
+    /// is taken. Mode 0666 less the umask, as `Data.write` gives the staged
+    /// copy, since `replaceItemAt` keeps the permissions of what it replaces.
+    private static func reserve(_ url: URL) throws -> (dev_t, ino_t)? {
+        var info = stat()
+        let code: Int32 = url.withUnsafeFileSystemRepresentation { path in
+            let fd = open(path!, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o666)
+            guard fd >= 0 else { return errno }
+            defer { close(fd) }
+            guard fstat(fd, &info) == 0 else { let code = errno; unlink(path!); return code }
+            return 0
+        }
+        switch code {
+        case 0: return (info.st_dev, info.st_ino)
+        case EEXIST: return nil
+        default: throw error(code, at: url)
+        }
+    }
+
+    /// Removes what `reserve` made at `url` if it is still that empty file,
+    /// not one that has since taken its place or been written to.
+    private static func release(_ url: URL, _ reserved: (dev_t, ino_t)) {
+        url.withUnsafeFileSystemRepresentation { path in
+            var info = stat()
+            if lstat(path!, &info) == 0, (info.st_dev, info.st_ino) == reserved, info.st_size == 0 {
+                unlink(path!)
             }
         }
     }
@@ -126,5 +172,17 @@ public enum SafeWrite {
         }
         return CocoaError(kind, userInfo: [NSURLErrorKey: url, NSFilePathErrorKey: url.path,
                                            NSUnderlyingErrorKey: NSError(domain: NSPOSIXErrorDomain, code: Int(code))])
+    }
+
+    /// A staging error as it would read for `url`: a Cocoa error names the
+    /// staged item, which the user never sees (#55). Its domain, code and
+    /// underlying error stay, so a refusal is still recognised as one.
+    private static func error(_ error: any Error, at url: URL) -> any Error {
+        let ns = error as NSError
+        guard ns.domain == NSCocoaErrorDomain else { return error }
+        var info = ns.userInfo
+        info[NSURLErrorKey] = url
+        info[NSFilePathErrorKey] = url.path
+        return CocoaError(CocoaError.Code(rawValue: ns.code), userInfo: info)
     }
 }

@@ -118,16 +118,63 @@ struct MetadataTests {
         #expect(!m.hasAlpha)
     }
 
-    @Test func c2paSegmentInJPEG() {
-        var jpeg = Self.encode(.jpeg)
-        // Insert an APP11 segment right after SOI: FF EB, length, "JP", then a jumb box name.
-        let payload: [UInt8] = [0x4A, 0x50] + [0, 0, 0, 0] + Array("jumb".utf8) + Array("c2pa".utf8)
-        let length = UInt16(payload.count + 2)
-        var seg: [UInt8] = [0xFF, 0xEB, UInt8(length >> 8), UInt8(length & 0xFF)]
-        seg += payload
-        jpeg.insert(contentsOf: seg, at: 2)
+    static func box(_ type: String, _ body: [UInt8]) -> [UInt8] { MetadataReadableTests.box(type, body) }
+
+    /// A JPEG with an APP11 segment right after SOI: FF EB, length, then the JPEG XT
+    /// header (`JP`, box instance 1, packet sequence 1) and `box`.
+    static func withAPP11(_ jpeg: Data, box: [UInt8]) -> Data {
+        let payload: [UInt8] = Array("JP".utf8) + [0, 1] + MetadataReadableTests.be32(1) + box
+        var out = jpeg
+        out.insert(contentsOf: [0xFF, 0xEB, UInt8((payload.count + 2) >> 8), UInt8((payload.count + 2) & 0xFF)] + payload, at: 2)
+        return out
+    }
+
+    /// A JUMBF superbox whose description box (type UUID, toggles: label present
+    /// and requestable) carries `label`, then a content box.
+    static func jumbf(type uuid: [UInt8], label: String) -> [UInt8] {
+        box("jumb", box("jumd", uuid + [0x03] + Array(label.utf8) + [0]) + box("json", Array("{}".utf8)))
+    }
+
+    /// The UUID of a C2PA manifest store: "c2pa", then 0011-0010-8000-00AA00389B71.
+    static let c2paUUID = Array("c2pa".utf8) + [0x00, 0x11, 0x00, 0x10, 0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71]
+
+    /// The header segments' markers, up to SOS.
+    static func markers(_ jpeg: Data) -> [UInt8] {
+        let d = [UInt8](jpeg)
+        var out: [UInt8] = [], i = 2
+        while i + 4 <= d.count, d[i] == 0xFF, d[i + 1] != 0xDA {
+            out.append(d[i + 1])
+            i += 2 + (Int(d[i + 2]) << 8 | Int(d[i + 3]))
+        }
+        return out
+    }
+
+    @Test func c2paSegmentInJPEG() throws {
+        let jpeg = Self.withAPP11(Self.encode(.jpeg), box: Self.jumbf(type: Self.c2paUUID, label: "c2pa"))
         #expect(JPEGScanner.hasC2PA(in: jpeg))
         #expect(!JPEGScanner.hasC2PA(in: Self.encode(.jpeg)))
+        let m = Self.inspect(jpeg, .jpeg)
+        #expect(m.provenance == [.c2pa] && m.c2paLocation == "JPEG APP11 segment (JUMBF)")
+
+        // The output carries no APP11, so no manifest that no longer matches the pixels.
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("c2pa-\(UUID().uuidString).jpg")
+        try jpeg.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let source = try SourceImage.load(url)
+        let out = try Renderer.produce(source, spec: RenderSpec(target: source.size, metadata: .keepMost))
+        #expect(!Self.markers(out).contains(0xEB) && Self.inspect(out, .jpeg).provenance.isEmpty)
+    }
+
+    /// JPEG XT and JUMBF content other than a C2PA manifest store share APP11 (issue #58).
+    @Test func otherAPP11ContentIsNotC2PA() {
+        let jpeg = Self.encode(.jpeg)
+        // A JPEG XT box, no JUMBF.
+        #expect(!JPEGScanner.hasC2PA(in: Self.withAPP11(jpeg, box: Self.box("LCHK", [0, 0, 0, 0]))))
+        // JUMBF under another label, or with the C2PA UUID and no label.
+        #expect(!JPEGScanner.hasC2PA(in: Self.withAPP11(jpeg, box: Self.jumbf(type: Self.c2paUUID, label: "jpxt"))))
+        let unlabelled = Self.box("jumb", Self.box("jumd", Self.c2paUUID + [0x00]) + Self.box("json", Array("{}".utf8)))
+        #expect(!JPEGScanner.hasC2PA(in: Self.withAPP11(jpeg, box: unlabelled)))
+        #expect(Self.inspect(Self.withAPP11(jpeg, box: Self.box("LCHK", [0, 0, 0, 0])), .jpeg).provenance.isEmpty)
     }
 
     @Test func badgesOrderAndTooltip() {

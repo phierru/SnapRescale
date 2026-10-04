@@ -3,10 +3,15 @@ import SwiftUI
 /// macOS 27 lays a grouped Form (any SwiftUI scroll container) out 430 pt wide
 /// for one pass when its state changes *inside* a mouse event on one of its
 /// controls, overflowing the 340 pt sidebar until the next update (GitHub #2).
-/// The same change made a run-loop turn later is laid out correctly, so every
-/// state write that starts in a mouse event, a drop or a menu command goes
-/// through here (or `deferredLive` below): the panel controls, the crop drag, drops,
-/// the open panel, file-open Apple events, the Save commands and Settings.
+/// The same change made a run-loop turn later is laid out correctly, so
+/// discrete writes that start in a mouse event, a drop or a menu command go
+/// through here: the sidebar's pickers, size field and buttons, double-click
+/// to centre, the inspector, drops, the open panel, file-open Apple events,
+/// the File and View menu commands and Settings. Continuous ones, the crop
+/// drag and the Quality sliders, use `deferredLive` below. The grid pickers
+/// and Settings' reveal toggle and Forget All write directly: the sidebar does
+/// not read them. So does the preset naming sheet, whose buttons are not the
+/// sidebar's.
 @MainActor func deferred(_ work: @escaping @MainActor () -> Void) {
     // Two hops, both needed (measured on macOS 27.0):
     // 1. A default-mode run-loop block, not DispatchQueue.main.async: the main

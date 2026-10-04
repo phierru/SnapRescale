@@ -10,7 +10,7 @@ The Metadata milestone: implemented, not yet released.
 ### Added
 
 - **Metadata inspector**, a panel on the trailing side of the window that lists
-  what the source carries, section by section: EXIF, GPS, IPTC, XMP, ICC
+  the metadata it could read, section by section: EXIF, GPS, IPTC, XMP, ICC
   profile, AI workflow, C2PA and Structure. It opens from any badge (at that
   badge's section), from the new **Metadata** row in the sidebar, or with
   View ▸ Metadata Inspector (⌥⌘I). Values are shown with readable labels, the
@@ -23,11 +23,14 @@ The Metadata milestone: implemented, not yet released.
   other mix. A switch is disabled, with a note, when the output format cannot
   carry the section (a ComfyUI graph requires PNG output).
 - **AI workflow carried over**: a resized ComfyUI PNG still opens its workflow
-  in ComfyUI. A1111-style parameters also travel in the EXIF user comment of
-  JPEG, HEIC and TIFF.
+  in ComfyUI. A1111, Fooocus and SwarmUI parameters also travel in the EXIF
+  user comment of JPEG, HEIC and TIFF, and are recognised there when the file
+  is opened again (Fooocus's A1111-style parameters as A1111). Text outside
+  ASCII is kept, also when a JPEG's comment is saved as PNG.
 - **Copy and export**, whatever the switches say: Copy on every section, Copy
   Prompt and Export… (`.json` / `.txt`) on an AI workflow, Copy All and
-  Export All… (one JSON file) in the inspector's menu.
+  Export All… in the inspector's menu. Export All writes the fields shown as
+  one JSON file; it is not a lossless archive of the original metadata.
 - Presets carry a metadata policy (`metadata` in the JSON; optional, so older
   presets still load).
 
@@ -37,10 +40,16 @@ The Metadata milestone: implemented, not yet released.
   default:** strip EXIF, GPS, IPTC and XMP; keep the colour profile and the AI
   workflow. The sidebar says so (*Default · only ICC, AI kept*). Opening
   another image returns to the default; a preset applies its own policy.
-- Colour follows the ICC switch: the source's profile and, where the format
-  allows, its bit depth are kept. CMYK sources are still converted to sRGB.
+- Colour follows the ICC switch: the source's profile is kept, converted to
+  sRGB or left out. Bit depth is kept whatever the switch says: a source
+  deeper than 8 bits gives 16-bit PNG and TIFF, and 10-bit HEIC. CMYK sources
+  are still converted to sRGB.
 - The ICC badge appears only when the file embeds a profile; an assumed sRGB
-  is no longer shown as one.
+  is no longer shown as one. This holds for the formats whose structure is
+  checked: JPEG, PNG, TIFF, WebP, HEIC, HEIF, AVIF, and now GIF and BMP. Other
+  formats (PSD, RAW, JPEG XL, OpenEXR, …) show it whenever macOS names a
+  profile.
+- The app's category is Graphics & Design, as on the App Store.
 - Help describes the inspector and points to ExifTool and Photos for
   editing metadata, which SnapRescale does not do.
 
@@ -54,9 +63,11 @@ The Metadata milestone: implemented, not yet released.
   fields mirrored in a kept XMP packet, the EXIF caption, artist and copyright
   when IPTC is stripped, and the IPTC block ImageIO adds to a JPEG by itself.
 - C2PA content credentials are always stripped, and the inspector says why:
-  the signature binds the original pixels.
+  the signature binds the original pixels. They are detected in JPEG (a JUMBF
+  box labelled `c2pa`) and PNG.
 - Saving next to the original, and `rescale --write`, never replace a file
   that appeared after the name was chosen: the output takes the next number.
+  This holds on exFAT too, which has no exclusive rename.
 - Opening another image while Save & Quit is still saving keeps the app open
   on that image instead of quitting.
 - Writing a large file to a slow disk no longer freezes the window, and a quit
@@ -67,6 +78,13 @@ The Metadata milestone: implemented, not yet released.
 - Presets: a presets folder that cannot be read or created is reported in the
   Preset menu without emptying it, a failed Delete says so, and saving a
   preset can no longer crash.
+- A save or export that fails leaves the file it was replacing as it was, and
+  its error names the file being saved or exported.
+- Saving next to the original after its folder was renamed or moved says so,
+  and suggests opening the image again from its new place.
+- ⌘W closes the window: File ▸ Close was missing.
+- A preset whose quality is not a whole percent, or whose scale does not
+  survive rounding, no longer switches the Preset menu to Custom by itself.
 - Metadata limits hold for every format: PNG text labels, raw copies and
   decompression work, and the XMP of TIFF, WebP and JPEG count against the
   per-image limit; anything over it is left out and named in the inspector.

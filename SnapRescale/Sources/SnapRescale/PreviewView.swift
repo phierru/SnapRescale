@@ -177,8 +177,9 @@ struct PreviewView: View {
                 let dy = v.translation.height / scale
                 let nx = slackX > 0 ? start.x + sign * dx / slackX : start.x
                 let ny = slackY > 0 ? start.y + sign * dy / slackY : start.y
-                // Written a run-loop turn later: the sidebar Form mis-lays out
-                // when its state changes inside the mouse event (GitHub #2).
+                // Written on the next main-queue turn, which still runs while
+                // the mouse is held: the sidebar Form mis-lays out when its
+                // state changes inside the mouse event (GitHub #2).
                 deferredLive { session.anchor = CropAnchor(x: nx, y: ny) }
             }
             .onEnded { _ in dragStart = nil }

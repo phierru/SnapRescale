@@ -148,9 +148,9 @@ public struct ImageMetadata: Hashable, Sendable {
                                               location: tiffDescription != nil ? "TIFF ImageDescription" : "IPTC caption",
                                               text: description))
             }
-            if looksLikeA1111(userComment) {
-                m.provenance.append(.a1111)
-                m.aiPayloads.append(AIPayload(source: .a1111, name: "UserComment", location: "EXIF UserComment",
+            if let source = userCommentSource(userComment) {
+                m.provenance.append(source)
+                m.aiPayloads.append(AIPayload(source: source, name: "UserComment", location: "EXIF UserComment",
                                               text: userComment))
             }
             if software.hasPrefix("NovelAI") { m.provenance.append(.novelAI) }
@@ -231,9 +231,11 @@ public struct ImageMetadata: Hashable, Sendable {
         let profile = CGImageSourceCreateImageAtIndex(source, 0, nil)?.colorSpace?.copyICCData() as Data?
         var icc = MetadataSection(kind: .icc, fields: m.iccProfileName == nil && profile == nil ? []
             : ICCReader.fields(name: m.iccProfileName, colorModel: m.colorModel, profile: profile))
-        // Embedded or assumed is read off the container; ImageIO answers for the ones not walked.
+        // Embedded, tagged or assumed is read off the container; one the scanner
+        // walks but cannot parse is assumed. ImageIO answers for the ones not
+        // walked (PSD, JPEG XL, RAW, …), which can embed a real profile.
         m.iccOrigin = data.flatMap { ICCScanner.origin(in: $0, type: type) }
-            ?? (m.iccProfileName != nil ? .embedded : .assumed)
+            ?? (m.iccProfileName != nil && !ICCScanner.walks(type) ? .embedded : .assumed)
         if !icc.fields.isEmpty {
             icc.fields.insert(MetadataField(key: "Embedded", value: m.iccEmbeddedValue), at: 0)
             icc.note = m.iccNote
@@ -352,6 +354,22 @@ public struct ImageMetadata: Hashable, Sendable {
         text.contains("Steps:") && (text.contains("Sampler:") || text.contains("CFG scale:"))
     }
 
+    /// The tool whose generation parameters an EXIF user comment holds, or nil
+    /// for a comment of the user's own: SwarmUI JSON (`sui_image_params`),
+    /// Fooocus JSON (its `metadata_scheme`, or a `version` naming Fooocus),
+    /// else A1111 text. Detection, the writer and the capability all ask this,
+    /// so a comment is shown and carried as the same thing (issue #32).
+    static func userCommentSource(_ text: String) -> Provenance? {
+        if text.first(where: { !$0.isWhitespace }) == "{",
+           let json = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any] {
+            if json["sui_image_params"] is [String: Any] { return .swarmUI }
+            if json["metadata_scheme"] as? String == "fooocus" || (json["version"] as? String)?.hasPrefix("Fooocus") == true {
+                return .fooocus
+            }
+        }
+        return looksLikeA1111(text) ? .a1111 : nil
+    }
+
     static func provenance(fromPNGChunks chunks: [PNGScanner.TextChunk]) -> [Provenance] {
         var out: [Provenance] = []
         let byKey = Dictionary(chunks.map { ($0.keyword, $0.text ?? "") }, uniquingKeysWith: { a, _ in a })
@@ -430,7 +448,7 @@ public struct ImageMetadata: Hashable, Sendable {
     }
 }
 
-/// JPEG segment walker, used only to spot a C2PA / JUMBF APP11 segment.
+/// JPEG segment walker, used only to spot a C2PA manifest store in APP11.
 public enum JPEGScanner {
     public static func hasC2PA(in data: Data) -> Bool {
         guard data.count > 4, data[data.startIndex] == 0xFF, data[data.startIndex + 1] == 0xD8 else { return false }
@@ -441,21 +459,23 @@ public enum JPEGScanner {
             if marker == 0xD9 || marker == 0xDA { return false }          // EOI / SOS: no more headers
             let length = Int(data[i + 2]) << 8 | Int(data[i + 3])
             guard length >= 2, i + 2 + length <= data.endIndex else { return false }
-            if marker == 0xEB {                                            // APP11
-                let body = data[i + 4..<i + 2 + length]
-                if body.prefix(2).elementsEqual([0x4A, 0x50]) || contains(body.prefix(64), ascii: "jumb") || contains(body.prefix(64), ascii: "c2pa") {
-                    return true
-                }
-            }
+            if marker == 0xEB, isC2PAStore(data[i + 4..<i + 2 + length]) { return true }   // APP11
             i += 2 + length
         }
         return false
     }
 
-    private static func contains(_ bytes: Data, ascii: String) -> Bool {
-        let pat = Array(ascii.utf8)
-        guard bytes.count >= pat.count else { return false }
-        let arr = Array(bytes)
-        return (0...(arr.count - pat.count)).contains { Array(arr[$0..<$0 + pat.count]) == pat }
+    /// The first segment of a JUMBF box labelled `c2pa`: the JPEG XT header
+    /// (`JP`, box instance, packet sequence), the `jumb` superbox (LBox, TBox,
+    /// an XLBox when LBox is 1), then its `jumd` description box (type UUID,
+    /// toggles, the label when toggle bit 1 is set). JPEG XT and other JUMBF
+    /// content use APP11 too.
+    static func isC2PAStore(_ segment: Data) -> Bool {
+        let d = XMPScanner.Bytes(segment)
+        guard d.count >= 16, d[0] == 0x4A, d[1] == 0x50, d.fourCC(12) == "jumb" else { return false }
+        let description = d.u32(8) == 1 ? 24 : 16
+        guard d.fourCC(description + 4) == "jumd", description + 25 <= d.count, d[description + 24] & 0x02 != 0
+        else { return false }
+        return d.starts(with: Array("c2pa".utf8) + [0], at: description + 25, end: d.count)
     }
 }

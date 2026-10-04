@@ -44,9 +44,12 @@ final class Session {
     var metadataPolicy: MetadataPolicy = .default
 
     // Presets (PRD §12)
-    let presets = PresetStore()
+    let presets: PresetStore
     /// Name of the preset the current settings came from; nil once anything changed.
     private(set) var activePreset: String?
+
+    /// The user's presets folder, unless a test passes a store of its own.
+    init(presets: PresetStore = PresetStore()) { self.presets = presets }
 
     func apply(_ preset: Preset) {
         aspect = preset.aspect
@@ -77,7 +80,19 @@ final class Session {
         guard let name = activePreset, let p = presets.presets.first(where: { $0.name == name }) else {
             activePreset = nil; return
         }
-        if currentPreset(named: name) != p { activePreset = nil }
+        if currentPreset(named: name) != Self.asApplied(p) { activePreset = nil }
+    }
+
+    /// `preset` as `apply` leaves the settings: quality to a whole percent and
+    /// a scale through the field's percent (0.123 × 100 ÷ 100 is not 0.123),
+    /// read back as `sizeParameter` does. Compared as stored, a preset that
+    /// does not survive this showed Custom with no edit (#60).
+    private static func asApplied(_ preset: Preset) -> Preset {
+        var p = preset
+        p.quality = Double(Preset.percent(p.quality)) / 100
+        if case .scale(let k) = p.size { p.size = .scale(k * 100 / 100) }
+        p.size = p.size.clamped
+        return p
     }
 
     // Display only
@@ -495,8 +510,7 @@ final class Session {
 
     /// `nextToOriginal` may ask for the folder once under the sandbox, and
     /// takes the first name that is free when the file lands: it replaces no
-    /// file (review 2026-10-03, G2), except in the check-then-replace fallback
-    /// on a volume without an exclusive rename (`SafeWrite.create`). A
+    /// file (review 2026-10-03, G2), on exFAT too (`SafeWrite.create`). A
     /// `chosen` URL replaces an existing file as a whole, since the save panel
     /// confirmed that, or not at all (`SafeWrite`). The encode and the write
     /// run off the main actor; the window shows a saving state until the save
@@ -521,8 +535,19 @@ final class Session {
                     try await whileWriting { try await SafeWrite.writeDetached(data, to: chosen) }
                     url = chosen
                 case .nextToOriginal:
+                    // The session does not follow a folder renamed or moved
+                    // since the image was opened: say so, rather than report
+                    // whatever the write throws or ask to allow a folder that
+                    // is gone (#61).
+                    let folder = source.url.deletingLastPathComponent()
+                    var isFolder: ObjCBool = false
+                    guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isFolder), isFolder.boolValue else {
+                        errorMessage = "The folder “\(folder.lastPathComponent)” is no longer there: it was renamed or moved after the image was opened. "
+                            + "Open the image again from its new place to save next to it; Save As still works."
+                        return
+                    }
                     let candidates = OutputNaming.candidates(for: source, spec: spec)
-                    let outcome = await FolderAccess.write(in: source.url.deletingLastPathComponent()) {
+                    let outcome = await FolderAccess.write(in: folder) {
                         try await whileWriting { try await SafeWrite.createDetached(data, firstFreeOf: candidates) }
                     }
                     switch outcome {
