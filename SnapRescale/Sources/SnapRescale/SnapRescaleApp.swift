@@ -32,6 +32,9 @@ struct SnapRescaleApp: App {
                     .keyboardShortcut("o")
             }
             CommandGroup(replacing: .saveItem) {
+                // The group also holds File ▸ Close: without it ⌘W closes no window (#59).
+                Button("Close") { NSApp.keyWindow?.performClose(nil) }
+                    .keyboardShortcut("w")
                 let s = Session.shared
                 Button(s.saveWithoutAsking ? (s.quitsAfterSave ? "Save & Quit" : "Save")
                                            : (s.quitsAfterSave ? "Save & Quit…" : "Save…")) { deferred { s.save() } }
