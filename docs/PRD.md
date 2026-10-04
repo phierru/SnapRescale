@@ -334,10 +334,12 @@ Extension or a Shortcut; deferred with the rest of §13.)
 **Session lifetime follows the entry route** (decided 2026-09-06):
 
 - Launched *for* an image — Open With, Services, a drop on the Dock icon — the
-  app is a one-shot tool: the buttons read **Save & Quit** and **Save As &
-  Quit…**, and a successful save reveals the file in Finder and quits.
+  app is a one-shot tool: the save button reads **Save & Quit…** (with *Save
+  next to the original without asking* on, **Save & Quit** beside **Save As &
+  Quit…**), and a successful save reveals the file in Finder and quits.
 - Launched from the Applications menu and given an image by drop or ⌘O, it is
-  a window: it stays open until closed, and Save is just Save.
+  a window: it stays open until closed, and the button reads **Save…**
+  (**Save** and **Save As…** with that setting on).
 - An image handed to an *already open* window by Open With or Services keeps
   the window's mode.
 
@@ -412,7 +414,8 @@ OpenEXR, SVG, and the full RAW set (CR2/CR3, NEF, ARW, RAF, ORF, RW2, DNG, …).
 
 **Write, needs help:** **WebP** and **JPEG XL** are read-only in ImageIO. WebP is
 the format the web actually asks for, so WebP encoding via bundled `libwebp`
-is the first item of M4, immediately after the v1 cut (M0–M3). This is the single biggest implementation constraint in the project:
+is the first item of M4, the formats release (1.3), which follows the Metadata
+release (1.2). This is the single biggest implementation constraint in the project:
 it adds a native dependency and complicates sandboxing and notarisation if
 SnapRescale is ever distributed. JPEG XL is deferred to v2.
 
@@ -520,8 +523,9 @@ the default: what was kept for one picture is not kept for the next by accident.
   rather than dropping it silently (the §9 "never convert silently" rule),
   with a note such as *Requires PNG output*; a note is shown only while it
   applies. This depends on the source too: a
-  ComfyUI graph survives only in PNG; A1111 parameters can also ride in EXIF
-  UserComment for JPEG / HEIC; GIF and BMP carry almost nothing.
+  ComfyUI graph survives only in PNG; A1111, SwarmUI and Fooocus parameters
+  can also ride in the EXIF UserComment of JPEG, HEIC and TIFF; GIF and BMP
+  carry almost nothing.
 - **Orientation is always normalised**, whatever the metadata setting: the
   EXIF orientation flag is baked into the pixels and reset to 1. Stripping
   metadata without doing this is how naive resizers deliver sideways photos,
@@ -567,9 +571,9 @@ counter, and nothing is silently overwritten: the silent next-to-the-original
 path and the CLI take a name only if it is still free when the file lands, by
 an exclusive rename or, on a volume without one (exFAT), by first reserving the
 name with an exclusive create. A file that appeared after the name was chosen
-keeps its bytes, and the output takes the next counter. This rests on the
-volume honouring exclusive creation (`O_EXCL`), as APFS and exFAT, the volumes
-tested, do. Replacing a file, the original included, happens only through the
+keeps its bytes, and the output takes the next counter. Without an exclusive
+rename this rests on the volume honouring exclusive creation (`O_EXCL`), as
+exFAT, the volume tested, does. Replacing a file, the original included, happens only through the
 save panel's explicit confirmation. The silent next-to-the-original path is a
 preference, off by default.
 

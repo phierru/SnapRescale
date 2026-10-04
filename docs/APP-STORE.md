@@ -134,7 +134,7 @@ Recipe (Retina display, so 1440×900 points capture at 2880×1800 pixels):
 
 ```sh
 open -n -a build/xcode/SnapRescale.app --args --window 1440x900 --preset "Social 16:9"
-sleep 4; open -a build/xcode/SnapRescale.app photo.jpg      # opened after launch → stays open, plain "Save"
+sleep 4; open -a build/xcode/SnapRescale.app photo.jpg      # opened after launch → stays open, "Save…" (not "Save & Quit…")
 # add --inspector to the first line for the shots with the metadata inspector open
 screencapture -l<window id> -x -o raw.png                    # window id from CGWindowList (owner SnapRescale)
 swiftc -O -o flatten Scripts/flatten-screenshot.swift && ./flatten raw.png shot.png 2880 1800   # opaque, centred

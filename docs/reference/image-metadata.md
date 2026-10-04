@@ -42,9 +42,11 @@ so the origin (`ICCOrigin`) comes from the container itself:
 - **Assumed**: nothing in the file; the profile is the macOS default. A file of
   a walked format whose structure cannot be parsed counts as assumed too.
 
-Formats the scanner does not walk (PSD, JPEG XL, RAW, OpenEXR, …) keep
-ImageIO's answer, embedded when it names a profile, since they can carry a real
-one.
+Formats the scanner does not walk (PSD, JPEG XL, JPEG 2000, HEICS, RAW,
+OpenEXR, …) keep ImageIO's answer: embedded, with the `ICC` badge, whenever
+ImageIO names a profile, even one it only assumes. PSD, JPEG XL and RAW can
+embed a real profile; OpenEXR has none to embed, so its badge only names what
+ImageIO assumes.
 
 ## 3. AI-generation provenance
 
@@ -65,9 +67,11 @@ scanned for C2PA.
 | **Midjourney** | EXIF/TIFF ImageDescription and XMP `dc:description` with the prompt and `Job ID: …` | `Job ID:` | `Midjourney` |
 | **Content Credentials (C2PA)** — DALL·E, Adobe Firefly, Leica/Sony cameras | JPEG APP11 JUMBF box (`jumb` / `c2pa`), PNG `caBX` chunk; also HEIC / AVIF `uuid` box, WebP and TIFF, which are not detected | JPEG: a JUMBF box labelled `c2pa`; PNG: the chunk, its body not read | `C2PA` |
 
-A SwarmUI or Fooocus `parameters` chunk moves into the EXIF user comment when a
-PNG is saved as JPEG, HEIC or TIFF, and is recognised there when that file is
-opened again.
+A SwarmUI `parameters` chunk, or a Fooocus one in Fooocus's JSON scheme, moves
+into the EXIF user comment when a PNG is saved as JPEG, HEIC or TIFF, and is
+recognised there when that file is opened again. Fooocus parameters in its
+A1111-style scheme move too but come back as A1111: only the `parameters` text
+moves, not the `fooocus_scheme` chunk that named Fooocus.
 
 C2PA is detected in JPEG and PNG only. Detection finds the manifest store; it
 does not verify the signature. Detected or not, a manifest is never written:

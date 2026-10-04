@@ -5,9 +5,10 @@ requirements; this file holds the order. Dates are decisions, not promises.
 
 **Current milestone: the Metadata release, 1.2.** Implemented and merged, not
 yet released. The release is gated on the sandbox checks in
-[`RELEASING.md`](RELEASING.md): they passed on fa50d19 on 2026-10-03 and are
-repeated on the release build before upload. M5, which shipped 1.0 and 1.1,
-is kept at the end as history.
+[`RELEASING.md`](RELEASING.md): the nine of 2026-10-03 passed on fa50d19, and
+the checks added or changed for the fixes of #65 (2, 4, 10, 11) passed on
+7096d4c on 2026-10-04. Every check is repeated on the release build before
+upload. M5, which shipped 1.0 and 1.1, is kept at the end as history.
 
 ## Deferred from v1 (2026-09-06)
 
@@ -30,10 +31,12 @@ strip EXIF, GPS, IPTC and XMP, preserve ICC, keep the AI workflow (changed from
 
 **Status: implemented and merged — not released.** All four waves are merged
 (PRs #23, #24, #27, #28), with the fixes from the reviews of 2026-09-30 and
-2026-10-03 (#31, #46) and a follow-up (#34). The release, 1.2, is gated on
-the sandbox checks in `RELEASING.md`, which passed on fa50d19 on 2026-10-03
-and are repeated on the release build before upload. 1.1, the version on the
-store, still writes 8-bit sRGB with everything stripped.
+2026-10-03 (#31, #46), a follow-up (#34) and the documentation and storefront
+reviews of 2026-10-03 (#65). The release, 1.2, is gated on the sandbox checks
+in `RELEASING.md` (the nine of 2026-10-03 passed on fa50d19, those added or
+changed for #65 on 7096d4c on 2026-10-04), every one repeated on the release
+build before upload. 1.1, the version on the store, still writes 8-bit sRGB
+with everything stripped.
 The owner has checked that a resized ComfyUI PNG dropped into ComfyUI opens
 its workflow; what has not been checked is under *Open verification*.
 
