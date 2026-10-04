@@ -429,7 +429,7 @@ switches.)*
 
 **What the source carries is shown up front.** The header row above the
 preview — name, dimensions, file size, format — ends with one badge per
-metadata block found: **ICC** (profile name on hover; only when the file
+metadata block read (§10.2): **ICC** (profile name on hover; only when the file
 embeds a profile — an sRGB that macOS merely assumes gets no badge), **EXIF**, **GPS** (in a
 warning colour), **IPTC**, **XMP**, **Alpha**, **16-bit**, **HDR**, **Depth**,
 **Rotated**, **Animated ·N**, and one per AI-generation source detected:
@@ -451,13 +451,21 @@ window. It has the same fixed width as the sidebar. Opened by a badge click,
 the sidebar's Metadata row or **⌥⌘I** (View ▸ Metadata Inspector); closed by
 the same, or by the close button in its header.
 
-It lists everything the source carries in **collapsible sections**, each
+It lists the metadata it could read in **collapsible sections**, each
 showing its fields as label / value rows. A section's title row holds, right
 aligned, its switch and then icon buttons (§10.5). The main fields come first,
 the rest behind **More (N)**; the AI workflow shows a summary (prompt,
 negative prompt, model, seed, steps, CFG, sampler, scheduler) above the raw
 payloads; the ICC section of a file with no embedded profile is collapsed and
 reads *macOS default (sRGB assumed)*.
+
+**What is read has limits.** PNG text chunks and XMP packets are read within a
+budget per image: 64 MiB of retained data, 4,096 elements and 128 MiB of
+decompression work, and no XMP packet over 64 MiB. That is far above what real
+files carry (a ComfyUI graph runs from tens of kB to a few MB). Anything over
+it is left out: it adds no badge, is neither listed nor exported, and is not
+written on save, even under *Keep all*. The Structure section notes what was
+skipped (the XMP section, for JPEG extended XMP).
 
 | Section | Control | Notes |
 |---|---|---|
@@ -525,8 +533,11 @@ Read-only, and available whatever the switches say:
 - **AI workflow ▸ Export…** writes the ComfyUI / InvokeAI graph as `.json`
   (droppable straight into ComfyUI) and A1111-style parameters as `.txt`.
   **Copy Prompt** puts the positive prompt on the clipboard.
-- **Export All…**, in the same menu, writes every section as one JSON file,
-  for archiving before stripping.
+- **Export All…**, in the same menu, writes the fields the inspector shows as
+  one JSON file, with raw keys and stored values. It is not a lossless
+  archive: section notes are left out, Apple's MakerNote and C2PA appear as
+  summaries, and the ICC profile as its fields, not its bytes. To keep
+  everything, keep the original.
 
 ### 10.6 Build order
 

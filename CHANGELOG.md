@@ -10,7 +10,7 @@ The Metadata milestone: implemented, not yet released.
 ### Added
 
 - **Metadata inspector**, a panel on the trailing side of the window that lists
-  what the source carries, section by section: EXIF, GPS, IPTC, XMP, ICC
+  the metadata it could read, section by section: EXIF, GPS, IPTC, XMP, ICC
   profile, AI workflow, C2PA and Structure. It opens from any badge (at that
   badge's section), from the new **Metadata** row in the sidebar, or with
   View ▸ Metadata Inspector (⌥⌘I). Values are shown with readable labels, the
@@ -27,7 +27,8 @@ The Metadata milestone: implemented, not yet released.
   JPEG, HEIC and TIFF.
 - **Copy and export**, whatever the switches say: Copy on every section, Copy
   Prompt and Export… (`.json` / `.txt`) on an AI workflow, Copy All and
-  Export All… (one JSON file) in the inspector's menu.
+  Export All… in the inspector's menu. Export All writes the fields shown as
+  one JSON file; it is not a lossless archive of the original metadata.
 - Presets carry a metadata policy (`metadata` in the JSON; optional, so older
   presets still load).
 
@@ -37,8 +38,10 @@ The Metadata milestone: implemented, not yet released.
   default:** strip EXIF, GPS, IPTC and XMP; keep the colour profile and the AI
   workflow. The sidebar says so (*Default · only ICC, AI kept*). Opening
   another image returns to the default; a preset applies its own policy.
-- Colour follows the ICC switch: the source's profile and, where the format
-  allows, its bit depth are kept. CMYK sources are still converted to sRGB.
+- Colour follows the ICC switch: the source's profile is kept, converted to
+  sRGB or left out. Bit depth is kept whatever the switch says: a source
+  deeper than 8 bits gives 16-bit PNG and TIFF, and 10-bit HEIC. CMYK sources
+  are still converted to sRGB.
 - The ICC badge appears only when the file embeds a profile; an assumed sRGB
   is no longer shown as one.
 - Help describes the inspector and points to ExifTool and Photos for

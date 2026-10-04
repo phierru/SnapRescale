@@ -70,7 +70,9 @@ workflow (PRD §10.2).
 Writing notes:
 
 - ImageIO will not write custom PNG text chunks, so "keep AI workflow" splices
-  the source's `tEXt` / `iTXt` / `zTXt` chunks back in before `IEND`.
+  the source's `tEXt` / `iTXt` / `zTXt` chunks back in before `IEND`: only
+  those that were read. A chunk over the per-image metadata limit is skipped,
+  noted in the Structure section, and not carried, even under Keep (PRD §10.2).
 - The embedded EXIF thumbnail is always dropped, EXIF pixel dimensions are
   rewritten and orientation is reset to 1 (PRD §10.4).
 - A stripped section's mirrored copies in XMP are removed with it (PRD §10.3).

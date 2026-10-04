@@ -89,10 +89,10 @@ struct HelpView: View {
             "**Presets** store size and export settings. Save your own from the Preset menu; the files are plain JSON.",
         ]),
         Section(title: "The badges", lines: [
-            "Next to the file name: what the source carries — an embedded colour profile, EXIF, GPS, IPTC, XMP, HDR, alpha — and where an AI image came from (ComfyUI, A1111, InvokeAI, …). Hover for details; click one to open the metadata inspector at that section.",
+            "Next to the file name: what SnapRescale could read in the source — an embedded colour profile, EXIF, GPS, IPTC, XMP, HDR, alpha — and where an AI image came from (ComfyUI, A1111, InvokeAI, …). Hover for details; click one to open the metadata inspector at that section.",
         ]),
         Section(title: "Metadata", lines: [
-            "The **metadata inspector** lists what the image carries, section by section. Open it with a badge, the **Metadata** row in the sidebar, or **View ▸ Metadata Inspector** (**⌥⌘I**).",
+            "The **metadata inspector** lists the metadata SnapRescale could read, section by section. PNG text or XMP over the per-image size limit is not read, so it is neither shown nor kept on save; a note says so. Open it with a badge, the **Metadata** row in the sidebar, or **View ▸ Metadata Inspector** (**⌥⌘I**).",
             "Each section has a switch, **Keep · Strip**; the colour profile has **Keep · sRGB · Strip**, where sRGB converts the colours. The menu at the top sets them all — **Default · Keep all · Strip all** — and reads Custom for any other mix.",
             "**Default** strips EXIF, GPS, IPTC and XMP, and keeps the colour profile and the AI workflow: a resized ComfyUI PNG still opens its workflow in ComfyUI. Opening another image goes back to Default; a preset carries its own choice.",
             "A switch is disabled, with a note, when the output format cannot carry the section: a ComfyUI graph requires PNG output.",
