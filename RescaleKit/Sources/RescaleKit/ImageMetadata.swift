@@ -432,7 +432,7 @@ public struct ImageMetadata: Hashable, Sendable {
     }
 }
 
-/// JPEG segment walker, used only to spot a C2PA / JUMBF APP11 segment.
+/// JPEG segment walker, used only to spot a C2PA manifest store in APP11.
 public enum JPEGScanner {
     public static func hasC2PA(in data: Data) -> Bool {
         guard data.count > 4, data[data.startIndex] == 0xFF, data[data.startIndex + 1] == 0xD8 else { return false }
@@ -443,21 +443,23 @@ public enum JPEGScanner {
             if marker == 0xD9 || marker == 0xDA { return false }          // EOI / SOS: no more headers
             let length = Int(data[i + 2]) << 8 | Int(data[i + 3])
             guard length >= 2, i + 2 + length <= data.endIndex else { return false }
-            if marker == 0xEB {                                            // APP11
-                let body = data[i + 4..<i + 2 + length]
-                if body.prefix(2).elementsEqual([0x4A, 0x50]) || contains(body.prefix(64), ascii: "jumb") || contains(body.prefix(64), ascii: "c2pa") {
-                    return true
-                }
-            }
+            if marker == 0xEB, isC2PAStore(data[i + 4..<i + 2 + length]) { return true }   // APP11
             i += 2 + length
         }
         return false
     }
 
-    private static func contains(_ bytes: Data, ascii: String) -> Bool {
-        let pat = Array(ascii.utf8)
-        guard bytes.count >= pat.count else { return false }
-        let arr = Array(bytes)
-        return (0...(arr.count - pat.count)).contains { Array(arr[$0..<$0 + pat.count]) == pat }
+    /// The first segment of a JUMBF box labelled `c2pa`: the JPEG XT header
+    /// (`JP`, box instance, packet sequence), the `jumb` superbox (LBox, TBox,
+    /// an XLBox when LBox is 1), then its `jumd` description box (type UUID,
+    /// toggles, the label when toggle bit 1 is set). JPEG XT and other JUMBF
+    /// content use APP11 too.
+    static func isC2PAStore(_ segment: Data) -> Bool {
+        let d = XMPScanner.Bytes(segment)
+        guard d.count >= 16, d[0] == 0x4A, d[1] == 0x50, d.fourCC(12) == "jumb" else { return false }
+        let description = d.u32(8) == 1 ? 24 : 16
+        guard d.fourCC(description + 4) == "jumd", description + 25 <= d.count, d[description + 24] & 0x02 != 0
+        else { return false }
+        return d.starts(with: Array("c2pa".utf8) + [0], at: description + 25, end: d.count)
     }
 }
