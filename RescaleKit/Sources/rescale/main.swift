@@ -1,5 +1,6 @@
 // Throwaway CLI (PRD §14 M1): the cheapest way to exercise RescaleKit before
-// there is an app. Solves geometry only for now; no pixels are written yet.
+// there is an app. Solves the geometry and, with --write, renders the image
+// and saves it next to the original.
 //
 //   rescale [--aspect 16:9|original] (--width N | --height N | --mp X | --scale X)
 //           [--multiple 1|8|16|32] [--fit crop|pad|stretch] [--format keep|jpeg|png|heic|tiff]
@@ -134,7 +135,8 @@ if write {
     let spec = RenderSpec(target: s.size, fit: fit, format: format, quality: quality)
     do {
         let data = try Renderer.produce(loaded, spec: spec)
-        // Staged, and never over a file that appears meanwhile (review 2026-10-03, G2).
+        // A create-only write: staged, and never over a file, even one that
+        // appears meanwhile (review 2026-10-03, G2), on exFAT too (#56).
         let url = try SafeWrite.create(data, firstFreeOf: OutputNaming.candidates(for: loaded, spec: spec))
         print("wrote    \(url.path)  (\(data.count) bytes)")
     } catch { fail(error.localizedDescription) }
