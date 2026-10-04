@@ -57,8 +57,9 @@ where two items of a wave meet in one file are listed under the table.
 #13 and #15 both edit `Renderer.swift` but different functions (`encode` vs
 `render`); #17 and #19 both edit the inspector and should land one after the
 other; #15 and #16 both edit `Session.swift` (preview colour vs policy state).
-New sidebar and inspector controls must use `Binding.deferred` (the
-macOS 27 Form width bug, `docs/apple-feedback-macos27-form-width.md`).
+New sidebar and inspector controls must write through `deferred` /
+`Binding.deferred`, or `deferredLive` for continuous ones such as sliders and
+drags (the macOS 27 Form width bug, `docs/apple-feedback-macos27-form-width.md`).
 
 ## Also next — multiple windows (decided 2026-09-06)
 
