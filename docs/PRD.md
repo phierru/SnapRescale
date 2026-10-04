@@ -563,9 +563,15 @@ The work items and their parallel tracks are in [`ROADMAP.md`](ROADMAP.md).
 
 **v1** writes one file, by default through the save panel pre-filled with
 `{name}_{w}x{h}.{ext}` in the original's folder (§8). Collisions append a
-counter; nothing is ever silently overwritten. Replacing a file, the original
-included, happens only through the save panel's explicit confirmation. The
-silent next-to-the-original path is a preference, off by default.
+counter, and nothing is silently overwritten: the silent next-to-the-original
+path and the CLI take a name only if it is still free when the file lands, by
+an exclusive rename or, on a volume without one (exFAT), by first reserving the
+name with an exclusive create. A file that appeared after the name was chosen
+keeps its bytes, and the output takes the next counter. This rests on the
+volume honouring exclusive creation (`O_EXCL`), as APFS and exFAT, the volumes
+tested, do. Replacing a file, the original included, happens only through the
+save panel's explicit confirmation. The silent next-to-the-original path is a
+preference, off by default.
 
 **Target file size** *(M4)*: an optional byte ceiling per output — "≤ 1 MB" —
 met by searching the encoder quality downward, at fixed geometry, using the

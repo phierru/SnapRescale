@@ -44,12 +44,15 @@ images. After each step no staged file may be left: nothing named
    new name, then over an existing file (confirm Replace): on the internal
    disk and on an external or disk-image volume.
 2. **Inspector Export… and Export All…** to the same two places, new and
-   existing names; an export to a read-only volume shows an error.
+   existing names; an export to a read-only volume shows an error that names
+   the file, not a hidden `.tmp`.
 3. **Save next to the original without asking** (Settings): the first save
    asks for the folder, the second does not and writes `_2`; quit, relaunch,
    save again with no prompt.
 4. The same on an **exFAT disk image** (`hdiutil create -fs ExFAT`), which has
-   no exclusive rename: the second save still writes `_2`.
+   no exclusive rename: the second save still writes `_2`. This checks the
+   naming in the sandbox; the race the fallback closes (a file appearing while
+   the output is saved) is covered by `SafeWriteTests`.
 5. In the Allow panel, **choose the parent folder**: the save succeeds, and
    later saves in that folder or its subfolders do not ask again; a sibling
    whose name only starts the same (`Pictures` vs `PicturesX`) still asks.
@@ -61,6 +64,11 @@ images. After each step no staged file may be left: nothing named
 9. **Save & Quit** from Open With on a large image writes, reveals and quits;
    Open With on a second image while it is still saving (after the panel has
    closed) keeps the app open on that image.
+10. **⌘W** closes Settings, Help, About and the main window; closing the main
+    window quits.
+11. With *Save next to the original without asking* on, **rename the folder**
+    of the open image, then ⌘S: an alert says the folder is no longer there,
+    with no Allow panel. Opened again from its new place, the image saves.
 
 | Date | Build | macOS | Result |
 |---|---|---|---|

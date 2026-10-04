@@ -510,8 +510,7 @@ final class Session {
 
     /// `nextToOriginal` may ask for the folder once under the sandbox, and
     /// takes the first name that is free when the file lands: it replaces no
-    /// file (review 2026-10-03, G2), except in the check-then-replace fallback
-    /// on a volume without an exclusive rename (`SafeWrite.create`). A
+    /// file (review 2026-10-03, G2), on exFAT too (`SafeWrite.create`). A
     /// `chosen` URL replaces an existing file as a whole, since the save panel
     /// confirmed that, or not at all (`SafeWrite`). The encode and the write
     /// run off the main actor; the window shows a saving state until the save

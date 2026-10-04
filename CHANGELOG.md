@@ -23,8 +23,10 @@ The Metadata milestone: implemented, not yet released.
   other mix. A switch is disabled, with a note, when the output format cannot
   carry the section (a ComfyUI graph requires PNG output).
 - **AI workflow carried over**: a resized ComfyUI PNG still opens its workflow
-  in ComfyUI. A1111-style parameters also travel in the EXIF user comment of
-  JPEG, HEIC and TIFF.
+  in ComfyUI. A1111, Fooocus and SwarmUI parameters also travel in the EXIF
+  user comment of JPEG, HEIC and TIFF, and are recognised there when the file
+  is opened again. Text outside ASCII is kept, also when a JPEG's comment is
+  saved as PNG.
 - **Copy and export**, whatever the switches say: Copy on every section, Copy
   Prompt and Export… (`.json` / `.txt`) on an AI workflow, Copy All and
   Export All… in the inspector's menu. Export All writes the fields shown as
@@ -43,7 +45,8 @@ The Metadata milestone: implemented, not yet released.
   deeper than 8 bits gives 16-bit PNG and TIFF, and 10-bit HEIC. CMYK sources
   are still converted to sRGB.
 - The ICC badge appears only when the file embeds a profile; an assumed sRGB
-  is no longer shown as one.
+  is no longer shown as one. GIF and BMP files are checked for a profile too.
+- The app's category is Graphics & Design, as on the App Store.
 - Help describes the inspector and points to ExifTool and Photos for
   editing metadata, which SnapRescale does not do.
 
@@ -57,9 +60,11 @@ The Metadata milestone: implemented, not yet released.
   fields mirrored in a kept XMP packet, the EXIF caption, artist and copyright
   when IPTC is stripped, and the IPTC block ImageIO adds to a JPEG by itself.
 - C2PA content credentials are always stripped, and the inspector says why:
-  the signature binds the original pixels.
+  the signature binds the original pixels. They are detected in JPEG (a JUMBF
+  box labelled `c2pa`) and PNG.
 - Saving next to the original, and `rescale --write`, never replace a file
   that appeared after the name was chosen: the output takes the next number.
+  This holds on exFAT too, which has no exclusive rename.
 - Opening another image while Save & Quit is still saving keeps the app open
   on that image instead of quitting.
 - Writing a large file to a slow disk no longer freezes the window, and a quit
@@ -70,6 +75,13 @@ The Metadata milestone: implemented, not yet released.
 - Presets: a presets folder that cannot be read or created is reported in the
   Preset menu without emptying it, a failed Delete says so, and saving a
   preset can no longer crash.
+- Error messages name the file being saved or exported, not a hidden
+  temporary copy of it.
+- Saving next to the original after its folder was renamed or moved says so,
+  and suggests opening the image again from its new place.
+- ⌘W closes the window: File ▸ Close was missing.
+- A preset whose quality is not a whole percent, or whose scale does not
+  survive rounding, no longer switches the Preset menu to Custom by itself.
 - Metadata limits hold for every format: PNG text labels, raw copies and
   decompression work, and the XMP of TIFF, WebP and JPEG count against the
   per-image limit; anything over it is left out and named in the inspector.
