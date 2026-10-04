@@ -148,7 +148,7 @@ Ordered so that each step leaves something usable.
 5. **Settings** (⌘,) — default grid, ladder values, default multiple and quality,
    *Save next to the original without asking*, *Show the saved image in Finder*.
    *(done 2026-09-06; the ladder editor flags values not divisible by 16, as
-   PRD §5 asks; `--settings` launch argument opens the window for tests)*
+   PRD §5 then asked, 32 since 1.1; `--settings` launch argument opens the window for tests)*
 6. **Icon, About box with credits, help page.** *(done 2026-09-06. Icon:
    Liquid Glass `SnapRescale/AppIcon.icon` — three vector layers, frame + thirds
    grid + resize arrow on a blue gradient; the system derives light, dark,

@@ -74,7 +74,7 @@ struct HelpView: View {
         ]),
         Section(title: "Choosing a size", lines: [
             "Pick an **aspect ratio** — Original keeps the image's own — and **one number**: width, height, megapixels or scale. The other three follow.",
-            "**Multiple of 8, 16 or 32** rounds the result onto a lattice, as diffusion models, image-editing models and video encoders want. The number you typed is kept; the derived side moves, and the panel says by how much.",
+            "**Multiple of 8, 16 or 32** rounds the result onto a lattice, as diffusion models, image-editing models and video encoders want. A width or height you type is kept when it is already a multiple; otherwise it moves to the nearest one, and the panel says by how much. Sizes are whole pixels, so even at multiple 1 switching between width, height, megapixels and scale can move a side by a pixel.",
             "The **ladder** under the field jumps to the usual sizes. Edit it in Settings.",
         ]),
         Section(title: "Crop or pad", lines: [

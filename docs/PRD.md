@@ -1,7 +1,7 @@
 # SnapRescale — Product Requirements Document
 
 **Status:** Draft v0.14 · 2026-09-06 · current milestone **M5** · deferred work in [`ROADMAP.md`](ROADMAP.md) · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
-**Name:** SnapRescale — *Resize to any ratio, snapped to multiples of 8 and 16* · bundle ID `com.phierru.SnapRescale`
+**Name:** SnapRescale — *Resize to any ratio, snapped to multiples of 8, 16 and 32* · bundle ID `com.phierru.SnapRescale`
 **Platform:** macOS 26+ (Apple Silicon), Swift 6 / SwiftUI
 
 ---
@@ -115,8 +115,10 @@ is the whole of the state model.
 carried across at full precision (only the field's text is rounded), and the
 solver re-solves for that view. Pinning width holds one axis; megapixels frees
 both. So at multiple 16 the derived axis can legally move by one lattice step
-on a view switch, and the notes under Output say so. At multiple 1 nothing
-moves.
+on a view switch, and the notes under Output say so. At multiple 1 a side can
+still move by a pixel, because sizes are whole pixels: from 6000×4000 under
+Original, width 1031 gives 1031×687, and switching to Height (687) gives
+1030×687. No note says so; the notes cover only what the multiple forces.
 
 **Original is exact up to the multiple.** With a multiple of 8, 16 or 32 the
 snapped size can differ from the source ratio by a few pixels; the renderer
@@ -170,19 +172,19 @@ the slider exists (M2) the same ladder is a row of buttons under the field. They
 bypasses them entirely. A second, unlabelled detent grid sits at every multiple,
 so a free drag still lands on a legal value.
 
-All five detent values are divisible by **8 and 16**, so a detent is never
-displaced by snapping (§6) at any multiple. Any custom entry failing that test is
-flagged in preferences, because it quietly loses the guarantee. Combined with
-steppers that move by the multiple, the pinned axis is essentially always already
-on the lattice — which makes §6 a no-op in normal use and a safety net in the
-rest.
+All five detent values are divisible by **32**, and so by 8 and 16: a detent is
+never displaced by snapping (§6) at any multiple. Any custom entry failing that
+test is flagged in preferences, because it quietly loses the guarantee. Combined
+with steppers that move by the multiple, the pinned axis is essentially always
+already on the lattice — which makes §6 a no-op in normal use and a safety net
+in the rest.
 
 Details:
 
 - **Range** 128–8192 by default, extending upward if a source image exceeds it.
 - **⌘1–⌘5** jump to the five detents; ← / → step; ⇧← / ⇧→ step by ten.
 - **The ladder is editable** in Settings (2–6 values; entries not divisible by
-  16 are flagged there because snapping can move them). The default is the
+  32 are flagged there because snapping can move them). The default is the
   ML/diffusion ladder; web work wants something nearer 640 · 1280 · 1920 · 2560.
 - **Upscaling is a warning, not a lock** (decided 2026-09-06): a target larger
   than the source is allowed and flagged under Output with the factor. No
@@ -228,9 +230,15 @@ do, so:
 > value and is then **held fixed**. Only the axis derived from the aspect ratio
 > is searched.
 
-Restricting the multiple to 1/8/16 keeps the cost of this trivial: worst observed
-aspect deviation is **0.74%**, against 0.35% for the objective that betrays the
-user. That is a good trade.
+Restricting the multiple to 1/8/16 keeps the cost of this small: for outputs
+from 1920 px up, the worst observed aspect deviation is **0.74%**, against 0.35%
+for the objective that betrays the user. That is a good trade. Smaller outputs
+pay more for the same step: `width 784 + 16:9` at multiple 16 gives 784×448,
+1.6% off the ratio. Multiple 32, added in 1.1 for image-editing models
+such as Qwen Image, doubles the step and with it the cost: `width 768 + 16:9`
+gives 768×448, 3.6% off the ratio, where aspect priority would give 800×448
+(0.45%). The rule holds at 32 as well; the note under Output says what the
+multiple forced.
 
 **Hold first, then derive.** When the typed value is off the lattice, the
 snapped value is what gets written, so the derived axis is computed from *that*,
@@ -241,7 +249,7 @@ move the derived axis by one lattice step, so the solution was not a fixed point
 of itself.
 
 In practice this section rarely fires at all: the steppers move by the multiple
-and every slider detent is divisible by 8 and 16 (§5), so the axis you set is
+and every default ladder value is divisible by 32 (§5), so the axis you set is
 almost always on the lattice already. This is the safety net for typed values and
 for **Original** ratios, not the everyday path.
 
@@ -678,7 +686,7 @@ shipped CLI, and the Shortcuts action (§13).
    wranglers. One constant, `Megapixel.pixels` in `RescaleKit`, if this ever
    needs revisiting.
 2. **Name.** ~~"SnapRescale" is a placeholder.~~ **Decided 2026-09-05: SnapRescale**,
-   tagline "Resize to any ratio, snapped to multiples of 8 and 16". Engine stays `RescaleKit`, CLI stays `rescale`
+   tagline "Resize to any ratio, snapped to multiples of 8, 16 and 32". Engine stays `RescaleKit`, CLI stays `rescale`
    (short in pipelines). No exact-match collisions found; nearest neighbours are
    SnapResizer (web/iPad) and Snap Converter (Mac App Store).
 3. **Distribution.** **Decided 2026-09-06: free on the Mac App Store, source
