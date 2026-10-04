@@ -7,7 +7,7 @@ once the Developer Program membership (personal team 7XVA74UJHL) exists.
 
 - **Name:** SnapRescale
 - **Subtitle (30 chars):** Resize images, snap to 8/16/32
-- **Category:** Photo & Video · secondary: Graphics & Design
+- **Category:** Graphics & Design · secondary: Photo & Video
 - **Price:** Free · no in-app purchases
 - **Bundle ID:** com.phierru.SnapRescale · **SKU:** snaprescale-mac
 
