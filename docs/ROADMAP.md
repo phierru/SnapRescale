@@ -114,7 +114,8 @@ window. PRD §8 "v1 never holds two" is superseded by this.
 
 - Provenance detection for InvokeAI, NovelAI, Fooocus, SwarmUI, Midjourney and
   C2PA is verified only on synthesised fixtures; ComfyUI and camera EXIF/GPS/XMP
-  on real files.
+  on real files. C2PA is detected in JPEG and PNG only, not in HEIC, AVIF, WebP
+  or TIFF (it is stripped on save all the same).
 - PDF and SVG are in the §9 read list and untested through the loader.
 - No RAW / CMYK / wide-gamut / EXIF-orientation corpus has been run end to end.
 
@@ -132,7 +133,7 @@ Metadata milestone — known gaps:
 Metadata milestone — not yet exercised by running the app:
 
 - The HDR note, on a real gain-map photo.
-- The C2PA section, with a really signed file.
+- The C2PA section, with a really signed JPEG and PNG.
 - ~~Export… and Export All… in a sandboxed release build~~: checked on
   2026-10-03 with the sandbox checks in `RELEASING.md`, which are repeated on
   the release build before upload.

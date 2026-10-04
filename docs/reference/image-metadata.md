@@ -20,7 +20,7 @@ hands it over as a dictionary; "scan" means we parse the container ourselves.
 
 | Property | How we see it | Badge |
 |---|---|---|
-| ICC colour profile | `ProfileName` (e.g. "sRGB IEC61966-2.1", "Display P3", "Adobe RGB (1998)", "ProPhoto RGB") | `ICC`, profile name in the tooltip |
+| ICC colour profile | Origin read off the container: embedded, tagged or assumed (below); ImageIO's `ProfileName` names it (e.g. "sRGB IEC61966-2.1", "Display P3", "Adobe RGB (1998)", "ProPhoto RGB") | `ICC` for an embedded profile only, profile name in the tooltip |
 | Colour model other than RGB | `ColorModel` = CMYK / Gray / Lab | `CMYK`, `Gray` |
 | Bit depth above 8 | `Depth` | `16-bit` |
 | Alpha channel | `HasAlpha` | `Alpha` |
@@ -28,6 +28,23 @@ hands it over as a dictionary; "scan" means we parse the container ourselves.
 | Depth / portrait matte | Auxiliary data: depth, disparity, portrait effects matte | `Depth` |
 | Orientation flag ≠ 1 | `Orientation`; baked into pixels on load (§10) | `Rotated` |
 | Multiple frames | `CGImageSourceGetCount` > 1 (animated GIF, HEICS, multi-page TIFF) | `Animated ·N` |
+
+ImageIO names a profile for nearly every image, sRGB when the file has none,
+so the origin (`ICCOrigin`) comes from the container itself:
+
+- **Embedded**: the profile bytes are in the file. PNG `iCCP`, JPEG APP2
+  `ICC_PROFILE`, TIFF and BigTIFF tag 34675, WebP `ICCP`, a HEIC / HEIF / AVIF
+  `colr` box of type `prof` or `rICC`, a GIF `ICCRGBG1` application extension,
+  a BMP V5 header with an embedded profile.
+- **Tagged**: no profile, but the file states its colour space. PNG `sRGB`,
+  `cICP`, or `gAMA` with `cHRM`; an `nclx` `colr` box. EXIF ColorSpace = 1 does
+  not count.
+- **Assumed**: nothing in the file; the profile is the macOS default. A file of
+  a walked format whose structure cannot be parsed counts as assumed too.
+
+Formats the scanner does not walk (PSD, JPEG XL, RAW, OpenEXR, …) keep
+ImageIO's answer, embedded when it names a profile, since they can carry a real
+one.
 
 ## 3. AI-generation provenance
 
@@ -40,13 +57,21 @@ scanned for C2PA.
 | Source | Where it hides | Recognised by | Badge |
 |---|---|---|---|
 | **ComfyUI** | PNG `tEXt` `prompt` (API graph) and `workflow` (UI graph), JSON | keyword `workflow`, or `prompt` JSON containing `class_type` | `ComfyUI` |
-| **Automatic1111 / Forge** | PNG `tEXt` `parameters`; JPEG/WebP EXIF UserComment | text containing `Steps:` and `Sampler:` | `A1111` |
+| **Automatic1111 / Forge** | PNG `tEXt` `parameters`; JPEG/WebP EXIF UserComment | text containing `Steps:` and `Sampler:` or `CFG scale:` | `A1111` |
 | **InvokeAI** | PNG `tEXt` `invokeai_metadata`, `invokeai_graph`, older `sd-metadata` | keyword | `InvokeAI` |
 | **NovelAI** | PNG `tEXt` `Software` = `NovelAI`, `Comment` JSON | Software value | `NovelAI` |
-| **Fooocus** | PNG `parameters` plus `fooocus_scheme` | keyword `fooocus_scheme` | `Fooocus` |
-| **SwarmUI** | PNG `parameters` JSON with `sui_image_params` | JSON key | `SwarmUI` |
+| **Fooocus** | PNG `parameters` plus `fooocus_scheme`; EXIF UserComment (JSON) | keyword `fooocus_scheme`; in the user comment, `metadata_scheme` `fooocus` or a `version` naming Fooocus | `Fooocus` |
+| **SwarmUI** | PNG `parameters` JSON with `sui_image_params`; EXIF UserComment | JSON key | `SwarmUI` |
 | **Midjourney** | EXIF/TIFF ImageDescription and XMP `dc:description` with the prompt and `Job ID: …` | `Job ID:` | `Midjourney` |
-| **Content Credentials (C2PA)** — DALL·E, Adobe Firefly, Leica/Sony cameras | JPEG APP11 JUMBF box (`jumb` / `c2pa`), PNG `caBX` chunk, HEIC `uuid` box | marker / chunk | `C2PA` |
+| **Content Credentials (C2PA)** — DALL·E, Adobe Firefly, Leica/Sony cameras | JPEG APP11 JUMBF box (`jumb` / `c2pa`), PNG `caBX` chunk; also HEIC / AVIF `uuid` box, WebP and TIFF, which are not detected | JPEG: a JUMBF box labelled `c2pa`; PNG: the chunk, its body not read | `C2PA` |
+
+A SwarmUI or Fooocus `parameters` chunk moves into the EXIF user comment when a
+PNG is saved as JPEG, HEIC or TIFF, and is recognised there when that file is
+opened again.
+
+C2PA is detected in JPEG and PNG only. Detection finds the manifest store; it
+does not verify the signature. Detected or not, a manifest is never written:
+it is stripped on every save (§4).
 
 ## 4. What the badges are for
 

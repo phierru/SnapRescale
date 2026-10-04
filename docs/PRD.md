@@ -446,8 +446,8 @@ warning colour), **IPTC**, **XMP**, **Alpha**, **16-bit**, **HDR**, **Depth**,
 **ComfyUI**, **A1111**, **InvokeAI**, **NovelAI**, **Fooocus**, **SwarmUI**,
 **Midjourney**, **C2PA** — and **AI text** when a PNG carries text under an
 AI keyword (`prompt`, `parameters`, …) that is not a recognised payload: it is
-kept or stripped with the AI workflow switch, so it is shown. The full catalogue, where each lives and how it is
-detected, is in [`reference/image-metadata.md`](reference/image-metadata.md).
+kept or stripped with the AI workflow switch, so it is shown. The full catalogue, where each can live and where
+and how it is detected, is in [`reference/image-metadata.md`](reference/image-metadata.md).
 
 Clicking a badge opens the metadata inspector at that badge's section.
 
