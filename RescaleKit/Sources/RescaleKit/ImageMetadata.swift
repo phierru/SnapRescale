@@ -148,9 +148,9 @@ public struct ImageMetadata: Hashable, Sendable {
                                               location: tiffDescription != nil ? "TIFF ImageDescription" : "IPTC caption",
                                               text: description))
             }
-            if looksLikeA1111(userComment) {
-                m.provenance.append(.a1111)
-                m.aiPayloads.append(AIPayload(source: .a1111, name: "UserComment", location: "EXIF UserComment",
+            if let source = userCommentSource(userComment) {
+                m.provenance.append(source)
+                m.aiPayloads.append(AIPayload(source: source, name: "UserComment", location: "EXIF UserComment",
                                               text: userComment))
             }
             if software.hasPrefix("NovelAI") { m.provenance.append(.novelAI) }
@@ -352,6 +352,22 @@ public struct ImageMetadata: Hashable, Sendable {
 
     static func looksLikeA1111(_ text: String) -> Bool {
         text.contains("Steps:") && (text.contains("Sampler:") || text.contains("CFG scale:"))
+    }
+
+    /// The tool whose generation parameters an EXIF user comment holds, or nil
+    /// for a comment of the user's own: SwarmUI JSON (`sui_image_params`),
+    /// Fooocus JSON (its `metadata_scheme`, or a `version` naming Fooocus),
+    /// else A1111 text. Detection, the writer and the capability all ask this,
+    /// so a comment is shown and carried as the same thing (issue #32).
+    static func userCommentSource(_ text: String) -> Provenance? {
+        if text.first(where: { !$0.isWhitespace }) == "{",
+           let json = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any] {
+            if json["sui_image_params"] is [String: Any] { return .swarmUI }
+            if json["metadata_scheme"] as? String == "fooocus" || (json["version"] as? String)?.hasPrefix("Fooocus") == true {
+                return .fooocus
+            }
+        }
+        return looksLikeA1111(text) ? .a1111 : nil
     }
 
     static func provenance(fromPNGChunks chunks: [PNGScanner.TextChunk]) -> [Provenance] {

@@ -576,6 +576,77 @@ struct AIWorkflowInEXIFTests {
         #expect(Self.userComment(try XMPWriterTests.render(source, .jpeg, XMPWriterTests.only(exif: .keep))) == "Holiday, day 3")
     }
 
+    // MARK: SwarmUI and Fooocus in the user comment (issue #32)
+
+    /// `parameters` as SwarmUI writes it, and as Fooocus does with its own
+    /// scheme (keys sorted, `metadata_scheme` and `version` among them).
+    static let swarmUI = #"{"sui_image_params":{"prompt":"un café au bord du lac","seed":1234,"steps":20},"sui_extra_data":{"date":"2026-10-04"}}"#
+    static let fooocus = #"{"base_model": "placeholder.safetensors", "full_prompt": ["a lighthouse at dusk"], "guidance_scale": 4, "metadata_scheme": "fooocus", "negative_prompt": "", "prompt": "a lighthouse at dusk", "sampler": "dpmpp_2m_sde_gpu", "seed": "1234", "steps": 30, "version": "Fooocus v2.5.5"}"#
+
+    /// Moved into the user comment, the parameters still say whose they are
+    /// when the file is opened again, and follow the AI workflow switch.
+    @Test(arguments: chunkFormats)
+    func swarmUIAndFooocusParametersAreRecognisedInTheUserComment(_ format: OutputFormat) throws {
+        let tools: [(ImageMetadata.Provenance, String, [PNGScanner.TextChunk])] = [
+            (.swarmUI, Self.swarmUI, [PNGSplicerTests.text("parameters", Self.swarmUI)]),
+            (.fooocus, Self.fooocus, [PNGSplicerTests.text("parameters", Self.fooocus), PNGSplicerTests.text("fooocus_scheme", "fooocus")]),
+        ]
+        for (tool, parameters, chunks) in tools {
+            let png = try PNGSplicerTests.source(holding: chunks)
+            #expect(png.metadata.provenance == [tool])
+            let out = try XMPWriterTests.render(png, format, .default)
+            #expect(Self.userComment(out) == parameters)
+            #expect(out.metadata.provenance == [tool] && out.metadata.badges.contains { $0.label == tool.rawValue })
+            #expect(out.metadata.aiPayloads.map { "\($0.source) \($0.location)" } == ["\(tool) EXIF UserComment"])
+            #expect(out.metadata.aiPayloads.map(\.text) == [parameters] && out.metadata.section(.aiWorkflow)?["Source"] == tool.rawValue)
+
+            // Saved again from that file.
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("comment-\(UUID().uuidString)")
+                .appendingPathExtension(out.type.preferredFilenameExtension ?? "img")
+            try out.data.write(to: url)
+            defer { try? FileManager.default.removeItem(at: url) }
+            let source = try SourceImage.load(url)
+            #expect(MetadataWriter.ordinaryUserComment(in: source.properties) == nil)
+            let stripped = try XMPWriterTests.render(source, format, XMPWriterTests.only(exif: .keep))
+            #expect(Self.userComment(stripped) == nil && stripped.metadata.provenance.isEmpty)
+            #expect(!stripped.contains("\"steps\""))
+            let kept = try XMPWriterTests.render(source, format, XMPWriterTests.only(aiWorkflow: .keep))
+            #expect(Self.userComment(kept) == parameters && kept.metadata.provenance == [tool])
+            #expect(out.metadata.aiPayloads.allSatisfy { $0.isExportable && $0.positivePrompt != nil })
+
+            // As PNG the comment is mirrored into the packet ImageIO makes:
+            // that copy follows the AI workflow switch as well.
+            let png2 = try XMPWriterTests.render(source, .png, .default)
+            let url2 = FileManager.default.temporaryDirectory.appendingPathComponent("comment-\(UUID().uuidString).png")
+            try png2.data.write(to: url2)
+            defer { try? FileManager.default.removeItem(at: url2) }
+            let again = try XMPWriterTests.render(try SourceImage.load(url2), format, XMPWriterTests.only(exif: .keep, xmp: .keep))
+            #expect(!again.contains(tool == .swarmUI ? "sui_image_params" : "metadata_scheme"))
+        }
+    }
+
+    /// Only the markers the tools write count: JSON of anyone else's is a
+    /// comment of the user's own and stays with EXIF.
+    @Test func ordinaryJSONCommentStaysEXIF() {
+        let comments = [#"{"prompt":"a lighthouse","steps":20,"sampler":"euler"}"#,
+                        #"{"version":"2.1","note":"sui_image_params"}"#, #"{"sui_image_params":"none"}"#,
+                        #"{"metadata_scheme":"a1111","version":"MyTool 1.0"}"#, "[\"sui_image_params\"]"]
+        for text in comments {
+            #expect(ImageMetadata.userCommentSource(text) == nil)
+            let properties: [CFString: Any] = [kCGImagePropertyExifDictionary: ["UserComment": text, "FNumber": 2.8]]
+            #expect(MetadataWriter.ordinaryUserComment(in: properties) == text)
+            let m = MetadataTests.inspect(MetadataTests.encode(.jpeg, properties: properties), .jpeg)
+            #expect(m.hasEXIF && m.provenance.isEmpty && m.aiPayloads.isEmpty)
+            func comment(_ policy: MetadataPolicy) -> String? {
+                let out = MetadataWriter.properties(from: properties, policy: policy, type: .jpeg, size: PixelSize(8, 8))
+                return (out[kCGImagePropertyExifDictionary] as? [String: Any])?["UserComment"] as? String
+            }
+            #expect(comment(XMPWriterTests.only(exif: .keep)) == text && comment(XMPWriterTests.only(aiWorkflow: .keep)) == nil)
+        }
+        #expect(ImageMetadata.userCommentSource(Self.swarmUI) == .swarmUI && ImageMetadata.userCommentSource(Self.fooocus) == .fooocus)
+        #expect(ImageMetadata.userCommentSource("a cat\nSteps: 20, Sampler: Euler a, CFG scale: 7") == .a1111)
+    }
+
     /// A comment that is not an AI payload stays with EXIF.
     @Test func ordinaryUserCommentFollowsEXIF() {
         let source: [CFString: Any] = [kCGImagePropertyExifDictionary: ["UserComment": "Holiday, day 3", "FNumber": 2.8]]
