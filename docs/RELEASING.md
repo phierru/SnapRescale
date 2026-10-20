@@ -8,7 +8,12 @@ and Xcode signed in to that Apple ID.
 ```sh
 ./Scripts/release.sh                          # hardened Release build, Developer ID signed, DMG in build/release
 NOTARY_PROFILE=snaprescale ./Scripts/release.sh   # + notarise and staple
+(cd build/release && shasum -a 256 SnapRescale-<version>.dmg > SnapRescale-<version>.dmg.sha256)
 ```
+
+Publish the GitHub release under the tag `v<version>-build<build>` with the
+DMG, unrenamed, and its `.sha256`: the README links that exact asset name.
+Push the tag and the release before the README change reaches `main`.
 
 Without a Developer ID Application certificate the script signs ad-hoc; that
 DMG is for local testing only and Gatekeeper will refuse it elsewhere. One-time
@@ -75,3 +80,4 @@ images. After each step no staged file may be left: nothing named
 |---|---|---|---|
 | 2026-10-03 | fa50d19, Release 1.1 (3), ad-hoc | 26.6.2 (25G83), VM | Pass: all 9, plus relaunch legs for 4, 5 and 8, and `--save` twice gives `_2`. Open: error alerts name the staged `.tmp` instead of the file; a folder renamed while its image is open fails the save until the image is reopened |
 | 2026-10-04 | 7096d4c, Release 1.1 (3), ad-hoc | 26.6.2 (25G83), VM | Pass, the checks added or changed for #65: 2 to a read-only volume (Save As and Export All name the file), 4 (asks once, then `_2`; nothing staged left), 10 (Settings, Help and About closed first, then the main window: quits) and 11 (reopened from the new place, the image saves). A folder never allowed still gets the Allow panel, not the alert. The other checks were not repeated |
+| 2026-10-20 | e7bd66c, Release 1.2 (4), ad-hoc | 26.6.2 (25G83), VM | Pass: all 11, plus relaunch legs for 3, 4, 5 and 8, and `--save` twice gives `_2`; nothing staged left after any step. To the read-only volume, Save As, Export… and Export All… name the file; a full disk image gives one out-of-space alert naming the file, with no Allow panel, before and after relaunch. Review notes match the build (Open With → Save & Quit… and quits; from Applications → Save… and stays open); Services and a Dock drop not driven. Open: a path passed as a bare argument after `--save` reports "not an image" under the sandbox (scripting only) |

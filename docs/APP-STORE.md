@@ -1,7 +1,7 @@
-# App Store listing — draft
+# App Store listing
 
-Everything App Store Connect asks for, ready to paste. This is the draft of
-record for the next release, version 1.2: the
+Everything App Store Connect asks for, ready to paste. This is the copy
+submitted for version 1.2: the
 [copy proposal of 2026-10-03](app-store-release-copy-2026-10-03.md) with the
 owner's corrections (#63). The text live for 1.1, which this submission
 replaces, is recorded at the end.
@@ -124,8 +124,9 @@ launched from Applications, it stays open. The app is sandboxed; saving goes
 through the save panel by default. The "save next to the original without
 asking" setting asks for folder access once per folder via the standard open
 panel (security-scoped bookmark); an allowed folder also covers the folders
-inside it. The metadata inspector's Export… and Export
-All… also write only through the save panel.
+inside it. The metadata inspector (⌥⌘I) also exports only through the save
+panel: Export All… in its ⋯ menu, and the Export… (share) icon on the AI
+workflow section of an image that carries one.
 
 ## Screenshots
 
@@ -133,18 +134,29 @@ Required sizes for Mac: 1280×800, 1440×900, 2560×1600 or 2880×1800, opaque.
 Recipe (Retina display, so 1440×900 points capture at 2880×1800 pixels):
 
 ```sh
-open -n -a build/xcode/SnapRescale.app --args --window 1440x900 --preset "Social 16:9"
-sleep 4; open -a build/xcode/SnapRescale.app photo.jpg      # opened after launch → stays open, "Save…" (not "Save & Quit…")
-# add --inspector to the first line for the shots with the metadata inspector open
+open -n -a build/xcode/SnapRescale.app --args -ApplePersistenceIgnoreState YES \
+  -saveNextToOriginalWithoutAsking NO --window 1440x900 <shot flags>
+sleep 4.5; open -a build/xcode/SnapRescale.app photo.jpg   # opened after launch → stays open, "Save…" (not "Save & Quit…")
 screencapture -l<window id> -x -o raw.png                    # window id from CGWindowList (owner SnapRescale)
 swiftc -O -o flatten Scripts/flatten-screenshot.swift && ./flatten raw.png shot.png 2880 1800   # opaque, centred
 ```
 
-Which shots, and whether they carry captions, is decided at release (#64).
-Start from the five-shot brief in the
-[storefront review](storefront-review-2026-10-03.md#proposed-screenshot-sequence),
-with the corrections in its Owner comment; #64 names the photos for the EXIF
-and GPS, IPTC and XMP, and AI workflow shots.
+The `-key value` arguments override a setting for one launch and write
+nothing; `-compositionGrid thirds -compositionGridDark NO -defaultMultiple 8
+-defaultQuality 0.95` pin the grid and defaults whatever the stored settings
+say. Move the pointer off the window before capturing.
+
+The 1.2 set (owner decision 2026-10-20: plain window captures, no captions;
+dark appearance):
+
+| # | Photo | Flags | In the UI |
+|---|---|---|---|
+| 1 | `IMG_3368.jpeg` (Ascona) | `--preset "Social 16:9"` | — |
+| 2 | `IMG_2946.jpeg` (real GPS, accepted) | `--inspector` | — |
+| 3 | Replicate PNG (IPTC, XMP, C2PA) | `--inspector --scale 50` | open IPTC and XMP *More* |
+| 4 | `ComfyUI_00006_.png` | `--inspector --height 512 --multiple 16` | — |
+| 5 | `IMG_3368.jpeg` | `--aspect 16:9 --width 1920 --multiple 8 --fit pad` | pad colour #2B5C66 |
+| 6 | Replicate PNG | `--scale 50` | Format HEIC, Quality 80 |
 
 ## Status
 
@@ -152,7 +164,8 @@ and GPS, IPTC and XMP, and AI workflow shots.
 commit 110e688); 1.0 approved, Ready for Distribution. 1.1 (3) uploaded 2026-09-28
 (tag v1.1-build3). The live 1.1 listing differs from what this file held at the
 time (its subtitle and description were never in it); it is recorded below as
-captured on 2026-10-03. The fields above are the draft for 1.2, not uploaded.
+captured on 2026-10-03. 1.2 (4) uploaded 2026-10-20 (tag v1.2-build4) with the
+fields above and six plain window captures (dark appearance).
 This file is not a live view of App Store Connect.
 
 ## Checklist for the next build
@@ -161,6 +174,11 @@ This file is not a live view of App Store Connect.
 - [ ] `UPLOAD=1 Scripts/appstore.sh` (archives, exports and uploads through Xcode's account).
 - [ ] Select the build on the version page; update "What's New".
 - [ ] Keep the privacy answer "Data not collected" and the policy URL current.
+- [ ] Accessibility Nutrition Labels (Mac): answer from the evaluation of the
+      common tasks (open, size, reframe, inspect metadata, change retention,
+      save, settings), declaring only features every common task passed at
+      runtime. Captions and Audio Descriptions do not apply. Re-evaluate on
+      every update.
 
 ## Live listing (1.1)
 

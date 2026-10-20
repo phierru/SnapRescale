@@ -3,9 +3,9 @@
 Notable changes to SnapRescale, newest first. Dates below are App Store upload
 dates recorded in the repository, not dates of public availability.
 
-## Unreleased
+## 1.2 (build 4) — 2026-10-20
 
-The Metadata milestone: implemented, not yet released.
+The Metadata release.
 
 ### Added
 
@@ -33,6 +33,9 @@ The Metadata milestone: implemented, not yet released.
   one JSON file; it is not a lossless archive of the original metadata.
 - Presets carry a metadata policy (`metadata` in the JSON; optional, so older
   presets still load).
+- **Metadata read limits** for every format: PNG text, raw copies,
+  decompression work and XMP count against a per-image limit; anything over
+  it is left out and named in the inspector.
 
 ### Changed
 
@@ -46,7 +49,7 @@ The Metadata milestone: implemented, not yet released.
   are still converted to sRGB.
 - The ICC badge appears only when the file embeds a profile; an assumed sRGB
   is no longer shown as one. This holds for the formats whose structure is
-  checked: JPEG, PNG, TIFF, WebP, HEIC, HEIF, AVIF, and now GIF and BMP. Other
+  checked: JPEG, PNG, TIFF, WebP, HEIC, HEIF, AVIF, GIF and BMP. Other
   formats (PSD, RAW, JPEG XL, OpenEXR, …) show it whenever macOS names a
   profile.
 - The app's category is Graphics & Design, as on the App Store.
@@ -85,15 +88,14 @@ The Metadata milestone: implemented, not yet released.
 - ⌘W closes the window: File ▸ Close was missing.
 - A preset whose quality is not a whole percent, or whose scale does not
   survive rounding, no longer switches the Preset menu to Custom by itself.
-- Metadata limits hold for every format: PNG text labels, raw copies and
-  decompression work, and the XMP of TIFF, WebP and JPEG count against the
-  per-image limit; anything over it is left out and named in the inspector.
 
 ### Known limits
 
 - Stripping the colour profile is fully clean only in TIFF and JPEG: a PNG
   keeps a one-byte sRGB marker and HEIC tags sRGB.
 - HDR gain maps are not written. RAW, PSD and GIF sources carry no XMP over.
+
+[Source tag](https://github.com/phierru/SnapRescale/tree/v1.2-build4)
 
 ## 1.1 (build 3) — 2026-09-28
 

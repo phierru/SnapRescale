@@ -3,42 +3,42 @@
 Everything not in the current milestone lives here. The PRD (`PRD.md`) holds the
 requirements; this file holds the order. Dates are decisions, not promises.
 
-**Current milestone: the Metadata release, 1.2.** Implemented and merged, not
-yet released. The release is gated on the sandbox checks in
-[`RELEASING.md`](RELEASING.md): the nine of 2026-10-03 passed on fa50d19, and
-the checks added or changed for the fixes of #65 (2, 4, 10, 11) passed on
-7096d4c on 2026-10-04. Every check is repeated on the release build before
-upload. M5, which shipped 1.0 and 1.1, is kept at the end as history.
+**Released: the Metadata release, 1.2 (4).** Uploaded to the App Store on
+2026-10-20, and published the same day as a direct download (tag
+`v1.2-build4`). The sandbox checks in [`RELEASING.md`](RELEASING.md) passed on
+the release build before upload. Next: v1.3, formats and encoding. M5, which
+shipped 1.0 and 1.1, is kept at the end as history.
 
 ## Deferred from v1 (2026-09-06)
 
 These were in the v1 cut and were moved out so M5 could start. 1.1 shipped
 (2026-09-28) without them. The two metadata items — the §10 switches and
 "keep AI workflow" — were redesigned on 2026-09-30 and are now the **Metadata**
-milestone below (implemented and merged, not released); what remains here is
+milestone below (released in 1.2); what remains here is
 still open.
 
 | Item | PRD | Notes |
 |---|---|---|
 | Resampling choice: area for downscale, Lanczos for upscale, nearest for pixel art | §1, ComfyUI review | CoreGraphics high-quality interpolation today; Core Image filters are the likely route. |
 
-## Metadata (1.2) — merged, not released (decided 2026-09-30)
+## Metadata (1.2) — released 2026-10-20 (decided 2026-09-30)
 
 PRD §10: a metadata inspector in the window's trailing panel, opened from the
 badges. Keep / strip per section, copy / export, **no editing**. Default policy:
 strip EXIF, GPS, IPTC and XMP, preserve ICC, keep the AI workflow (changed from
 "keep everything except GPS" after trying the app).
 
-**Status: implemented and merged — not released.** All four waves are merged
-(PRs #23, #24, #27, #28), with the fixes from the reviews of 2026-09-30 and
-2026-10-03 (#31, #46), a follow-up (#34) and the documentation and storefront
-reviews of 2026-10-03 (#65). The release, 1.2, is gated on the sandbox checks
-in `RELEASING.md` (the nine of 2026-10-03 passed on fa50d19, those added or
-changed for #65 on 7096d4c on 2026-10-04), every one repeated on the release
-build before upload. 1.1, the version on the store, still writes 8-bit sRGB
-with everything stripped.
-The owner has checked that a resized ComfyUI PNG dropped into ComfyUI opens
-its workflow; what has not been checked is under *Open verification*.
+**Status: released as 1.2 (4)** (tag `v1.2-build4`, App Store upload
+2026-10-20). All four waves are merged (PRs #23, #24, #27, #28), with the
+fixes from the reviews of 2026-09-30 and 2026-10-03 (#31, #46), a follow-up
+(#34) and the documentation and storefront reviews of 2026-10-03 (#65). Every
+sandbox check in `RELEASING.md` passed on the release build on 2026-10-20.
+Until the App Store approves 1.2, the store still has 1.1, which writes 8-bit
+sRGB with everything stripped.
+A resized ComfyUI PNG opens its workflow in ComfyUI: checked by the owner,
+and again on 2026-10-20 on the release code in ComfyUI's frontend (the same
+11 nodes and 12 links as the source). What has not been checked is under
+*Open verification*.
 
 GitHub milestone **Metadata**, tracking issue #21. The items were cut so
 that each wave could be worked by separate agents in parallel; the few places
@@ -138,8 +138,13 @@ Metadata milestone — not yet exercised by running the app:
 - The HDR note, on a real gain-map photo.
 - The C2PA section, with a really signed JPEG and PNG.
 - ~~Export… and Export All… in a sandboxed release build~~: checked on
-  2026-10-03 with the sandbox checks in `RELEASING.md`, which are repeated on
-  the release build before upload.
+  2026-10-03 with the sandbox checks in `RELEASING.md`, and again on the 1.2 (4)
+  release build on 2026-10-20.
+- PNG workflow chunks follow `IDAT`. ComfyUI's frontend reads them, and so
+  does Pillow after `load()`, with the JSON equal to the source's (checked
+  2026-10-20). A reader that stops at `IDAT`, such as Pillow's `Image.open`
+  without `load()`, does not see them; splicing them before `IDAT` is
+  considered in #65, not scheduled.
 
 ## M5 — ship it (history)
 

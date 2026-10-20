@@ -8,7 +8,13 @@ SnapRescale does not collect or transmit your images or any personal data.
   them. All processing happens on your Mac.
 - If you turn on "Save next to the original without asking", the app asks for
   permission to a folder once and keeps that permission locally as a
-  security-scoped bookmark. Settings ▸ Forget All removes these.
+  security-scoped bookmark. Settings ▸ Forget All (shown while that setting
+  is on) removes these; turning the setting off does not.
+- Saved images carry the metadata you choose to keep. By default, EXIF
+  camera details, GPS, IPTC and XMP are stripped, and supported colour
+  profiles and AI workflow data (which can include prompts) are kept where the
+  output format can carry them. Content Credentials (C2PA) are always
+  removed. Check the metadata inspector before sharing a saved file.
 - Preferences and presets are stored locally in the app's own container.
 - Links in About, Help and Settings open your browser; those sites have their
   own policies.
