@@ -4,10 +4,11 @@ Everything not in the current milestone lives here. The PRD (`PRD.md`) holds the
 requirements; this file holds the order. Dates are decisions, not promises.
 
 **Released: the Metadata release, 1.2 (4).** Uploaded to the App Store on
-2026-10-20, and published the same day as a direct download (tag
-`v1.2-build4`). The sandbox checks in [`RELEASING.md`](RELEASING.md) passed on
-the release build before upload. Next: v1.3, formats and encoding. M5, which
-shipped 1.0 and 1.1, is kept at the end as history.
+2026-10-20 and live there since 2026-10-21. It was published as a direct
+download on 2026-10-20 (tag `v1.2-build4`). The sandbox checks in
+[`RELEASING.md`](RELEASING.md) passed on the release build before upload.
+Next: v1.3, formats and encoding. M5, which shipped 1.0 and 1.1, is kept at
+the end as history.
 
 ## Deferred from v1 (2026-09-06)
 
@@ -29,12 +30,13 @@ strip EXIF, GPS, IPTC and XMP, preserve ICC, keep the AI workflow (changed from
 "keep everything except GPS" after trying the app).
 
 **Status: released as 1.2 (4)** (tag `v1.2-build4`, App Store upload
-2026-10-20). All four waves are merged (PRs #23, #24, #27, #28), with the
-fixes from the reviews of 2026-09-30 and 2026-10-03 (#31, #46), a follow-up
-(#34) and the documentation and storefront reviews of 2026-10-03 (#65). Every
-sandbox check in `RELEASING.md` passed on the release build on 2026-10-20.
-Until the App Store approves 1.2, the store still has 1.1, which writes 8-bit
-sRGB with everything stripped.
+2026-10-20, live 2026-10-21). All four waves are merged
+(PRs #23, #24, #27, #28), with the fixes from the reviews of 2026-09-30 and
+2026-10-03 (#31, #46), a follow-up (#34) and the documentation and storefront
+reviews of 2026-10-03 (#65). Every sandbox check in `RELEASING.md` passed on
+the release build on 2026-10-20. The store page has a different subtitle from
+the one in `APP-STORE.md`, still has the 1.1 description, and has no
+accessibility labels (#71).
 A resized ComfyUI PNG opens its workflow in ComfyUI: checked by the owner,
 and again on 2026-10-20 on the release code in ComfyUI's frontend (the same
 11 nodes and 12 links as the source). What has not been checked is under
