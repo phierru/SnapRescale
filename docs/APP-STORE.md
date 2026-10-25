@@ -1,10 +1,10 @@
 # App Store listing
 
 Everything App Store Connect asks for, ready to paste. This is the copy
-submitted for version 1.2: the
+prepared for version 1.2: the
 [copy proposal of 2026-10-03](app-store-release-copy-2026-10-03.md) with the
-owner's corrections (#63). The text live for 1.1, which this submission
-replaces, is recorded at the end.
+owner's corrections (#63). Not all of it went live with 1.2: see
+[Status](#status). The text live for 1.1 is recorded at the end.
 
 ## Name, subtitle, category
 
@@ -115,6 +115,12 @@ The default has changed. Version 1.1 removed all metadata; now supported colour 
 accounts. Images are read from where you open them and written where you
 save them. Preferences and presets stay in the app's container.
 
+## Accessibility Nutrition Labels
+
+**Mac:** Dark Interface and Differentiate Without Color Alone (owner decision
+2026-10-20, from the evaluation of the 1.2 build; the gaps are in #68). Not
+yet published (#71).
+
 ## Review notes
 
 Open any image with Open With → SnapRescale, or drop one on the window.
@@ -164,15 +170,38 @@ dark appearance):
 commit 110e688); 1.0 approved, Ready for Distribution. 1.1 (3) uploaded 2026-09-28
 (tag v1.1-build3). The live 1.1 listing differs from what this file held at the
 time (its subtitle and description were never in it); it is recorded below as
-captured on 2026-10-03. 1.2 (4) uploaded 2026-10-20 (tag v1.2-build4) with the
-fields above and six plain window captures (dark appearance).
+captured on 2026-10-03. 1.2 (4) uploaded 2026-10-20 (tag v1.2-build4) and
+submitted the same day with six plain window captures (dark appearance).
+1.2 has been live since 2026-10-21.
 This file is not a live view of App Store Connect.
+
+These fields on the US page, checked on 2026-10-25, match this file:
+
+- the promotional text and What's New above;
+- both categories;
+- the six screenshots;
+- Data Not Collected.
+
+These fields do not match (#71):
+
+- **Subtitle:** "Resize, snap to 8/16/32 px".
+- **Description:** still the 1.1 text recorded below.
+- **Accessibility:** nothing published; the page says "The developer has not
+  yet indicated which accessibility features this app supports".
+
+The keywords are not shown on the page and were not checked. The subtitle,
+description and keywords change only with a new version. Accessibility
+Nutrition Labels can be published at any time, without a new version (App
+Store Connect → App Accessibility → Publish).
 
 ## Checklist for the next build
 
 - [ ] Bump `CURRENT_PROJECT_VERSION` in `project.yml` (and `MARKETING_VERSION` for a new version).
 - [ ] `UPLOAD=1 Scripts/appstore.sh` (archives, exports and uploads through Xcode's account).
 - [ ] Select the build on the version page; update "What's New".
+- [ ] Paste the Description and Keywords, and the Subtitle when it changes,
+      into the new version: unlike the promotional text, they cannot be edited
+      between versions. Check them on the public page after release.
 - [ ] Keep the privacy answer "Data not collected" and the policy URL current.
 - [ ] Accessibility Nutrition Labels (Mac): answer from the evaluation of the
       common tasks (open, size, reframe, inspect metadata, change retention,
@@ -184,11 +213,12 @@ This file is not a live view of App Store Connect.
 
 The US storefront on 2026-10-03, transcribed from the storefront review's
 captures (`storefront-review-2026-10-03/01-overview.png`, `02-description.png`,
-`03-release-and-trust.png`). This is the live 1.1 text, which the 1.2
-submission replaces. Three of its claims must not come back: a `rescale`
-command that runs without a window, invocation by AI assistants and automation
-tools, and originals that are never overwritten (Save As can replace a file
-after confirmation, in 1.1 too).
+`03-release-and-trust.png`). This was the live 1.1 text. Its subtitle,
+promotional text, screenshots and What's New were replaced in 1.2; its
+description is still live (2026-10-25, #71). Three of its claims must not come
+back: a `rescale` command that runs without a window, invocation by AI
+assistants and automation tools, and originals that are never overwritten
+(Save As can replace a file after confirmation, in 1.1 too).
 
 - **Subtitle:** Resize to ratio, snap to 8/16
 - **Category:** Graphics & Design · **Price:** Free · **Age rating:** 4+ · **Size:** 1.7 MB
