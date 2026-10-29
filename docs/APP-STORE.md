@@ -30,7 +30,7 @@ code fences are not part of the text. Count them again after any edit.
 | Name | 11 characters | 30 |
 | Subtitle | 26 characters | 30 |
 | Promotional text | 153 characters | 170 |
-| Description | 1895 characters | 4,000 |
+| Description | 3128 characters | 4,000 |
 | What's New | 1082 characters | 4,000 |
 | Keywords | 93 UTF-8 bytes | 100 bytes |
 
@@ -42,41 +42,62 @@ Resize with a live preview. Inspect metadata, choose what stays, and keep embedd
 
 ## Description
 
+The owner's 1.1 text, corrected on 2026-10-29 and checked against the 1.2 (4)
+build. The changes:
+
+- The command-line paragraph is gone.
+- "Originals are never overwritten" is gone.
+- The multiples now include 32.
+- The markdown is removed, since the store shows it literally.
+- The metadata features are added, with the limits that apply.
+
+It goes live with 1.3.
+
 ```text
-Resize an image to the shape and size you need, then choose what stays with it.
+SnapRescale is a free, lightweight macOS utility for resizing images, one at a time, using presets and simple controls. It also supports changing aspect ratios, cropping, padding, and choosing which metadata to keep, without requiring a full image-editing application.
 
-SnapRescale is a focused Mac app for resizing one image at a time. Choose an aspect ratio and set the width, height, megapixels or scale. Preview the crop, move the frame, or add padding.
+The primary workflow is to right-click an image in Finder and open it in SnapRescale using Open With or the Services menu. When launched this way, the app automatically quits after the processed image is saved.
 
-• Keep the original proportions, as closely as the chosen multiple allows, or choose a new aspect ratio.
-• Snap output dimensions to multiples of 8, 16 or 32 for image workflows that need them.
-• Pick common sizes such as 512, 1024 or 2048 in one click. The panel says when snapping adjusts a size.
-• Use composition grids and reusable size and export presets.
-• Save as JPEG, PNG, HEIC or TIFF, or keep the original format when it is one of them.
-• Set the JPEG or HEIC quality and check the encoded file size before saving.
-• Add coloured padding, or transparent padding when saving as PNG, HEIC or TIFF.
-• Inspect EXIF, GPS, IPTC, XMP, colour profiles and supported AI generation data.
-• Choose which metadata sections to keep or remove.
-• Keep embedded ComfyUI workflows when resizing PNGs and saving as PNG.
-• Copy metadata and available prompts, or export workflows and metadata details.
-• Preserve supported colour profiles or convert to sRGB. Save 16-bit PNG and TIFF from compatible sources.
+Alternatively, users can launch SnapRescale from the Applications folder and open an image by dragging it into the app or using the standard macOS Open dialog. In this workflow, the app stays open after saving, until the user closes its window or quits it.
 
-By default, EXIF camera details, GPS, IPTC and XMP are set to Strip, and supported colour profiles and AI workflow data are set to Keep. Content Credentials (C2PA) are always removed. Retained workflows can contain prompts and other details, so review your choices before sharing. Preservation depends on the source, output format and metadata read limits.
+Users choose an aspect ratio and set one of width, height, megapixels, or scale; the other three follow. A live preview shows the crop, which can be adjusted by dragging the frame. The resized image can be saved as JPEG, PNG, HEIC, or TIFF, and its file size is shown beforehand.
 
-Open an image from Finder, use the Open dialog, or drop it into the app. Animated images use the first frame. All image processing happens on your Mac, with no account, analytics or cloud uploads.
+SnapRescale also shows the metadata it can read in an image: EXIF, GPS, IPTC, XMP, the colour profile, and AI generation data embedded by tools such as ComfyUI. Each of these can be kept or removed; what can be kept depends on the source, the output format, and the metadata read limits. By default, EXIF, GPS, IPTC, and XMP are removed, and supported colour profiles and AI generation data are kept. Because AI generation data can include prompts, users should review it before sharing the image. Content Credentials (C2PA) are always removed. Metadata can be copied or exported, but not edited.
 
-Open source under the MIT licence. The app interface is in English.
+All features are available in the main window, with a few preferences in Settings, and can be tested immediately. No account, registration, login credentials, or external website is required. SnapRescale saves the result as a new file; an existing file, including the original, is replaced only if the user confirms the replacement in the Save dialog.
+
+SnapRescale is particularly useful for preparing images for AI image-processing workflows, including ComfyUI and Stable Diffusion. Its options for output dimensions that are multiples of 8, 16, or 32 pixels support these workflows, and with the default settings an embedded ComfyUI workflow survives a PNG-to-PNG resize. It is also suitable for anyone who needs to resize, crop, or pad an image for other purposes. The app processes existing images; it does not generate new images using AI.
+
+All image processing takes place locally on the Mac. The app collects no user data, includes no telemetry, and transmits no data off the device. It is fully self-contained and does not rely on external tools or services.
+
+SnapRescale takes inspiration from ComfyUI image-processing nodes, but contains none of their code and is not affiliated with the ComfyUI project. Its functionality was implemented independently from scratch, and its source code is available under the MIT licence.
+
+The app is free to download and use, with no in-app purchases, subscriptions, or other monetization. Its functionality is the same in all regions. The interface is in English.
 ```
 
-"As closely as the chosen multiple allows": an image of 1000×667 at width
-1000 and multiple 8 becomes 1000×664 (`rescale --source 1000x667 --width 1000
---multiple 8`), and the panel says so.
+Before submitting 1.3, check it against the 1.3 build:
 
-Left out on purpose: that the typed number is never changed (snapping can move
-it), that the app shows where an image came from (it reads embedded AI
-generation data, not verified provenance), and that an export holds all
-metadata (it holds what was read, within the read limits). The auto-quit is in
-the review notes, since it depends on how the app was launched, and the live
-1.1 claims listed at the end stay out.
+- **Draft:** paste this text over the first draft saved in App Store Connect on
+  2026-10-29.
+- **Save formats:** add WebP if 1.3 writes it, and say so if a ComfyUI workflow
+  survives a PNG-to-WebP save.
+- **Licence:** if libwebp is bundled, the licence sentence must not say all of
+  the code is MIT; libwebp is BSD-3-Clause.
+- **Services menu:** keep "or the Services menu" only if the entry appears
+  without a manual step (#74).
+
+Left out on purpose:
+
+- That the typed number is never changed: snapping can move it.
+- That the app shows where an image came from: it reads embedded AI generation
+  data, not verified provenance.
+- That an export holds all metadata: it holds what was read, within the read
+  limits.
+- That originals are never overwritten: the Save dialog can replace one after
+  confirmation.
+- Batch processing.
+
+The other live 1.1 claims listed at the end stay out.
 
 ## Keywords
 
@@ -191,8 +212,9 @@ The US page matches this file in these fields:
 
 These were checked on 2026-10-25, and the subtitle and accessibility labels
 again on 2026-10-29. The page still has the 1.1 description recorded below.
-The corrected description above was saved in the 1.3 version on 2026-10-29
-and goes live with 1.3 (#71).
+A first draft of the corrected description was saved in the 1.3 version on
+2026-10-29. The checked text above replaces it there, and goes live with 1.3
+(#71).
 
 The keywords are not shown on the page and were not checked. The subtitle,
 description and keywords change only with a new version. Accessibility
