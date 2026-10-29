@@ -34,9 +34,9 @@ strip EXIF, GPS, IPTC and XMP, preserve ICC, keep the AI workflow (changed from
 (PRs #23, #24, #27, #28), with the fixes from the reviews of 2026-09-30 and
 2026-10-03 (#31, #46), a follow-up (#34) and the documentation and storefront
 reviews of 2026-10-03 (#65). Every sandbox check in `RELEASING.md` passed on
-the release build on 2026-10-20. The store page has a different subtitle from
-the one in `APP-STORE.md`, still has the 1.1 description, and has no
-accessibility labels (#71).
+the release build on 2026-10-20. The store page keeps the 1.1 description
+until 1.3, which carries the corrected one; the accessibility labels were
+published on 2026-10-29 (#71).
 A resized ComfyUI PNG opens its workflow in ComfyUI: checked by the owner,
 and again on 2026-10-20 on the release code in ComfyUI's frontend (the same
 11 nodes and 12 links as the source). What has not been checked is under

@@ -1,22 +1,24 @@
 # App Store listing
 
-Everything App Store Connect asks for, ready to paste. This is the copy
-prepared for version 1.2: the
-[copy proposal of 2026-10-03](app-store-release-copy-2026-10-03.md) with the
-owner's corrections (#63). Not all of it went live with 1.2: see
+Everything App Store Connect asks for, ready to paste. The promotional text,
+keywords, What's New and review notes are the copy prepared for version 1.2:
+the [copy proposal of 2026-10-03](app-store-release-copy-2026-10-03.md) with
+the owner's corrections (#63). The subtitle is the owner's, live since 1.2.
+The description is the owner's 1.1 text, corrected and saved for 1.3. See
 [Status](#status). The text live for 1.1 is recorded at the end.
 
 ## Name, subtitle, category
 
 - **Name:** SnapRescale
-- **Subtitle:** Resize, crop & choose metadata
+- **Subtitle:** Resize, snap to 8/16/32 px
 - **Category:** Graphics & Design · secondary: Photo & Video
 - **Price:** Free · no in-app purchases
 - **Bundle ID:** com.phierru.SnapRescale · **SKU:** snaprescale-mac
 
-The subtitle says "choose", not "keep": the default strips camera details,
-GPS, IPTC and XMP. For a more technical positioning, `Resize images, snap to
-8/16/32` also fits (30 characters); see the keyword note if it is used.
+The subtitle is the owner's, live since 1.2 and kept (owner decision
+2026-10-29). The prepared `Resize, crop & choose metadata` was not used. With
+this subtitle, neither `crop` nor `metadata` is in the name or the subtitle;
+see the keyword note.
 
 ## Field lengths
 
@@ -26,7 +28,7 @@ code fences are not part of the text. Count them again after any edit.
 | Field | Length | Limit |
 |---|---:|---:|
 | Name | 11 characters | 30 |
-| Subtitle | 30 characters | 30 |
+| Subtitle | 26 characters | 30 |
 | Promotional text | 153 characters | 170 |
 | Description | 1895 characters | 4,000 |
 | What's New | 1082 characters | 4,000 |
@@ -82,9 +84,11 @@ the review notes, since it depends on how the app was launched, and the live
 photo,image,aspect ratio,megapixel,scale,padding,png,jpeg,heic,tiff,exif,gps,workflow,convert
 ```
 
-They complement the name and subtitle. With the alternative subtitle, `image`
-repeats it and `crop` and `metadata` are no longer covered: rebalance within
-the 100 bytes. Names of other products (ComfyUI, Stable Diffusion) stay out.
+They complement the name and subtitle. The subtitle covers resizing and the
+multiples, but neither it nor these keywords has `crop` or `metadata`. When
+the keywords are next pasted, rebalance within the 100 bytes: for example,
+`crop,metadata` in place of `convert` gives 99 bytes. Names of other products
+(ComfyUI, Stable Diffusion) stay out.
 
 ## What's New (1.2)
 
@@ -118,8 +122,8 @@ save them. Preferences and presets stay in the app's container.
 ## Accessibility Nutrition Labels
 
 **Mac:** Dark Interface and Differentiate Without Color Alone (owner decision
-2026-10-20, from the evaluation of the 1.2 build; the gaps are in #68). Not
-yet published (#71).
+2026-10-20, from the evaluation of the 1.2 build; the gaps are in #68).
+Published on 2026-10-29.
 
 ## Review notes
 
@@ -175,19 +179,20 @@ submitted the same day with six plain window captures (dark appearance).
 1.2 has been live since 2026-10-21.
 This file is not a live view of App Store Connect.
 
-These fields on the US page, checked on 2026-10-25, match this file:
+The US page matches this file in these fields:
 
+- the subtitle (owner's, kept on 2026-10-29);
 - the promotional text and What's New above;
 - both categories;
 - the six screenshots;
-- Data Not Collected.
+- Data Not Collected;
+- the accessibility labels: Dark Interface and Differentiate Without Color
+  Alone, published 2026-10-29 and shown on the page the same day.
 
-These fields do not match (#71):
-
-- **Subtitle:** "Resize, snap to 8/16/32 px".
-- **Description:** still the 1.1 text recorded below.
-- **Accessibility:** nothing published; the page says "The developer has not
-  yet indicated which accessibility features this app supports".
+These were checked on 2026-10-25, and the subtitle and accessibility labels
+again on 2026-10-29. The page still has the 1.1 description recorded below.
+The corrected description above was saved in the 1.3 version on 2026-10-29
+and goes live with 1.3 (#71).
 
 The keywords are not shown on the page and were not checked. The subtitle,
 description and keywords change only with a new version. Accessibility
@@ -215,7 +220,7 @@ The US storefront on 2026-10-03, transcribed from the storefront review's
 captures (`storefront-review-2026-10-03/01-overview.png`, `02-description.png`,
 `03-release-and-trust.png`). This was the live 1.1 text. Its subtitle,
 promotional text, screenshots and What's New were replaced in 1.2; its
-description is still live (2026-10-25, #71). Three of its claims must not come
+description stays live until 1.3 (#71). Three of its claims must not come
 back: a `rescale` command that runs without a window, invocation by AI
 assistants and automation tools, and originals that are never overwritten
 (Save As can replace a file after confirmation, in 1.1 too).
