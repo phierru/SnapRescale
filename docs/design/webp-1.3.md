@@ -1,11 +1,18 @@
-# SnapRescale 1.3: WebP output (GitHub #1). Final implementation design
+# SnapRescale 1.4: WebP output (GitHub #1). Final implementation design
 
-> **Status (2026-10-29):** designed, not implemented. Planned for 1.3, tracked
+> **Status (2026-10-29):** designed, not implemented. Planned for 1.4, tracked
 > in #1 and its sub-issues on the SnapRescale project board. The design was
 > written on 2026-10-21 and 2026-10-22 against `main` at `22f1fd5`; since then
 > `main` has changed only in docs, so the code references still hold, and the
 > line numbers in `README.md`, `docs/*.md` may have moved. The owner decisions
 > of 2026-10-21 are fixed inputs. The four questions at the end are still open.
+>
+> **Renumbered 2026-11-03:** WebP was planned for 1.3. The resizable crop
+> frame now ships first as 1.3 ([#99](https://github.com/phierru/SnapRescale/issues/99)),
+> so WebP is 1.4. The file name stays, since #1 and #76–#98 link to it. The
+> crop frame edits some of the same code. Section 9 of its design,
+> `crop-frame.md` on the `feature/crop-frame` branch until it merges, lists
+> the overlaps.
 
 Every `file:line` reference below is relative to the repo root and was read at `22f1fd5`.
 
@@ -109,7 +116,7 @@ Design rules:
 
 ### 2.1 `OutputFormat` (`RescaleKit/Sources/RescaleKit/OutputFormat.swift`)
 
-| Member | Today | 1.3 | Item |
+| Member | Today | 1.4 | Item |
 |---|---|---|---|
 | cases (l.5-10) | keepOriginal, jpeg, png, heic, tiff | add `webp` last. The picker iterates `allCases` (ControlsPanel.swift:72), so the order users know stays the same | D |
 | `label` (l.12-20) | | `.webp: "WebP"` | D |
@@ -189,15 +196,15 @@ The fields are flat because:
 
 **Preset keys and compatibility** (K):
 
-| Key | Preset JSON | 1.2 file → 1.3 | 1.3 file → 1.2 app |
+| Key | Preset JSON | 1.2 or 1.3 file → 1.4 | 1.4 file → 1.2 or 1.3 app |
 |---|---|---|---|
-| `format: "webp"` | new value, decoded through `OutputFormat(name:)`, so "WebP" also works | n/a | 1.2 throws at Codable+Readable.swift:59, so the preset is **skipped** with "Skipped: X.json: The data couldn’t be read because it isn’t in the correct format." (PresetStore.swift:72). 1.2 cannot be fixed; the CHANGELOG says so |
+| `format: "webp"` | new value, decoded through `OutputFormat(name:)`, so "WebP" also works | n/a | 1.2 and 1.3 throw at Codable+Readable.swift:59, so the preset is **skipped** with "Skipped: X.json: The data couldn’t be read because it isn’t in the correct format." (PresetStore.swift:72). 1.2 cannot be fixed; the CHANGELOG says so |
 | `lossless: true` | **written only when true**, by a hand-written `encode(to:)` that otherwise matches the synthesised one (same key order as `CodingKeys`, Preset.swift:34-36; `encodeIfPresent(padColor)`) | `decodeIfPresent ?? false`, the pattern of Preset.swift:50 | the unknown key is ignored |
 | effort | **not in presets** | | |
 
 Every non-WebP preset stays byte-identical to 1.2, including the shipped ones that PresetStore.swift:37-39 writes to disk.
 - Effort is an app preference. Preset.swift:3-5 says presets are "Not the framing (the crop anchor), nor the app's preferences".
-- The 1.3 decoder stays strict: an unknown format still throws.
+- The 1.4 decoder stays strict: an unknown format still throws.
 - `PresetStore` (l.72) reports a `DecodingError`'s `debugDescription` instead of `localizedDescription`, for example `Skipped: x.json: unknown format "avif"`.
 - `Preset` gains `public var lossless: Bool`, with init parameter `lossless: Bool = false` after `quality`.
 - `Preset.summary` (l.85) gives "WebP lossless" when `format == .webp && lossless`, and the existing "\(format.label) \(qualityPercent)" otherwise.
@@ -383,7 +390,7 @@ No byte ImageIO wrote moves. The 0x8769/0x8825 sub-IFDs, the UserComment and any
 
 **Give-way and XMP.** The camera `tiff:Make`/`tiff:Model` survive only in the `XMP ` chunk, and only when the XMP switch keeps a source packet that holds them. ImageIO's generated mirror no longer has them, because they were removed from the dictionary.
 
-**WebP sources (reading them is out of scope; follow-up 1).** SnapRescale 1.3 does not recognise a workflow inside a WebP source. ImageIO reads one under 10,000 characters as camera Make/Model. In 1.3:
+**WebP sources (reading them is out of scope; follow-up 1).** SnapRescale 1.4 does not recognise a workflow inside a WebP source. ImageIO reads one under 10,000 characters as camera Make/Model. In 1.4:
 - **Default (EXIF Strip):** a ComfyUI WebP saved as WebP, or as any other format, loses the workflow with the EXIF, and no AI note appears. 1.2 behaved the same: Keep original fell back to JPEG/PNG, and EXIF was stripped.
 - **EXIF Keep + AI Keep:** a short workflow rides as camera Make/Model in every output format.
 - **EXIF Keep + AI Strip:** WebP output drops it (the guard above). JPEG/HEIC/TIFF output still carries it as camera Make, which is the 1.2 behaviour.
@@ -495,7 +502,7 @@ The solver is untouched. In the app and CLI:
 - New `private var runningCancel: RenderCancellation?`. The loop creates a token per job, stores it, and calls `try? Renderer.produce(job.source, spec: job.spec, cancel: token)` (today l.461).
 - When `scheduleEncode` is called while a job runs, it calls `runningCancel?.cancel()`. A WebP encode stops at the next progress tick. The exception is a lossy encode's alpha plane, which is bounded and measured in E. ImageIO jobs stop only between phases, as before. `.cancelled` becomes nil through `try?` and is never published, because a job is pending.
 - **The readout stays a real encode with the Save settings**, so HELP's "The file size shown is a real encode, not an estimate" stays true.
-- Save does **not** reuse the readout's bytes in 1.3 (follow-up 5). Lossless Best on a large image therefore encodes twice. Section 8 gives the time and memory figures.
+- Save does **not** reuse the readout's bytes in 1.4 (follow-up 5). Lossless Best on a large image therefore encodes twice. Section 8 gives the time and memory figures.
 - The comment block at l.439-444 changes "ImageIO work cannot be interrupted, so cancelling tasks alone would not bound memory." to "ImageIO work cannot be interrupted; a WebP encode can (RenderCancellation), so a newer request cancels the running one."
 - **Effort** reaches the spec through `AppSettings.shared.webPEffort`. `AppSettings` is `@Observable`, so the `.onChange(of: session.spec)` at **ContentView.swift:37** re-runs the readout when it changes. ControlsPanel.swift:128 only calls `noteSettingsChanged`.
 
@@ -661,7 +668,7 @@ CWebP is a static C target, so `Scripts/build-app.sh:11`, which copies only the 
 - `project.yml` settings.base (l.16-30) gains `DEAD_CODE_STRIPPING: YES`. Research measured 629 KB without it against 386 KB per arm64 slice: without it the whole library is linked, decoder included.
 - Release builds are universal, as 1.2's already were (`lipo -archs` on the installed 1.2 binary: x86_64 arm64). libwebp uses NEON on arm64 and SSE2 on x86_64.
 - Lossy bytes differ between architectures, so tests compare decoded pixels.
-- Version: `MARKETING_VERSION "1.3"`, `CURRENT_PROJECT_VERSION "5"` (project.yml:21-22).
+- Version: `MARKETING_VERSION "1.4"`, `CURRENT_PROJECT_VERSION` the build after the crop frame's 1.3 (5), so "6" unless 1.3 needs another build (project.yml:21-22).
 
 **Binary guards: `Scripts/check-app-binary.sh <SnapRescale.app> [--stripped]`** (J, new). Both release scripts call it. It never pipes `nm` into `grep -q`. Under the scripts' `set -euo pipefail` (release.sh:11, appstore.sh:8), `grep -q` exits on the first match, `nm` dies of SIGPIPE, and the pipeline returns 141. This was checked on the installed 1.2 binary (9,936 symbols): `if ! nm -U "$B" | grep -q " $S$"` reported a present symbol as missing three times out of three. It would invert both guards: fail on a linked encoder, and pass silently with a linked decoder. Capturing the output first gives the right answer on the same binary.
 
@@ -696,7 +703,7 @@ echo "binary checks passed"
 ```
 If the x86_64 runner refuses, the script prints the fallback: build `rescale` for x86_64 and run the external check (RELEASING step 2).
 
-**`docs/RELEASING.md`**: a new section "WebP and ComfyUI (release gate from 1.3)", placed after "Sandbox checks" (l.38-78):
+**`docs/RELEASING.md`**: a new section "WebP and ComfyUI (release gate from 1.4)", placed after "Sandbox checks" (l.38-78):
 
 1. **Tests.** `Scripts/test-all.sh` passes on the host, arm64 and Rosetta.
 2. **x86_64 fallback, and the macOS 26 carrier check (P9).**
@@ -790,7 +797,7 @@ The results table follows the existing format (l.79-83): Date | Build | macOS | 
 | `EXIFBlockTests.swift` (F, P2) | `comfyUIGolden` (bytes == `comfyui.exif`); `compressedTextGolden`; `nonASCIIGolden`; `escaping` (U+0000, BMP, astral pairs, lowercase hex, ASCII untouched); `layout` (N=1 for workflow-only or prompt-only, nil for neither, values from 0x26, even offsets, final pad, count includes the NUL, next-IFD 0); `finishingPatchesDimensions`; `finishingMovesNothing` (every carrier value keeps its offset and bytes; the header is repointed; Exif and GPS pointers stay valid); `finishingWithUserCommentAndWorkflow` (a hybrid carrier: an ImageIO PNG `eXIf` holding a UNICODE UserComment, then Make/Model added; the IFD0 is sorted 0x010F, 0x0110, 0x8769; the UserComment bytes and ExifIFD unchanged); `finishingPromptOnlyKeepsCameraMake` (only 0x0110 replaced; the camera 0x010F untouched); `finishingForcesNextIFDZero` (a carrier with a hand-made IFD1 comes out with next = 0 in both paths); `prefixedStringsDropped` (an ImageDescription "Workflow: …" is gone); `aiStripDropsPrefixedValuesWithoutComfy` (`comfy: nil, dropAIPrefixedStrings: true` removes a Make "workflow:{…}" and zero-fills it; with `false` it is kept); `droppedValuesAreZeroFilled` (no camera Make bytes anywhere in the block); `littleEndianCarrierThrows` and `fuzzedCarriersThrowNeverTrap` (random truncation and corruption), both asserting `EXIFBlock.Malformed`; `realComfySample` (opt-in `SNAPRESCALE_COMFY_SAMPLE=<dir>` with ComfyUI's own `comfy.webp` and the `comfy.png` of the same run: our block from the PNG equals the WebP's EXIF chunk; 24,398 B and sha256 `2d80e541…` for the research sample) |
 | `ColorPlanTests.swift`, plan-level additions (G) | `webPIsEightBit`; `greyFallsBackToSRGBOnWebP` (note text); `cmykNamesWebP` ("WebP cannot hold CMYK pixels…"); `noICCSpaceFallsBack`; `pqAndHLGHaveICCData`; `embedsProfileStatic` |
 | `WebPRulesTests.swift` (I) | `webPUsesTheJPEGRules`: for every fixture × policy, `MetadataWriter.properties(type: .webP)` equals `properties(type: .jpeg)` as NSDictionary, with the `PendingUserComment` placeholder normalised and compared by `.text`, since its UUID is random (MetadataWriter.swift:158). `webPRowsAndNotes`: every text in 2.6 exact, every row of both note tables. `duplicatesStayPNGOnly`; `invokeAIRequiresPNG`; `jpegSaysPNGOrWebP` |
-| `WebPMetadataTests.swift` (L, P4) | Per section × keep/strip, with the probes and ImageIO read-back: `defaultOnComfyUI` (EXIF payload == golden, no XMP, VP8X EXIF flag); `hybridDefault` (imagesaver-hybrid.png: Make/Model are workflow/prompt, ExifIFD UserComment is ASCII or "UNICODE\0" per content and ImageIO reads it equal to `parameters`, PixelX/Y = output, no camera tags, no IFD1); `workflowOnlyAndPromptOnly` (one tag each; with EXIF Keep on a camera+ComfyUI source the other camera tag survives); `stripAllWritesNoMetadata` (no EXIF, XMP or ICCP); `exifKeepCamera` (tags present, no IFD1, Orientation 1 on the rotated fixture, PixelX/Y = output, ExifColorSpace as JPEG output has it, `{MakerApple}` kept where PNG keeps it); `gpsOnly`; `iptcKeepIsXMP` (XMP chunk with `dc:`/`photoshop:`, no IPTC); `exifKeepWithIPTCAndXMPStripHasNoXMP`; `xmpKeepAndMirrorRemoval` ("Also removed from XMP"); `iccPreserveP3`, `iccConvertEmbedsSRGB` (3,144 B), `iccStripWritesNone`; `a1111ASCIIStaysASCII`, `a1111NonASCIIIsUnicode` ("UNICODE\0", UTF-16BE; XMP text swapped too); `aiStripWritesNoWorkflow`; `aiStripOnAWebPSourceDropsPrefixedMake` (a short in-test workflow PNG → our WebP → loaded as a source → EXIF Keep + AI Strip: no `workflow:` bytes in the output; EXIF Keep + AI Keep: carried as Make, the documented 1.3 behaviour); `giveWayBytes` (comfyui-camera.png with EXIF+XMP Keep: Make/Model are the workflow and prompt, no camera Make in the raw EXIF bytes, the XMP chunk keeps `tiff:Make`); `greyAndCMYKBecomeSRGB`; `carrierFailureMessage` (a corrupted carrier through an internal seam gives the exact `carrierFailedMessage`) |
+| `WebPMetadataTests.swift` (L, P4) | Per section × keep/strip, with the probes and ImageIO read-back: `defaultOnComfyUI` (EXIF payload == golden, no XMP, VP8X EXIF flag); `hybridDefault` (imagesaver-hybrid.png: Make/Model are workflow/prompt, ExifIFD UserComment is ASCII or "UNICODE\0" per content and ImageIO reads it equal to `parameters`, PixelX/Y = output, no camera tags, no IFD1); `workflowOnlyAndPromptOnly` (one tag each; with EXIF Keep on a camera+ComfyUI source the other camera tag survives); `stripAllWritesNoMetadata` (no EXIF, XMP or ICCP); `exifKeepCamera` (tags present, no IFD1, Orientation 1 on the rotated fixture, PixelX/Y = output, ExifColorSpace as JPEG output has it, `{MakerApple}` kept where PNG keeps it); `gpsOnly`; `iptcKeepIsXMP` (XMP chunk with `dc:`/`photoshop:`, no IPTC); `exifKeepWithIPTCAndXMPStripHasNoXMP`; `xmpKeepAndMirrorRemoval` ("Also removed from XMP"); `iccPreserveP3`, `iccConvertEmbedsSRGB` (3,144 B), `iccStripWritesNone`; `a1111ASCIIStaysASCII`, `a1111NonASCIIIsUnicode` ("UNICODE\0", UTF-16BE; XMP text swapped too); `aiStripWritesNoWorkflow`; `aiStripOnAWebPSourceDropsPrefixedMake` (a short in-test workflow PNG → our WebP → loaded as a source → EXIF Keep + AI Strip: no `workflow:` bytes in the output; EXIF Keep + AI Keep: carried as Make, the documented 1.4 behaviour); `giveWayBytes` (comfyui-camera.png with EXIF+XMP Keep: Make/Model are the workflow and prompt, no camera Make in the raw EXIF bytes, the XMP chunk keeps `tiff:Make`); `greyAndCMYKBecomeSRGB`; `carrierFailureMessage` (a corrupted carrier through an internal seam gives the exact `carrierFailedMessage`) |
 | `ComfyUIFrontendTests.swift` (L, P3) | Sources {comfyui.png, imagesaver-hybrid.png, workflow-only, prompt-only} × {lossy, lossless} × {opaque, alpha} × {Default, EXIF+XMP Keep, ICC P3}, plus comfyui-camera.png under EXIF+XMP Keep. The `.current` reader gives `workflow` and/or `prompt` equal to the escaped source text, and `JSONSerialization` of each equals the parsed source JSON. The hybrid cells exercise the carrier + `finishing` path under Default. `.legacy` must pass for lossy opaque; the other cells record their result (the old-frontend caveat) |
 | `NotesMatchOutputTests.swift` (L) | For every metadata fixture, `comfyui-camera.png`, `imagesaver-hybrid.png` and in-test workflow-only, prompt-only and duplicate-chunk PNGs × {Default, Keep all, Strip all, EXIF only, XMP only, IPTC only, AI Strip} on WebP: each give-way note ⇔ the named camera tags are in the source ∧ EXIF kept ∧ those tags hold the workflow/prompt in the output ∧ no bytes of those camera values in the EXIF chunk; the AI note names exactly the parts the reader and the UserComment probe find (Make ⇔ workflow, Model ⇔ prompt, user comment ⇔ parameters); IPTC note ⇔ the XMP chunk holds IPTC fields; "Only the first ComfyUI workflow and prompt…" ⇔ the output holds the first pair only |
 | `ExternalWebPTests.swift` (L, P9) | Opt-in `SNAPRESCALE_VERIFY_WEBP_DIR=<dir>` with subfolders `default/`, `keep-all/` (CLI) and `app/` (step 4). Outputs are matched to fixtures by the stem of `name_WxH.webp`. **Every file:** valid RIFF and chunk order; when EXIF is present, IFD0 next-IFD 0, PixelX/Y = the canvas, Orientation 1 where present. **default/:** comfyui outputs' EXIF equals the golden; the reader finds workflow and prompt for comfyui, comfyui-camera and imagesaver-hybrid; hybrid and a1111 UserComment (ImageIO) equal the source `parameters`; no camera tags. **keep-all/:** camera Make/Model equal the source's, GPS IFD present, ExifColorSpace as the host's output; rotated has Orientation 1; iptc-xmp has an XMP chunk with `dc:`/`photoshop:`; comfyui-camera has Make/Model = workflow/prompt, no camera Make bytes in the EXIF chunk, and the XMP chunk keeps `tiff:Make`; display-p3 has a Display P3 ICCP. **app/:** the generic checks, the reader finds a parseable `workflow` in every ComfyUI/hybrid/owner file, and a hybrid's UserComment is non-empty. Decoded pixels of fixture outputs are within tolerance of the host arm64 output of the same spec |
@@ -825,7 +832,7 @@ The results table follows the existing format (l.79-83): Date | Build | macOS | 
 | Where | Now | Becomes |
 |---|---|---|
 | README.md:20 | "macOS 26 or later, Apple Silicon (that is what has been built and tested)." | owner question Q1 |
-| README.md:54 | "(1.2)" | "(1.3)" |
+| README.md:54 | "(1.3)", after the crop frame | "(1.4)" |
 | README.md:56-57 | "Output formats: JPEG, PNG, HEIC, TIFF, or the source's own format when it is one of those." | "Output formats: JPEG, PNG, HEIC, TIFF, WebP (lossy or lossless), or the source's own format when it is one of those." |
 | README.md:60-62 | "A resized ComfyUI PNG saved as PNG still opens its workflow in ComfyUI; A1111-style parameters travel in the EXIF user comment of JPEG, HEIC and TIFF." | "A resized ComfyUI PNG saved as PNG or WebP still opens its workflow in ComfyUI; A1111-style parameters travel in the EXIF user comment of JPEG, HEIC, TIFF and WebP." |
 | README.md:66-67 | "Sources deeper than 8 bits give 16-bit PNG and TIFF, and 10-bit HEIC." | append "JPEG and WebP are 8-bit." |
@@ -834,22 +841,22 @@ The results table follows the existing format (l.79-83): Date | Build | macOS | 
 | docs/HELP.md "Format and saving" (around :38), AboutAndHelp.swift:84-90 | no WebP | the WebP line from section 3 |
 | docs/HELP.md:69, AboutAndHelp.swift:97 | "…a resized ComfyUI PNG still opens its workflow in ComfyUI." | "…a resized ComfyUI PNG saved as PNG or WebP still opens its workflow in ComfyUI. In WebP it is kept in EXIF Make and Model, as ComfyUI saves it; with EXIF kept, the camera make and model give way to it. A workflow inside a WebP source is not read yet." |
 | docs/HELP.md:72, AboutAndHelp.swift:98 | "A switch is disabled, with a note, when the output format cannot carry the section: a ComfyUI graph requires PNG output." | "…: a ComfyUI graph requires PNG or WebP output, an InvokeAI graph PNG." |
-| docs/PRD.md:3 | status naming 1.2 released and v1.3 next | 1.3 status |
+| docs/PRD.md:3 | status naming 1.3 released and v1.4 next | 1.4 status |
 | docs/PRD.md:5 | "macOS 26+ (Apple Silicon)" | per Q1 |
-| docs/PRD.md:415-420 | "**WebP** and **JPEG XL** are read-only in ImageIO. WebP is the format the web actually asks for, so WebP encoding via bundled `libwebp` is the first item of M4…" | "WebP is written with the bundled libwebp 1.6.0 (1.3): lossy or lossless, at most 16383 px per side, 8-bit. JPEG XL stays read-only." |
+| docs/PRD.md:415-420 | "**WebP** and **JPEG XL** are read-only in ImageIO. WebP is the format the web actually asks for, so WebP encoding via bundled `libwebp` is the first item of M4…" | "WebP is written with the bundled libwebp 1.6.0 (1.4): lossy or lossless, at most 16383 px per side, 8-bit. JPEG XL stays read-only." |
 | docs/PRD.md:423-424 | "WebP quality + lossless + effort" | "WebP quality and Lossless (sidebar), effort (Settings)" |
 | docs/PRD.md:427 | "(GIF, WebP, RAW, …)" | "(GIF, RAW, …)" |
 | docs/PRD.md:524-528 | "ComfyUI graph survives only in PNG; A1111, SwarmUI and Fooocus parameters can also ride in the EXIF UserComment of JPEG, HEIC and TIFF" | "a ComfyUI graph survives in PNG, and in WebP as EXIF Make and Model (ComfyUI's own layout); an InvokeAI graph only in PNG; A1111, SwarmUI and Fooocus parameters can also ride in the EXIF UserComment of JPEG, HEIC, TIFF and WebP" |
 | docs/PRD.md:632 | "`format` is `keep`, `jpeg`, `png`, `heic` or `tiff`" | "…`tiff` or `webp`; `lossless` is optional (true for lossless WebP)" |
-| docs/PRD.md:677, :707 | M4 row; "the libwebp dependency (M4) must be sandbox- and notarisation-clean" | WebP marked done in 1.3; "verified: static C target, no entitlements, guarded by Scripts/check-app-binary.sh" |
-| docs/ROADMAP.md:6-10 | "Released: …1.2 (4)…" | 1.3 status |
-| docs/ROADMAP.md:78 | the WebP row | done (1.3), with follow-ups 1-7 from section 7 |
+| docs/PRD.md:677, :707 | M4 row; "the libwebp dependency (M4) must be sandbox- and notarisation-clean" | WebP marked done in 1.4; "verified: static C target, no entitlements, guarded by Scripts/check-app-binary.sh" |
+| docs/ROADMAP.md:6-10 | "Released: …1.3 (5)…", after the crop frame | 1.4 status |
+| docs/ROADMAP.md:78 | the WebP row | done (1.4), with follow-ups 1-7 from section 7 |
 | docs/ROADMAP.md:129 | "Stripping the ICC profile is fully clean only in TIFF and JPEG" | "…in TIFF, JPEG and WebP" |
-| docs/APP-STORE.md (description, l.63, l.69, l.73 at `6729ae4`) | The description was rewritten after this design (#71, #73). Its save-format sentence, the ComfyUI PNG-to-PNG sentence and the MIT sentence | WebP added to the formats, the ComfyUI sentence widened once the drop test passes, and a libwebp BSD sentence. P carries the proposed wording and the "Before submitting 1.3" list (l.78-87) |
-| docs/APP-STORE.md keywords | 93 bytes | add `webp` (98 of 100 bytes), weighed against the `crop,metadata` rebalance in the keyword note; "What's New (1.3)" per Q4 |
+| docs/APP-STORE.md (description, l.63, l.69, l.73 at `6729ae4`) | The description was rewritten after this design (#71, #73). Its save-format sentence, the ComfyUI PNG-to-PNG sentence and the MIT sentence | WebP added to the formats, the ComfyUI sentence widened once the drop test passes, and a libwebp BSD sentence. P carries the proposed wording and the "Before submitting 1.4" list (l.78-87) |
+| docs/APP-STORE.md keywords | 93 bytes | add `webp` (98 of 100 bytes), weighed against the `crop,metadata` rebalance in the keyword note; "What's New (1.4)" per Q4 |
 | docs/reference/image-metadata.md:71 | "…saved as JPEG, HEIC or TIFF" | "…saved as JPEG, HEIC, TIFF or WebP" |
 | docs/reference/image-metadata.md:99-107 (writing notes) | no WebP | Add: the WebP EXIF chunk layout; Make for the workflow and Model for the prompt, each only if present; the per-tag give-way; the Image-Saver-compatible hybrid (Make/Model + UNICODE UserComment); IPTC as XMP; sRGB ICCP on convert; no XMP chunk unless XMP or IPTC is kept; "ComfyUI frontends before v1.39.10 can miss the workflow in a lossless or transparent WebP; lossy opaque files load everywhere". Also the WebP-source paragraph of 2.4: not read for AI; Default drops it with EXIF and no note; EXIF Keep + AI Keep carries a short one as camera Make/Model; AI Strip removes it from WebP output only |
-| CHANGELOG.md | none | a 1.3 entry, including "Presets saved as WebP need 1.3; 1.2 skips them." and "A ComfyUI workflow inside a WebP source is not read yet." |
+| CHANGELOG.md | none | a 1.4 entry, including "Presets saved as WebP need 1.4; earlier versions skip them." and "A ComfyUI workflow inside a WebP source is not read yet." |
 | RescaleKit/Tests/RescaleKitTests/Fixtures/metadata/README.md:15 | none | a pointer to `Fixtures/webp/README.md` |
 | Code comments and messages | OutputFormat.swift:22, :25-26; Codable+Readable.swift:50; Renderer.swift:68-69; MetadataPolicy.swift:207-208; MetadataCapability.swift:14-20; Session.swift:352, :439-444; main.swift:5-7, :20-22, :84, :133; Deferred.swift:3-14 | as described in sections 2 and 3 |
 
@@ -941,7 +948,7 @@ Any review of this work lands as `docs/code-review-webp-<date>.md` with a Resolu
   - Depends on: A.
   - Acceptance:
     - the notices are in both app bundles;
-    - `DEAD_CODE_STRIPPING YES`; version 1.3 (5);
+    - `DEAD_CODE_STRIPPING YES`; version 1.4, the build after 1.3 (5);
     - the size delta per slice is recorded;
     - `check-app-binary.sh` is tested both ways. It passes on a local ad-hoc release build. It fails with "notices missing" on the installed 1.2 app. It fails with "libwebp encoder missing" on a copy of the 1.2 app given a dummy notices file (the large-symbol-table case that a `pipefail` pipeline gets wrong). It fails with "WebP decoder linked" on a release build made with `DEAD_CODE_STRIPPING=NO`.
 - **K. "WebP: presets and the CLI"**
@@ -991,14 +998,14 @@ Any review of this work lands as `docs/code-review-webp-<date>.md` with a Resolu
   - Owns: `SnapRescaleApp.swift`, `AboutAndHelp.swift`, new `NoticesView.swift`.
   - Depends on: J, M.
   - Acceptance: screenshots of Settings (picker and tooltip), About, the notices window and Help; the Help text matches section 6 word for word.
-- **P. "WebP: docs for 1.3"**
+- **P. "WebP: docs for 1.4"**
   - Owns: `README.md`, `CHANGELOG.md`, `docs/HELP.md`, `docs/PRD.md`, `docs/ROADMAP.md`, `docs/APP-STORE.md`, `docs/reference/image-metadata.md`, and the new section of `docs/RELEASING.md` (**shared file** with Q).
   - Depends on: the texts of this design. It merges after N and O.
   - Acceptance: every row of section 6 is done; `docs/HELP.md` and `AboutAndHelp.swift` agree word for word (diff checked in the PR).
 
 ### Wave 4
 
-- **Q. "WebP: release gate run for 1.3"**
+- **Q. "WebP: release gate run for 1.4"**
   - Owns: the result rows in `docs/RELEASING.md` only.
   - Depends on: all the above.
   - Acceptance: every step of the RELEASING section passes on the sandboxed, notarised build, and a row is recorded. Then `feature/webp` merges to `main`.
@@ -1008,7 +1015,7 @@ Any review of this work lands as `docs/code-review-webp-<date>.md` with a Resolu
 1. **Read ComfyUI workflows from WebP sources.** This means a badge, carrying a WebP workflow to PNG, and classifying `workflow:`/`prompt:` Make/Model as AI rather than camera EXIF, with notes. Today:
    - **WebP → WebP under Default:** the workflow is dropped with EXIF, with no AI note.
    - **EXIF Keep + AI Keep:** a short workflow (under 10,000 characters) rides as camera Make/Model in every format.
-   - **EXIF Keep + AI Strip:** 1.3 removes it from WebP output only. JPEG/TIFF/HEIC output still writes it as camera Make (1.2 behaviour), and a kept XMP packet is not scanned.
+   - **EXIF Keep + AI Strip:** 1.4 removes it from WebP output only. JPEG/TIFF/HEIC output still writes it as camera Make (1.2 behaviour), and a kept XMP packet is not scanned.
 2. `invokeai_workflow` is not among the tool keywords (ImageMetadata.swift:391-393).
 3. SwarmUI UTF-16LE and Fooocus IFD0 detection.
 4. PNG output keeps ImageIO's EXIF mirror XMP packet when XMP is stripped; verify and decide.
@@ -1032,7 +1039,7 @@ Any review of this work lands as `docs/code-review-webp-<date>.md` with a Resolu
 - **ImageIO drops Make/Model of 10,000 characters or more on read.** SnapRescale's own inspector cannot show the workflow of its WebP output until follow-up 1.
 - **WebP sources' workflows are not recognised** (section 2.4). Documented in HELP, image-metadata.md and the CHANGELOG; follow-up 1.
 - **Keep original on an animated WebP writes one frame.** The sidebar says so.
-- **1.2 skips WebP presets.** The CHANGELOG says so.
+- **1.2 and 1.3 skip WebP presets.** The CHANGELOG says so.
 - **GPL hygiene.** The test reader is clean-room, the drop test is a manual recipe against a local install, and nothing from ComfyUI enters the repo.
 - **Supply chain.** libwebp changes only through the pinned, signature-checked script. The vendored decoder never sees untrusted input.
 
@@ -1059,7 +1066,7 @@ The owner-only questions are listed under "Questions for the owner" at the end.
 15. **The CLI rejects `--lossless` and `--effort` outside WebP.** A flag that does nothing should fail, not be ignored.
 16. **`writable` changes only in the integration item, and the shared predicates land in W0 without touching the capability table.** No wave merges red, Keep original never resolves to an encoder that does not exist yet, and H does not depend on I.
 17. **The ComfyUI drop test is a written manual recipe; no Node or Playwright harness is committed.** The repo is Swift-only, and an unpinned browser harness would rot.
-18. **Save does not reuse the readout's bytes in 1.3.** That cache would tie Save's correctness to a cache key; it is follow-up 5.
+18. **Save does not reuse the readout's bytes in 1.4.** That cache would tie Save's correctness to a cache key; it is follow-up 5.
 19. **The `WEBP_USE_THREAD` check is an `#error` in a .c file of the target, not in the header.** Clients that import the module do not get the target's defines.
 20. **The macOS 26 check runs the host-built CLI on the VM, and the sandboxed app there, and verifies both sets of outputs on the host.** The VM stays a clean user machine, installed with `ditto`/`scp`, with no toolchain.
 21. **The preset decoder stays strict, and PresetStore shows the decoding reason.** Nothing converts silently, and a future format names itself in the problem line.
@@ -1071,10 +1078,10 @@ The owner-only questions are listed under "Questions for the owner" at the end.
 
 ## Questions for the owner
 
-1. **Platform claim.** 1.3 is universal and is tested on Apple silicon and under Rosetta, but not on an Intel Mac. README.md:20 and PRD.md:5 say "Apple Silicon". Should they say "Apple silicon and Intel (built universal; tested on Apple silicon and under Rosetta)", or stay as they are?
+1. **Platform claim.** 1.4 is universal and is tested on Apple silicon and under Rosetta, but not on an Intel Mac. README.md:20 and PRD.md:5 say "Apple Silicon". Should they say "Apple silicon and Intel (built universal; tested on Apple silicon and under Rosetta)", or stay as they are?
 2. **Keep original on a lossless WebP source.** As designed, Lossless starts off for each image, so a resized VP8L WebP becomes lossy unless the switch is turned on. The Quality row shows this. Alternatively, Lossless could start on when Keep original resolves a VP8L source, found by sniffing the RIFF header. The plan ships the switch off by default unless you choose otherwise.
-3. **Drop-test automation.** Keep the ComfyUI drop test manual for 1.3, as designed? Or commit a Node/Playwright harness later, as a dev-only dependency with pinned versions?
-4. **Store copy.** What should "What's New (1.3)" say on the App Store, and is adding `webp` to the keywords acceptable (98 of 100 bytes)?
+3. **Drop-test automation.** Keep the ComfyUI drop test manual for 1.4, as designed? Or commit a Node/Playwright harness later, as a dev-only dependency with pinned versions?
+4. **Store copy.** What should "What's New (1.4)" say on the App Store, and is adding `webp` to the keywords acceptable (98 of 100 bytes)?
 
 ---
 
@@ -1113,7 +1120,7 @@ The owner-only questions are listed under "Questions for the owner" at the end.
 | `#error` in the shim header (judge 3 graft) | SwiftPM C target semantics | **adopted in modified form**: a .c file, because a header `#error` would fire in importing targets |
 | `swift test` on the VM (judge 3 graft) | VM notes: a clean install target | **adopted in modified form**: host-built CLI on the VM, verified on the host |
 | Pillow golden, compressed-text golden, U+0000 escaping, reuse-proof test, real-file gate, exFAT leg, real-install leg, test-all.sh (grafts) | n/a | all adopted (sections 4 and 5) |
-| Cross-format `workflow:` Make leak (judge 2 graft) | MetadataWriter.swift:45-71 | follow-up 1; 1.3 guards WebP output under AI Strip only (decision 24) |
+| Cross-format `workflow:` Make leak (judge 2 graft) | MetadataWriter.swift:45-71 | follow-up 1; 1.4 guards WebP output under AI Strip only (decision 24) |
 
 ## Appendix B: Critique resolution
 
