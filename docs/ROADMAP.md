@@ -7,8 +7,9 @@ requirements; this file holds the order. Dates are decisions, not promises.
 2026-10-20 and live there since 2026-10-21. It was published as a direct
 download on 2026-10-20 (tag `v1.2-build4`). The sandbox checks in
 [`RELEASING.md`](RELEASING.md) passed on the release build before upload.
-Next: v1.3, formats and encoding. M5, which shipped 1.0 and 1.1, is kept at
-the end as history.
+Next: v1.3, the resizable crop frame (decided 2026-11-03, below), then v1.4,
+formats and encoding. M5, which shipped 1.0 and 1.1, is kept at the end as
+history.
 
 ## Deferred from v1 (2026-09-06)
 
@@ -73,7 +74,49 @@ New sidebar and inspector controls must write through `deferred` /
 `Binding.deferred`, or `deferredLive` for continuous ones such as sliders and
 drags (the macOS 27 Form width bug, `docs/apple-feedback-macos27-form-width.md`).
 
-## v1.3 — M4, formats and encoding
+## v1.3 — crop frame, corner handles (decided 2026-11-03)
+
+PRD §5 and §7. The design, with the maths and the test numbers, is
+[`design/crop-frame.md`](design/crop-frame.md); its reviews are in
+[`design/crop-frame-review.md`](design/crop-frame-review.md). Four handles at the corners
+of the crop frame select a smaller part of the image at the locked ratio:
+drag one, and the opposite corner stays where it is. Width, Height and
+Megapixels keep meaning the output; Scale % is measured against the frame, so
+100 % is a pure crop. The frame can be moved and resized from the keyboard,
+VoiceOver and Voice Control, and ⌘Z undoes a change. All of this is for Crop
+only: Pad, the rare case, keeps its 1.2 behaviour (owner, 2026-11-03). It
+folds in the Crop half of item 1 of #68 (the crop frame by keyboard and
+VoiceOver; the Pad half stays open) and #69 (the crop note for slivers under
+1 %).
+
+**Status: designed, not started.** It ships as 1.3, ahead of the formats
+release, which moves to 1.4 (owner, 2026-11-03). The work happens on the branch
+`feature/crop-frame`; each item lands there by its own PR, and the branch
+merges to `main` after the last one.
+
+GitHub milestone **1.3 Crop frame**, tracking issue #99.
+
+| Wave | Item | Issue | Touches | Needs |
+|---|---|---|---|---|
+| 0 | A · Framing model and geometry: `CropFraming`, the frame with zoom, corner and centre resize, the ratio-change rule, 1:1 zoom, discarded fraction; `RenderSpec.framing`; validation | #100 | `RescaleKit`: `Geometry.swift`, `Renderer.swift` (`RenderSpec`), `Validation.swift`, `Preset.swift` (doc) | — |
+| 1 | B · Scale against the frame: solve context, reference area on `Solution`; prototype changed and parity fixture regenerated | #101 | `RescaleKit`: `Solver.swift`, `Solution.swift`, `SizeParameter.swift`, tests; `prototype/` | A |
+| 2 | C · CLI: `--zoom`, `--anchor`, the shared crop and upscale lines | #102 | `RescaleKit/Sources/rescale/main.swift` | A, B |
+| 2 | D · Session framing state, separate pad position, notes and caption as testable functions (#69), launch arguments, encode pause | #103 | `SnapRescale`: `Session.swift`, `ControlsPanel.swift`, new `OutputNotes.swift` | A, B |
+| 3 | E · Corner handles in the preview: hit zones, gestures, cursors, detents, grid and checkerboard | #104 | `SnapRescale`: `PreviewView.swift`, new `CropHandles.swift` | D |
+| 4 | F · Keyboard, VoiceOver, Voice Control, undo, View ▸ Frame, under Crop (#68 item 1, Crop half) | #105 | `SnapRescale`: `PreviewView.swift`, `SnapRescaleApp.swift`, `Session.swift` | E |
+| 5 | G · Changelog, App Store copy (keywords unchanged), screenshots, the macOS 27 check, release 1.3 (5) | #106 | `CHANGELOG.md`, `docs/`, `README.md`, `project.yml` | all |
+
+C and D touch different packages and can run in parallel. E and F both edit
+`PreviewView.swift` and land one after the other; D and F both edit
+`Session.swift` (framing state, then undo). The formats release edits some of
+the same places (`RenderSpec`, the CLI usage, the sidebar notes, Help). The
+crop frame ships first; if WebP code reaches `main` before this branch
+merges, item G merges `main` in and resolves them, as listed in the design's
+section 9. New
+preview and sidebar writes go through `deferred`, or `deferredLive` for drags
+(the macOS 27 Form width bug).
+
+## v1.4 — M4, formats and encoding
 
 | Item | PRD |
 |---|---|
@@ -167,7 +210,7 @@ were recorded. Ordered so that each step leaves something usable.
    Settings. `--save` scripting stays dev-build only.)*
 4. **Presets** — JSON in Application Support, shipped defaults, a picker.
    *(done 2026-09-06: Web, Thumbnail, Social 16:9, SDXL 1024; hand-editable
-   JSON; `--preset` launch argument. Email and Discord/Slack wait for v1.3.)*
+   JSON; `--preset` launch argument. Email and Discord/Slack wait for v1.4.)*
 5. **Settings** (⌘,) — default grid, ladder values, default multiple and quality,
    *Save next to the original without asking*, *Show the saved image in Finder*.
    *(done 2026-09-06; the ladder editor flags values not divisible by 16, as

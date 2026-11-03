@@ -16,6 +16,10 @@ The same text as the in-app help (⌘?). Deliberately brief; the
 
 - Pick an **aspect ratio** — Original keeps the image's own — and **one number**:
   width, height, megapixels or scale. The other three follow.
+- Width, height and megapixels are the size of the output. With Crop,
+  **Scale** is measured against the frame: 100 % is a pure crop and 50 % halves
+  its width and height, before rounding. With Pad, it is measured against the
+  whole image.
 - **Multiple of 8, 16 or 32** rounds the result onto a lattice, as diffusion
   models, image-editing models and video encoders want. A width or height you
   type is kept when it is already a multiple; otherwise it moves to the
@@ -26,10 +30,19 @@ The same text as the in-app help (⌘?). Deliberately brief; the
 
 ## Crop or pad
 
-- When the ratio changes, **Crop** keeps the framed region — drag the frame to
-  reframe, double-click to centre — and **Pad** fits the whole image on a canvas
-  of the colour in the well. Opacity 0 means transparent padding, where the
-  format allows it.
+- **Crop** keeps the region inside the frame. Drag the frame to move it, or
+  drag one of its **corner handles** to keep a smaller part of the image at the
+  same ratio; hold ⌥ to resize around the centre. Double-click puts the frame
+  back to full size, centred, and ⌘Z undoes a change.
+- With width, height or megapixels set, a smaller frame fills the same output
+  with less of the image. Past 1:1 it is enlarged, and the panel says by how
+  much.
+- Click the image to work from the keyboard: the arrow keys move the frame (⇧
+  for 10 pixels), **+** and **−** resize it. **View ▸ Frame** has the same
+  commands.
+- **Pad** fits the whole image on a canvas of the colour in the well: drag the
+  image to place it, double-click to centre it. Opacity 0 means transparent
+  padding, where the format allows it.
 - The buttons under the image switch the **composition grid**: frame only,
   centre lines, thirds, golden ratio, fifths.
 
@@ -43,8 +56,8 @@ The same text as the in-app help (⌘?). Deliberately brief; the
 - **⌘S** opens the save panel, pre-filled with *name_WxH*. In Settings you can
   make ⌘S save beside the original without asking; the first save into a folder
   asks for permission once.
-- **Presets** store size and export settings. Save your own from the Preset
-  menu; the files are plain JSON.
+- **Presets** store size and export settings, not the frame. Save your own from
+  the Preset menu; the files are plain JSON.
 
 ## The badges
 
@@ -82,7 +95,7 @@ open the metadata inspector at that section. Full list:
 ## Shortcuts
 
 **⌘O** open · **⌘S** save · **⇧⌘S** save as (when *Save next to the original
-without asking* is on; otherwise ⌘S opens the save panel) · **⌥⌘I** metadata
-inspector · **⌘,** settings · **⌘?** help
+without asking* is on; otherwise ⌘S opens the save panel) · **⌘Z** undo a
+frame change · **⌥⌘I** metadata inspector · **⌘,** settings · **⌘?** help
 
 Problems or ideas: [github.com/phierru/SnapRescale/issues](https://github.com/phierru/SnapRescale/issues).

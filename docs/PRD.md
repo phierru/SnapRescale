@@ -1,6 +1,6 @@
 # SnapRescale — Product Requirements Document
 
-**Status:** Draft v0.15 · 2026-10-04 · **Metadata (1.2)** released 2026-10-20 · next milestone v1.3, formats and encoding · deferred work in [`ROADMAP.md`](ROADMAP.md) · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
+**Status:** Draft v0.16 · 2026-11-03 · **Metadata (1.2)** released 2026-10-20 · next: **1.3**, the resizable crop frame ([`design/crop-frame.md`](design/crop-frame.md)), then formats and encoding (1.4) · deferred work in [`ROADMAP.md`](ROADMAP.md) · **v1 scope: one image** · M0 solver shipped in `RescaleKit/`
 **Name:** SnapRescale — *Resize to any ratio, snapped to multiples of 8, 16 and 32* · bundle ID `com.phierru.SnapRescale`
 **Platform:** macOS 26+ (Apple Silicon), Swift 6 / SwiftUI
 
@@ -106,10 +106,23 @@ number. Edit any one; the other three re-read immediately:
 | Width | height = width ÷ aspect |
 | Height | width = height × aspect |
 | Megapixels | both, from √(px × aspect) and √(px ÷ aspect) |
-| Scale % | both, as a linear multiple of the source |
+| Scale % | both, as a linear multiple of what is kept: the crop frame under Crop, the whole source under Pad |
 
 Values you typed render normally; values the solver produced render dimmed. That
 is the whole of the state model.
+
+**Width, Height and Megapixels always mean the output.** Making the crop frame
+smaller (§7) leaves them alone: less of the image is resampled into the same
+output size. **Scale % is measured against the crop frame**: 100 % keeps the
+frame's own pixels, a pure crop, and 50 % halves its width and height, before
+rounding to whole pixels and the multiple. So under Scale a smaller frame gives
+a smaller output. Under Pad there is no frame, and
+Scale is measured against the whole source, as before. *(Decided 2026-11-03,
+with the corner handles.)* Under a ratio other than the source's this changes
+Scale from 1.2, which measured the whole source even when cropping: 3000×2000
+at 1:1 and 100 % gave about 2449×2449, an upscale of the kept square, and
+now gives 2000×2000. The frame measured is the one at the *chosen* ratio, not
+the snapped one, so Scale never depends on its own result.
 
 **Selecting a view makes it the controlling input.** The current solved value is
 carried across at full precision (only the field's text is rounded), and the
@@ -119,11 +132,15 @@ on a view switch, and the notes under Output say so. At multiple 1 a side can
 still move by a pixel, because sizes are whole pixels: from 6000×4000 under
 Original, width 1031 gives 1031×687, and switching to Height (687) gives
 1030×687. No note says so; the notes cover only what the multiple forces.
+Switching to Scale carries the percentage that gives the current size before
+rounding, so it can move too: from 6000×4000 at 16:9 and multiple 16, width
+1920 gives 1920×1088, and Scale (32.12 %) re-solves to 1936×1088. A
+percentage above the 6,400 % limit is clamped, and the panel says so.
 
 **Original is exact up to the multiple.** With a multiple of 8, 16 or 32 the
 snapped size can differ from the source ratio by a few pixels; the renderer
-then crops that sliver and the crop percentage reports it (typically under
-0.5 %).
+then crops that sliver and the crop note reports it, as *less than 1 %* when
+it is that small.
 
 **Long edge and short edge are dropped.** They existed to disambiguate mixed
 portrait/landscape batches, and with an explicit ratio — and, in v1, a single
@@ -188,9 +205,11 @@ Details:
 - **The ladder is editable** in Settings (2–6 values; entries not divisible by
   32 are flagged there because snapping can move them). The default is the
   ML/diffusion ladder; web work wants something nearer 640 · 1280 · 1920 · 2560.
-- **Upscaling is a warning, not a lock** (decided 2026-09-06): a target larger
-  than the source is allowed and flagged under Output with the factor. No
-  *Never upscale* setting.
+- **Upscaling is a warning, not a lock** (decided 2026-09-06): an output that
+  enlarges the pixels it keeps is allowed and flagged under Output with the
+  factor. No *Never upscale* setting. Under Crop the factor is measured against
+  the crop frame (§7), so a small frame upscales even when the output is
+  smaller than the source.
 - The **megapixel** instance uses its own ladder: 0.25 · 0.5 · 1 · 2 · 4 MP.
 - Dragging re-solves continuously. Numbers update at full rate; the crop preview
   (§7) throttles to keep the drag smooth.
@@ -264,6 +283,10 @@ Reference implementation and the case table: [`prototype/solver.py`](../prototyp
 [`prototype/compare.py`](../prototype/compare.py). The Swift port in
 [`RescaleKit/`](../RescaleKit/) is held to the prototype by a generated parity
 fixture (`prototype/export_fixture.py`, 5,940 cases) plus property tests.
+Measuring Scale against the crop frame (§5) changes 522 of those cases (Scale
+at a fixed ratio other than the source's), 518 of them in their integer size.
+The prototype changes first and the fixture is regenerated from it, never
+edited by hand.
 
 ---
 
@@ -275,7 +298,9 @@ of the time — geometry must be added or removed.
 
 ### Fit policy
 
-- **Crop (cover)** — *default.* Scale to fill the target, discard the overflow.
+- **Crop (cover)** — *default.* Scale the **crop frame** to fill the target,
+  discard the rest. The frame is the largest region at the target ratio until
+  it is made smaller with its corner handles (below).
 - **Pad (contain)** — scale to fit inside, fill the remainder with a chosen
   colour: transparent, white, black, or custom via colour well and eyedropper.
   Transparent (opacity 0 in the colour well) falls back to compositing over
@@ -295,9 +320,30 @@ one number and getting a reframe they did not fully picture, and the rectangle i
 the only honest way to show it before anything is written. At n=1 (§8) it can be
 exact rather than indicative, which is most of the argument for starting there.
 
-- **Anchor**: **direct dragging of the crop rectangle** (or of the inset image,
-  in pad mode); double-click re-centres. *The 3×3 grid was built and then dropped
-  2026-09-05 — dragging covers it.*
+- **Framing**: **drag the crop rectangle** to move it (or the inset image, in
+  pad mode), and **drag one of its four corner handles** to make it smaller,
+  or larger again, at the same ratio. The opposite corner stays where it is;
+  ⌥ resizes around the centre. The frame never leaves the image, and it can
+  shrink until its short edge is 16 source pixels at the chosen ratio (the
+  whole short edge, for an image smaller than that). The handles work under Original too,
+  to keep part of an image at its own ratio; pad mode has none. Under Width,
+  Height and Megapixels a corner drag has a detent where the frame is exactly
+  the output size (1:1, no resampling); ⌘ bypasses it.
+  - Double-click resets the frame to full size, centred (in pad mode it
+    centres the image). **View ▸ Frame** has Reset Frame, Centre Frame, Move
+    and Enlarge / Shrink, for the keyboard, VoiceOver and Voice Control; with
+    the preview focused, the arrow keys move the frame and + / − resize it.
+    ⌘Z undoes a frame change.
+  - These frame controls are for Crop only. Pad, the rare case, keeps its
+    1.2 behaviour: drag the image to place it, double-click to centre it
+    (decided 2026-11-03).
+  - Changing the ratio keeps the frame's size factor and its centre, moved
+    only as far as needed to stay inside the image.
+  - The crop frame and the padded image keep separate positions. A new image
+    starts with the full frame, centred.
+  - *The 3×3 grid was built and then dropped 2026-09-05 — dragging covers it.
+    The corner handles were decided 2026-11-03; the model and the drag maths
+    are in [`design/crop-frame.md`](design/crop-frame.md).*
 - **Composition grid** inside the frame, display only, disabled in pad mode,
   remembered across launches (the default grid becomes a setting in the M5
   Settings window): **Frame only · Centre lines · Rule of thirds** *(default)* **·
@@ -310,9 +356,11 @@ exact rather than indicative, which is most of the argument for starting there.
   O / ⇧O cycle-and-flip convention is the model if the orientation-dependent
   ones are ever added.
 - Live update on every solver change.
-- Reports the discarded fraction — "crops 18% of the image" — so an aggressive
-  reframe announces itself.
-- Warns when the target exceeds the source and *Never upscale* is off.
+- Reports the discarded fraction — "crops 18% of the image", *less than 1%*
+  and *more than 99%* at the ends — so an aggressive reframe announces itself.
+  It is amber only when the ratio alone discards more than 40 %; a frame made
+  smaller on purpose is not a surprise.
+- Warns when the output upscales the pixels it keeps (§5).
 
 ---
 
@@ -374,10 +422,13 @@ cannot offer:
   background on each change and shows the actual byte count — "1024×683 JPEG,
   148 KB" — rather than guessing from a quality curve. One render runs at a
   time and the latest request wins, so a drag never queues stale full-size
-  encodes. This is what will make the *target file size* control (§11, M4)
+  encodes; while the crop frame is being dragged the byte count waits, and one
+  encode runs on release. This is what will make the *target file size* control (§11, M4)
   trustworthy instead of aspirational.
-- **Detents past the source size dim** with a real number attached, since the
-  source is known and singular.
+- **An upscale is flagged with a real number**, since the source is known and
+  singular: the factor by which the output enlarges the pixels it keeps (§5).
+  *(This replaced "detents past the source size dim", which went with the
+  slider.)*
 
 ### Saving
 
@@ -414,8 +465,8 @@ OpenEXR, SVG, and the full RAW set (CR2/CR3, NEF, ARW, RAF, ORF, RW2, DNG, …).
 
 **Write, needs help:** **WebP** and **JPEG XL** are read-only in ImageIO. WebP is
 the format the web actually asks for, so WebP encoding via bundled `libwebp`
-is the first item of M4, the formats release (1.3), which follows the Metadata
-release (1.2). This is the single biggest implementation constraint in the project:
+is the first item of M4, the formats release (1.4), which follows the crop
+frame (1.3). This is the single biggest implementation constraint in the project:
 it adds a native dependency and complicates sandboxing and notarisation if
 SnapRescale is ever distributed. JPEG XL is deferred to v2.
 
@@ -594,26 +645,33 @@ template engine is future work.
 A named bundle of the size and export settings above: aspect ratio, the one
 size parameter, multiple, fit, pad colour, format, quality and metadata
 policy. Presets are the point: they turn a twelve-control dialog into a
-one-click action. Framing (where the crop frame or the padded image sits) is
-not part of a preset, and neither are the app's preferences in Settings.
+one-click action. Framing (where the crop frame or the padded image sits, and
+how large the crop frame is) is not part of a preset, and neither are the
+app's preferences in Settings.
 Resampling, destination folder and filename template are future schema work:
 those settings do not exist yet (§11, roadmap).
 
 Shipped defaults: **Web (Original ratio, 1.5 MP, JPEG q80)** · **Thumbnail
 (1:1, 320 px, crop)** · **Social 16:9 (1920 px, ×8, crop)** · **SDXL 1024 (1:1,
 1024 px, ×16, PNG)**. **Email (≤ 1 MB)** and **Discord/Slack (≤ 8 MB)** follow
-with the target-file-size search (roadmap v1.3); "strip GPS" joins Web with the
+with the target-file-size search (roadmap v1.4); "strip GPS" joins Web with the
 §10 switches: its policy is *strip EXIF, GPS, IPTC and XMP* — which is also the default.
 
 The picker sits at the top of the panel: choose one, *Save Current as
 Preset…*, delete the active one, or reveal the folder. Changing a stored
-setting after applying a preset shows **Custom** once the output changes;
-moving the crop frame does not. A preset is also a launch argument, `--preset "Social
+setting after applying a preset shows **Custom** once the output changes, and
+so does switching the size between Width, Height, Megapixels and Scale; moving
+or resizing the crop frame does not, even when it changes the output under
+Scale. A preset is also a launch argument, `--preset "Social
 16:9"`, for scripts and for the v2 headless Quick Action.
 
-A preset stores the aspect ratio and the one size parameter, so the target
-size replays exactly. The framing does not: applying a preset leaves the crop
-frame where it is, and a new image starts centred. Presets whose aspect is a
+A preset stores the aspect ratio and the one size parameter, so a Width,
+Height or Megapixels preset replays its size exactly; a Scale preset replays a
+percentage of the current crop frame under Crop, and of the whole source under
+Pad and Stretch (§5). The framing is not replayed:
+applying a preset leaves the crop frame as it is (a new ratio keeps its size
+factor and centre, §7), and a new image starts with the full frame, centred.
+Presets whose aspect is a
 fixed ratio rather than Original crop or pad an image of another ratio. There
 is no preset editor: a preset is saved from the current settings, and its
 file can be edited by hand.
@@ -630,7 +688,11 @@ hand:
 ```
 
 `aspect` is `"W:H"` or `"Original"`, as the app writes it (read in any case);
-`size` has exactly one of `width`, `height`, `megapixels`, `scale`; `format`
+`size` has exactly one of `width`, `height`, `megapixels`, `scale` (a factor,
+`0.5` for 50 %; since the crop frame, measured against the frame under Crop
+and against the whole source under Pad and Stretch, so a 1.2 Crop preset with
+`scale` gives a smaller output when its ratio differs from the source's);
+`format`
 is `keep`, `jpeg`, `png`, `heic` or `tiff`; `padColor` is `#rrggbb` or
 `#rrggbbaa`. These keys and `metadata` below are the whole schema: a key the
 app does not know is ignored when a preset is read.
@@ -659,7 +721,10 @@ section left out takes its default.
    v2 syntax: `rescale --aspect 16:9 --width 1920 --format jpeg --quality 80 *.png`,
    or `rescale --mp 1.5 *.png` (aspect defaults to original), plus `--preset web`,
    exit codes and machine-readable `--json` output. The M1 throwaway CLI is not
-   this: it takes one file, quality 0–1, and writes only with `--write`.
+   this: it takes one file, quality 0–1, and writes only with `--write`. It
+   takes the crop framing as `--zoom Z` (1 is the full frame) and
+   `--anchor x,y` (0…1 each, from the top left), and refuses either with
+   `--fit pad` or `stretch`.
 4. **Shortcuts action** — so it composes with the rest of the automation on this
    machine.
 
@@ -688,6 +753,13 @@ could start.**
 **On 2026-09-30, with 1.0 and 1.1 shipped without them, §10 was redesigned
 around a metadata inspector (keep / strip per section, copy / export, no
 editing) and became the next milestone; see [`ROADMAP.md`](ROADMAP.md).**
+
+**On 2026-11-03 a resizable crop frame was designed: four corner handles
+select a smaller part of the image at the locked ratio, and Scale % is measured
+against the frame under Crop (§5, §7); Pad keeps its 1.2 behaviour. It ships
+as 1.3, ahead of the formats release, which becomes 1.4; see
+[`design/crop-frame.md`](design/crop-frame.md) and
+[`ROADMAP.md`](ROADMAP.md).**
 
 **v2**, once v1 has been lived with: batch, the headless preset Quick Action, a
 shipped CLI, and the Shortcuts action (§13).
@@ -727,3 +799,11 @@ shipped CLI, and the Shortcuts action (§13).
 9. **Should target file size participate in the solver?** It constrains bytes,
    not pixels, so it is orthogonal — but at a fixed quality it does imply a pixel
    budget. Simplest v1: keep it separate, applied after the geometry is settled.
+10. **Scale under Pad.** Crop measures Scale against the crop frame (§5); Pad
+    measures it against the whole source, so 3000×2000 at 1:1 and 100 % gives
+    a 2449×2449 canvas with the image shrunk to 82 %. Measuring against the
+    smallest canvas at the ratio that holds the image would give 3000×3000
+    with the image at its own size, and one rule for both: Scale is how much
+    the kept picture is resampled. **Decided 2026-11-03: neither change.** The
+    crop frame is for Crop only, and Pad keeps measuring against the whole
+    source.

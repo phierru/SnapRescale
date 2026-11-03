@@ -75,14 +75,14 @@ SnapRescale takes inspiration from ComfyUI image-processing nodes, but contains 
 The app is free to download and use, with no in-app purchases, subscriptions, or other monetization. Its functionality is the same in all regions. The interface is in English.
 ```
 
-Before submitting 1.3, check it against the 1.3 build:
+Before submitting 1.3, the crop frame, check it against the 1.3 build:
 
 - **Draft:** paste this text over the first draft saved in App Store Connect on
   2026-10-29.
-- **Save formats:** add WebP if 1.3 writes it, and say so if a ComfyUI workflow
-  survives a PNG-to-WebP save.
-- **Licence:** if libwebp is bundled, the licence sentence must not say all of
-  the code is MIT; libwebp is BSD-3-Clause.
+- **Save formats:** 1.3 adds none. WebP comes with 1.4: add it then, and say
+  so if a ComfyUI workflow survives a PNG-to-WebP save.
+- **Licence:** from 1.4, when libwebp is bundled, the licence sentence must not
+  say all of the code is MIT; libwebp is BSD-3-Clause.
 - **Services menu:** keep "or the Services menu" only if the entry appears
   without a manual step (#74).
 
@@ -106,10 +106,11 @@ photo,image,aspect ratio,megapixel,scale,padding,png,jpeg,heic,tiff,exif,gps,wor
 ```
 
 They complement the name and subtitle. The subtitle covers resizing and the
-multiples, but neither it nor these keywords has `crop` or `metadata`. When
-the keywords are next pasted, rebalance within the 100 bytes: for example,
-`crop,metadata` in place of `convert` gives 99 bytes. Names of other products
-(ComfyUI, Stable Diffusion) stay out.
+multiples, but neither it nor these keywords has `crop` or `metadata`. A
+rebalance within the 100 bytes was proposed, for example `crop,metadata` in
+place of `convert` (99 bytes), but the owner decided on 2026-11-03 to add no
+new keywords for now: 1.3 keeps these. Names of other products (ComfyUI,
+Stable Diffusion) stay out.
 
 ## What's New (1.2)
 

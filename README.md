@@ -7,8 +7,9 @@ dimensions your workflow needs. Choose an aspect ratio and set width, height,
 megapixels or scale. Snap dimensions to multiples of 8, 16 or 32 for AI image
 workflows, or use ordinary pixel dimensions.
 
-Preview the crop before saving, drag to adjust the framing, or pad with a
-chosen colour. Inspect the image's metadata and choose what stays with the
+Preview the crop before saving: drag the frame to move it, or drag a corner
+to keep a smaller part of the image at the same ratio. Or pad with a chosen
+colour. Inspect the image's metadata and choose what stays with the
 resized file; an embedded ComfyUI workflow survives a PNG-to-PNG resize. Save
 useful settings as presets. Images are processed locally, without accounts or
 uploads.
@@ -37,8 +38,10 @@ uploads.
    ratio; the picker also offers 1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9 and 21:9 —
    and one number: width, height, megapixels or scale. The other three follow.
    *Multiple of 8, 16 or 32* rounds onto that lattice and says what it changed;
-   *Multiple of 1* means no snapping. The preview shows the crop; drag the frame
-   to reframe, or switch to *Pad*.
+   *Multiple of 1* means no snapping. The preview shows the crop: drag the
+   frame to move it, drag a corner to keep a smaller part of the image at the
+   same ratio, or switch to *Pad*. With Crop, Scale is measured against the
+   frame, so 100 % is a pure crop, up to rounding.
 3. **Choose the metadata.** Click a badge next to the file name, or the
    *Metadata* row in the sidebar (⌥⌘I), to open the inspector. EXIF, GPS,
    IPTC, XMP and the AI workflow each have a *Keep · Strip* switch, and the

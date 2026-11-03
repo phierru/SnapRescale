@@ -74,11 +74,15 @@ struct HelpView: View {
         ]),
         Section(title: "Choosing a size", lines: [
             "Pick an **aspect ratio** — Original keeps the image's own — and **one number**: width, height, megapixels or scale. The other three follow.",
+            "Width, height and megapixels are the size of the output. With Crop, **Scale** is measured against the frame: 100 % is a pure crop and 50 % halves its width and height, before rounding. With Pad, it is measured against the whole image.",
             "**Multiple of 8, 16 or 32** rounds the result onto a lattice, as diffusion models, image-editing models and video encoders want. A width or height you type is kept when it is already a multiple; otherwise it moves to the nearest one, and the panel says by how much. Sizes are whole pixels, so even at multiple 1 switching between width, height, megapixels and scale can move a side by a pixel.",
             "The **ladder** under the field jumps to the usual sizes. Edit it in Settings.",
         ]),
         Section(title: "Crop or pad", lines: [
-            "When the ratio changes, **Crop** keeps the framed region — drag the frame to reframe, double-click to centre — and **Pad** fits the whole image on a canvas of the colour in the well. Opacity 0 means transparent padding, where the format allows it.",
+            "**Crop** keeps the region inside the frame. Drag the frame to move it, or drag one of its **corner handles** to keep a smaller part of the image at the same ratio; hold ⌥ to resize around the centre. Double-click puts the frame back to full size, centred, and ⌘Z undoes a change.",
+            "With width, height or megapixels set, a smaller frame fills the same output with less of the image. Past 1:1 it is enlarged, and the panel says by how much.",
+            "Click the image to work from the keyboard: the arrow keys move the frame (⇧ for 10 pixels), **+** and **−** resize it. **View ▸ Frame** has the same commands.",
+            "**Pad** fits the whole image on a canvas of the colour in the well: drag the image to place it, double-click to centre it. Opacity 0 means transparent padding, where the format allows it.",
             "The buttons under the image switch the **composition grid**: frame only, centre lines, thirds, golden ratio, fifths.",
         ]),
         Section(title: "Format and saving", lines: [
@@ -86,7 +90,7 @@ struct HelpView: View {
             "Only the **first frame** of an animation is used, and a CMYK image is converted to sRGB.",
             "The **file size** shown is a real encode, not an estimate.",
             "**⌘S** opens the save panel, pre-filled with *name_WxH*. In Settings you can make ⌘S save beside the original without asking; the first save into a folder asks for permission once.",
-            "**Presets** store size and export settings. Save your own from the Preset menu; the files are plain JSON.",
+            "**Presets** store size and export settings, not the frame. Save your own from the Preset menu; the files are plain JSON.",
         ]),
         Section(title: "The badges", lines: [
             "Next to the file name: what SnapRescale could read in the source — an embedded colour profile, EXIF, GPS, IPTC, XMP, HDR, alpha — and where an AI image came from (ComfyUI, A1111, InvokeAI, …). Hover for details; click one to open the metadata inspector at that section.",
@@ -101,7 +105,7 @@ struct HelpView: View {
             "SnapRescale does not edit metadata. For that, use ExifTool or Photos.",
         ]),
         Section(title: "Shortcuts", lines: [
-            "**⌘O** open · **⌘S** save · **⇧⌘S** save as (when *Save next to the original without asking* is on; otherwise ⌘S opens the save panel) · **⌥⌘I** metadata inspector · **⌘,** settings · **⌘?** this help",
+            "**⌘O** open · **⌘S** save · **⇧⌘S** save as (when *Save next to the original without asking* is on; otherwise ⌘S opens the save panel) · **⌘Z** undo a frame change · **⌥⌘I** metadata inspector · **⌘,** settings · **⌘?** this help",
         ]),
     ]
 
