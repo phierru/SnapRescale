@@ -1,6 +1,6 @@
 # WebP output (#1): research record, 2026-10-21
 
-This file records what the research behind [the 1.3 WebP design](webp-1.3.md) established. The prototypes, probes and harnesses were kept in temporary session folders, which are gone, so the findings are written down here and need not be found again. Where the design builds on a finding, the section is named.
+This file records what the research behind [the WebP design](webp-1.3.md) established. The design was planned for 1.3 then, and is 1.4 since 2026-11-03. The prototypes, probes and harnesses were kept in temporary session folders, which are gone, so the findings are written down here and need not be found again. Where the design builds on a finding, the section is named.
 
 ComfyUI and its frontend are GPL-3.0. Their behaviour is described in prose only; tag numbers, string formats, versions and commit ids are facts, and no ComfyUI source is reproduced.
 
@@ -87,7 +87,7 @@ Effect of (c)'s missing defines at 4000², arm64: lossless z9 10.7 s against 5.1
 - libwebp and sharpyuv are BSD-3-Clause ("Copyright (c) 2010, Google Inc.") plus `PATENTS`, a royalty-free grant that ends for anyone suing over WebP patents. Compatible with MIT and the App Store.
 - Obligations: keep `COPYING`, `PATENTS`, `AUTHORS` with the sources; reproduce notice, conditions and disclaimer with binaries (clause 2): the app bundle in both build paths, the DMG, a README credit; no endorsement using Google's name. A README line or GitHub link alone does not cover a binary.
 - Homebrew's install lacks `PATENTS`; take the files from the tarball. Keep `LICENSE` MIT-only and put the notice in a root `THIRD-PARTY-NOTICES.txt`. Today the two build paths name the licence differently (`LICENSE` in Xcode, `LICENSE.txt` from `build-app.sh`).
-- Store copy: once libwebp ships, no text may say all the code is MIT ([APP-STORE.md](../APP-STORE.md) 1.3 checklist).
+- Store copy: once libwebp ships, no text may say all the code is MIT ([APP-STORE.md](../APP-STORE.md), the 1.4 licence line).
 
 ### 2.8 Binary size and build cost
 
